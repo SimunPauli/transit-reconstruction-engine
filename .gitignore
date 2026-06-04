@@ -1,0 +1,11 @@
+.idea/
+venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+*.log
+*.csv
+*.xlsx
+*.db
+*accdb
