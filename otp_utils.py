@@ -26,8 +26,8 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
     Handles fallback routes for RAIL, TRAM, and SUBWAY using a cache.
 
     Returns:
-        tuple: (route_short_names, modes_json)
-               where route_short_names is a list of strings,
+        tuple: (route_names, modes_json)
+               where route_names is a list of strings,
                and modes_json is a list of dicts like [{"mode": "BUS"}].
     """
     # 1. Identify all valid modes for this TurId
@@ -40,6 +40,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         .tolist()
     )
 
+
     if not modes_list:
         return [], []
 
@@ -50,7 +51,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 
     # 2. Extract explicit routes for modes that provide them (BUS=31, S_TRAIN=32, FERRY=41)
     modes_with_route_names = [31, 32]
-    route_short_names = (
+    route_names = (
         tu_deltur_sub.loc[
             tu_deltur_sub["StageMode"].isin(modes_with_route_names),
             "Route"
@@ -62,13 +63,15 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         .drop_duplicates()
         .tolist()
     )
-
     # 3. For RAIL, TRAM, SUBWAY, append cached routes if the mode is used in this trip
-    for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]:
-        if mode in modes_list:
-            route_short_names.extend(otp_mode_routes_cache.get(mode, []))
+    if any(mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"] for mode in modes_list):
+        route_names_ext = list(route_names)
+        for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]:
+            if mode in modes_list:
+                route_names_ext = route_names + otp_mode_routes_cache.get(mode, [])
 
     # 4. Deduplicate and clean up
-    route_short_names = list(set(route_short_names))
+    route_names = list(set(route_names))
+    route_names_ext = list(set(route_names_ext))
 
-    return route_short_names, modes_json
+    return route_names, route_names_ext, modes_json, modes_list
