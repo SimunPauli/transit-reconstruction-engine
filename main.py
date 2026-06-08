@@ -30,7 +30,6 @@ def main():
 
     print(f"Search window: {search_window}")
 
-
     # RAIL, TRAM and SUBWAY are missing route name in TU.
     # So taking all routes for these modes. Which will be used when modes
     # that do include route name in TU only can access those routes, but for
@@ -49,30 +48,51 @@ def main():
 
         tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWait", "StageDuration", "Route", "FromStation", "ToStation"]
         print(f"tu_deltur_sub: {tu_deltur_sub[tu_deltur_sub_print_col]}")
-        route_short_name, modes_json = resolve_route_short_names(tu_deltur_sub,
+        route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(tu_deltur_sub,
                                                                  mode_map,
                                                                  otp_mode_routes_cache)
         if not modes_json:
             print(f"No valid public transport modes found for TurId: {i_TurId}")
             continue
         print(f"modes_json: {modes_json}")
-        if not route_short_name:
+        if (modes_list.isin([31, 32])) & (not route_names):
             print(f"No valid route found for TurId: {i_TurId}")
             continue
-        if has_invalid_route_name(route_short_name):
-            print(f"Invalid route name: {route_short_name}")
+        if has_invalid_route_name(route_names):
+            print(f"Invalid route name: {route_names}")
             continue
 
-        print(f"route_short_name: {route_short_name}")
+        print(f"route_short_name: {route_names}")
 
         # 2. Fetch all candidates (handles pagination & concat internally)
-        otp_candidates_df = load_all_candidates(
-            tu_tur_row=tu_tur_row,
-            modes_json=modes_json,
-            route_short_name=route_short_name,
-            search_window=search_window,
-            otp_url=otp_url
-        )
+        is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
+        is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
+
+        if is_bus_s_train and is_rail_tram_subway_ferry:
+            otp_candidates_df = load_all_candidates(
+                tu_tur_row=tu_tur_row,
+                modes_json=modes_json,
+                route_short_name=route_names_ext,  # extented
+                search_window=search_window,
+                otp_url=otp_url
+            )
+        elif is_bus_s_train:
+            otp_candidates_df = load_all_candidates(
+                tu_tur_row=tu_tur_row,
+                modes_json=modes_json,
+                route_short_name=route_names,  # not extented
+                search_window=search_window,
+                otp_url=otp_url
+            )
+        elif is_rail_tram_subway_ferry:
+            otp_candidates_df = load_all_candidates(
+                tu_tur_row=tu_tur_row,
+                modes_json=modes_json,
+                # route_short_name=route_names,
+                search_window=search_window,
+                otp_url=otp_url
+            )
+
         if otp_candidates_df.empty:
             print(f"No OTP trips found for TurId: {i_TurId}")
             continue
@@ -80,7 +100,7 @@ def main():
         #TODO: Currently only considering trips that include all routes in route_short_name.
         #      But for RAIL, TRAM and SUBWAY, route_short_name includes all their routes.
         #      Either remove this check or handle it differently for these modes!
-        required_routes = set(route_short_name)
+        required_routes = set(route_names)
         iteration_ids_with_all_routes = (
             otp_candidates_df.groupby("iteration_id")["route_short_name"]
             .apply(lambda routes: required_routes.issubset(set(routes.astype(str))))
@@ -92,7 +112,7 @@ def main():
             )
         ].reset_index(drop=True)
         if otp_candidates_df.empty:
-            print(f"No OTP trips include all routes {route_short_name} for TurId: {i_TurId}")
+            print(f"No OTP trips include all routes {route_names} for TurId: {i_TurId}")
             continue
 
         time_based_match = find_similar_trip(tu_tur_row, otp_candidates_df, arrival_dev_weight=1)
