@@ -1,3 +1,4 @@
+import math
 import requests
 import json
 import textwrap
@@ -347,3 +348,52 @@ def get_all_routes_for_mode(mode: str, url: str = "http://localhost:8080/otp/gtf
     except Exception as e:
         print(f"Error fetching routes for mode {mode}: {e}")
         return []
+
+
+def get_stops_by_bbox_query(lat: float,
+                            lon: float,
+                            extra_m: int,
+                            otp_url = "http://localhost:8080/otp/gtfs/v1"):
+    maxLat = lat + extra_m / 111320
+    minLat = lat - extra_m / 111320
+    maxLon = lon + extra_m / (111320 * abs(math.cos(math.radians(lat))))
+    minLon = lon - extra_m / (111320 * abs(math.cos(math.radians(lat))))
+    query = """
+    query GetStopsByRadius($maxLat: Float!, $minLat: Float!, $maxLon: Float!, $minLon: Float!) {
+    stopsByBbox(
+        maxLat: $maxLat,
+        minLat: $minLat,
+        maxLon: $maxLon,
+        minLon: $minLon
+      ) {
+        edges {
+          node {
+            distance
+            stop {
+                gtfsId
+                name
+                lat
+                lon
+                routes {
+                    gtfsId
+                    mode
+                    shortName
+                }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    #Variables of query
+    variables = {
+        "maxLat": float(maxLat),
+        "minLat": float(minLat),
+        "maxLon": float(maxLon),
+        "minLon": float(minLon)
+    }
+
+    response = get_response(otp_url, query, variables)
+
+    return response
