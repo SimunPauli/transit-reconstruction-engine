@@ -3,6 +3,7 @@ import load_TU_data
 from otp_client import get_all_routes_for_mode, load_all_candidates
 from find_similar_trip import find_similar_trip
 from otp_utils import has_invalid_route_name, resolve_route_short_names
+from tu_gtfs_stations_match import match_tu_gtfs_stations
 
 def main():
     print("Loading TU data...")
@@ -40,6 +41,8 @@ def main():
 
     tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37, 41])]
     tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] == 6)]
+
+    tu_gtfs_station_df = match_tu_gtfs_stations(tu_station, period=(tu_tur["DiaryDate"].min(), tu_tur["DiaryMonth"].max()))
 
     time_based_matches = []
     for i, tu_tur_row in tu_tur.iterrows():
