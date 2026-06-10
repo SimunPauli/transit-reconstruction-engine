@@ -1,8 +1,8 @@
-import math
 import requests
 import json
 import textwrap
 import pandas as pd
+import numpy as np
 from otp_parser import json_to_df
 
 def get_response(url, query, variables):
@@ -354,10 +354,13 @@ def get_stops_by_bbox_query(lat: float,
                             lon: float,
                             bbox_buffer_m: int,
                             otp_url = "http://localhost:8080/otp/gtfs/v1"):
+    if bbox_buffer_m <= 0:
+        raise ValueError(f"bbox_buffer_m must be positive, got {bbox_buffer_m}")
+
     maxLat = lat + bbox_buffer_m / 111320
     minLat = lat - bbox_buffer_m / 111320
-    maxLon = lon + bbox_buffer_m / (111320 * abs(math.cos(math.radians(lat))))
-    minLon = lon - bbox_buffer_m / (111320 * abs(math.cos(math.radians(lat))))
+    maxLon = lon + bbox_buffer_m / (111320 * np.abs(np.cos(np.radians(lat))))
+    minLon = lon - bbox_buffer_m / (111320 * np.abs(np.cos(np.radians(lat))))
     query = """
     query GetStopsByBbox($maxLat: Float!, $minLat: Float!, $maxLon: Float!, $minLon: Float!) {
     stopsByBbox(
@@ -381,12 +384,11 @@ def get_stops_by_bbox_query(lat: float,
 
     #Variables of query
     variables = {
-        "maxLat": float(maxLat),
-        "minLat": float(minLat),
-        "maxLon": float(maxLon),
-        "minLon": float(minLon)
+        "maxLat": maxLat,
+        "minLat": minLat,
+        "maxLon": maxLon,
+        "minLon": minLon
     }
-
 
     response = get_response(otp_url, query, variables)
     return response
