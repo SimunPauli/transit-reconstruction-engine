@@ -352,14 +352,14 @@ def get_all_routes_for_mode(mode: str, url: str = "http://localhost:8080/otp/gtf
 
 def get_stops_by_bbox_query(lat: float,
                             lon: float,
-                            extra_m: int,
+                            bbox_buffer_m: int,
                             otp_url = "http://localhost:8080/otp/gtfs/v1"):
-    maxLat = lat + extra_m / 111320
-    minLat = lat - extra_m / 111320
-    maxLon = lon + extra_m / (111320 * abs(math.cos(math.radians(lat))))
-    minLon = lon - extra_m / (111320 * abs(math.cos(math.radians(lat))))
+    maxLat = lat + bbox_buffer_m / 111320
+    minLat = lat - bbox_buffer_m / 111320
+    maxLon = lon + bbox_buffer_m / (111320 * abs(math.cos(math.radians(lat))))
+    minLon = lon - bbox_buffer_m / (111320 * abs(math.cos(math.radians(lat))))
     query = """
-    query GetStopsByRadius($maxLat: Float!, $minLat: Float!, $maxLon: Float!, $minLon: Float!) {
+    query GetStopsByBbox($maxLat: Float!, $minLat: Float!, $maxLon: Float!, $minLon: Float!) {
     stopsByBbox(
         maxLat: $maxLat,
         minLat: $minLat,
@@ -395,5 +395,4 @@ def get_stops_by_bbox_query(lat: float,
     }
 
     response = get_response(otp_url, query, variables)
-
     return response
