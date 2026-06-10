@@ -6,11 +6,12 @@ from otp_utils import has_invalid_route_name, resolve_route_short_names
 
 def main():
     print("Loading TU data...")
-    tu_session, tu_tur, tu_deltur = load_TU_data.load_tu(
+    tu_session, tu_tur, tu_deltur, tu_station = load_TU_data.load_tu(
         data_dir="/home/simpal/O/TU_Rejseplan/Data/TU/",
         session_file="tu_session_secret_2015_2025.xlsx",
         tur_file="tu_tur_secret_2015_2025.xlsx",
-        deltur_file="tu_deltur_2015_2025.xlsx"
+        deltur_file="tu_deltur_2015_2025.xlsx",
+        stations_file="Stationer_tudatabase.xlsx"
     )
     print("TU data loaded")
 

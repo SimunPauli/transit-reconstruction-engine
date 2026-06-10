@@ -4,10 +4,14 @@ import geopandas as gpd
 def load_tu(data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/",
             session_file = "tu_session_secret_2015_2025.xlsx",
             tur_file = "tu_tur_secret_2015_2025.xlsx",
-            deltur_file = "tu_deltur_2015_2025.xlsx"):
+            deltur_file = "tu_deltur_2015_2025.xlsx",
+            stations_file = "Stationer_tudatabase.xlsx"):
     tu_session = pd.read_excel(data_dir + session_file)
     tu_tur = pd.read_excel(data_dir + tur_file)
     tu_deltur = pd.read_excel(data_dir + deltur_file)
+    tu_stations = pd.read_excel(data_dir + stations_file)
+
+    tu_stations["id"] = tu_stations.index
 
     # --- Sort tu_session ---
     tu_session = tu_session.sort_values(by="DiaryDate")
@@ -90,4 +94,4 @@ def load_tu(data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/",
     )
     tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 
-    return [tu_session, tu_tur, tu_deltur]
+    return [tu_session, tu_tur, tu_deltur, tu_stations]

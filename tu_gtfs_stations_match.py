@@ -10,6 +10,7 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
                            bbox_buffer_m=400,
                            period=None,
                            name_match_threshold = 0.5):
+    tu_stations["id"] = tu_stations.index
     # period should be: period = (int(tu_tur["DiaryDate"].min()), int(tu_tur["DiaryDate"].max()))
     if period is None:
         print("Warning: No period specified. Matching all stations. Also station not open this period will be matched.")
@@ -31,6 +32,8 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
     tu_stations["lon"] = gdf_dest.geometry.x
     tu_stations["lat"] = gdf_dest.geometry.y
 
+    # Collect results
+    matches_list = []
 
     for i, row in tu_stations.iterrows():
         print(f"\n {i} Processing TU station: {row['statnavn']}")
@@ -42,7 +45,19 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
 
         for mode, stop in matches.items():
             print(f"{mode}: {stop['name']} (name similarity: {stop.get('name_similarity', 'N/A')})")
+            # Append match to list
+            matches_list.append({
+                'tu_station_id': row['id'],
+                'tu_station_name': row['statnavn'],
+                'gtfs_station_id': stop['stop_gtfsId'],
+                'gtfs_station_name': stop['name'],
+                'mode': mode,
+                'name_similarity': stop.get('name_similarity', None),
+                'distance_degree': stop['distance_degree']
+            })
 
+    result_df = pd.DataFrame(matches_list)
+    return result_df
 
 
 TU_MODE_TO_GTFS = {
@@ -55,10 +70,12 @@ TU_MODE_TO_GTFS = {
 def _normalise_name(name: str) -> str:
     """Lowercase, remove punctuation, collapse whitespace."""
     name = name.lower()
+    # Replace Å/å with aa
+    name = name.replace("å", "aa")
     # Remove common station type suffixes (case-insensitive)
-    # Order matters: remove longer patterns first
-    name = re.sub(r'\s+(station|st\.|st|metro|s-tog|stog)\s*$', '', name)
-    name = re.sub(r'\s*\((station|st\.|st|metro|s-tog|stog)\)\s*$', '', name)
+    pattern = r'\s+(station|st\.|st|metro|s-tog|stog)\s*$|\s*\((station|st\.|st|metro|s-tog|stog)\)\s*$'
+    while re.search(pattern, name):
+        name = re.sub(pattern, '', name)
     # Keep Danish letters, remove other punctuation
     name = re.sub(r"[^\w\søæå]", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
@@ -128,8 +145,6 @@ def find_gtfs_stations_for_tu_station(
             otp_url=otp_url,
         )
         gtfs_df = parse_stops_to_df(response, tu_station["lat"], tu_station["lon"])
-    print(tu_station["lat"], tu_station["lon"])
-    print(gtfs_df)
     # 3. Keep only stops that serve at least one relevant mode
     def stop_serves_mode(modes_str: str, mode: str) -> bool:
         return mode in [m.strip() for m in modes_str.split(",")]
