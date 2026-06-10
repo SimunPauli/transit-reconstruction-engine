@@ -366,21 +366,14 @@ def get_stops_by_bbox_query(lat: float,
         maxLon: $maxLon,
         minLon: $minLon
       ) {
-        edges {
-          node {
-            distance
-            stop {
-                gtfsId
-                name
-                lat
-                lon
-                routes {
-                    gtfsId
-                    mode
-                    shortName
-                }
-            }
-          }
+        id
+        gtfsId
+        name
+        lat
+        lon
+        routes {
+          shortName
+          mode
         }
       }
     }
@@ -393,6 +386,7 @@ def get_stops_by_bbox_query(lat: float,
         "maxLon": float(maxLon),
         "minLon": float(minLon)
     }
+
 
     response = get_response(otp_url, query, variables)
     return response
