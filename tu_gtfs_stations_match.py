@@ -1,10 +1,9 @@
 import pandas as pd
 import geopandas as gpd
 from otp_client import get_stops_by_bbox_query
-from typing import Dict
 import re
-from rapidfuzz import distance
-
+from collections import Counter
+import numpy as np
 
 
 def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
@@ -12,6 +11,8 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
                            period=None,
                            name_match_threshold = 0.5):
     # period should be: period = (int(tu_tur["DiaryDate"].min()), int(tu_tur["DiaryDate"].max()))
+    if period is None:
+        print("Warning: No period specified. Matching all stations. Also station not open this period will be matched.")
     if period is not None:
         period_start, period_end = period
         mask = tu_stations.apply(
@@ -54,9 +55,26 @@ TU_MODE_TO_GTFS = {
 def _normalise_name(name: str) -> str:
     """Lowercase, remove punctuation, collapse whitespace."""
     name = name.lower()
-    name = re.sub(r"[^\w\søæå]", " ", name)  # keep Danish letters
+    # Remove common station type suffixes (case-insensitive)
+    # Order matters: remove longer patterns first
+    name = re.sub(r'\s+(station|st\.|st|metro|s-tog|stog)\s*$', '', name)
+    name = re.sub(r'\s*\((station|st\.|st|metro|s-tog|stog)\)\s*$', '', name)
+    # Keep Danish letters, remove other punctuation
+    name = re.sub(r"[^\w\søæå]", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name
+
+def cosine_similarity(s1, s2):
+    # Convert strings to character frequency vectors
+    vec1 = Counter(s1)
+    vec2 = Counter(s2)
+
+    # Calculating cosine similarity
+    dot_product = sum(vec1[ch] * vec2[ch] for ch in vec1)
+    magnitude1 = np.sqrt(sum(count ** 2 for count in vec1.values()))
+    magnitude2 = np.sqrt(sum(count ** 2 for count in vec2.values()))
+    res = dot_product / (magnitude1 * magnitude2)
+    return(res)
 
 def find_gtfs_stations_for_tu_station(
     tu_station: pd.Series,
@@ -64,7 +82,7 @@ def find_gtfs_stations_for_tu_station(
     bbox_buffer_m: int = 400,
     otp_url: str = "http://localhost:8080/otp/gtfs/v1",
     name_match_threshold: float = 0.6,
-) -> Dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """
     Find matching GTFS station(s) for a single TU station row.
 
@@ -109,8 +127,9 @@ def find_gtfs_stations_for_tu_station(
             bbox_buffer_m=bbox_buffer_m,
             otp_url=otp_url,
         )
-        gtfs_df = parse_stops_to_df(response)
-
+        gtfs_df = parse_stops_to_df(response, tu_station["lat"], tu_station["lon"])
+    print(tu_station["lat"], tu_station["lon"])
+    print(gtfs_df)
     # 3. Keep only stops that serve at least one relevant mode
     def stop_serves_mode(modes_str: str, mode: str) -> bool:
         return mode in [m.strip() for m in modes_str.split(",")]
@@ -142,7 +161,7 @@ def find_gtfs_stations_for_tu_station(
         # Score by name similarity (token_sort_ratio handles word order differences)
         if tu_name:
             mode_stops["name_similarity"] = mode_stops["name"].apply(
-                lambda n: distance.Levenshtein.normalized_similarity(_normalise_name(tu_name), _normalise_name(n)) * 100
+                lambda n: cosine_similarity(_normalise_name(tu_name), _normalise_name(n)) * 100
             )
             name_filtered = mode_stops[mode_stops["name_similarity"] >= name_match_threshold]
 
@@ -155,7 +174,7 @@ def find_gtfs_stations_for_tu_station(
                 )
 
         # Closest stop by distance
-        best = mode_stops.loc[mode_stops["distance"].idxmin()]
+        best = mode_stops.loc[mode_stops["distance_degree"].idxmin()]
         result[mode] = best
 
     return result
@@ -178,24 +197,21 @@ def _station_active_in_period(row, period_start, period_end):
     # overlaps [period_start, period_end]
     return effective_open <= period_end and effective_close >= period_start
 
-def parse_stops_to_df(response_data):
+def parse_stops_to_df(response_data, station_lat: float, station_lon: float):
     response_data = response_data.json()
     # Retrieve the list of edges
-    edges = response_data.get("data", {}).get("stopsByRadius", {}).get("edges", [])
+    data = response_data.get("data", {})
 
     rows = []
-    for edge in edges:
-        node = edge.get("node", {})
-        distance = node.get("distance")
-        stop = node.get("stop", {})
+    stops = data.get("stopsByBbox", [])
 
-        # Flatten routes details into formatted strings
+    for stop in stops:
         routes = stop.get("routes", [])
         route_modes = [r.get("mode") for r in routes if r.get("mode")]
         route_names = [r.get("shortName") for r in routes if r.get("shortName")]
 
         rows.append({
-            "distance": distance,
+            "distance_degree": None,  # No distance in bbox response
             "stop_gtfsId": stop.get("gtfsId"),
             "name": stop.get("name"),
             "lat": stop.get("lat"),
@@ -203,8 +219,12 @@ def parse_stops_to_df(response_data):
             "modes": ", ".join(set(route_modes)),
             "routes": ", ".join(route_names)
         })
+
     df = pd.DataFrame(rows)
     if df.empty:
-        df = pd.DataFrame(columns=["distance", "stop_gtfsId", "name", "lat", "lon", "modes", "routes"])
-
-    return df
+        df = pd.DataFrame(columns=["distance_degree", "stop_gtfsId", "name", "lat", "lon", "modes", "routes"])
+    if not df.empty:
+        # Approximate distance to station
+        df["distance_degree"] = np.sqrt((df["lat"] - station_lat)**2 + (df["lon"] - station_lon)**2)
+    df = df.sort_values(by="distance_degree")
+    return pd.DataFrame(df)
