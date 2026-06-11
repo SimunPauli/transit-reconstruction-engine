@@ -72,7 +72,7 @@ def main():
             print(f"No valid public transport modes found for TurId: {i_TurId}")
             continue
         print(f"modes_json: {modes_json}")
-        if (modes_list.isin([31, 32])) & (not route_names):
+        if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and not route_names:
             print(f"No valid route found for TurId: {i_TurId}")
             continue
         if has_invalid_route_name(route_names):
