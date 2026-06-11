@@ -36,16 +36,17 @@ def print_for_graphiql(query, variables):
     print(variables_clean)
     print("```")
 
+
 def graphql_json_request(
-        tu_tur_row: pd.Series | None = None,
-        modes_json: list | None = None,
-        route_short_name_json: list | None = None,
-        direct: list | None = None,
-        pass_stopids: list | None = None,
-        before: str | None = None,
-        last: int | None = None,
-        after: str | None = None,
-        first: int | None = None,
+        tu_tur_row: Optional[pd.Series] = None,
+        modes_json: Optional[list] = None,
+        route_short_name_json: Optional[list] = None,
+        direct: Optional[list] = None,
+        pass_stopids: Optional[list] = None,
+        before: Optional[str] = None,
+        last: Optional[int] = None,
+        after: Optional[str] = None,
+        first: Optional[int] = None,
         direct_only: bool = False,
         transit_only: bool = False,
         search_window: str = "PT30M",
@@ -56,185 +57,159 @@ def graphql_json_request(
         direct = ["WALK"]
     if tu_tur_row is None:
         raise ValueError("tu_tur_row must be specified")
-    required_cols = ["orig_lat", "orig_lon", "tiladrlat", "tiladrlon", "depart_dt_str"]
-    missing = [k for k in required_cols if k not in tu_tur_row]
-    if missing:
-        raise KeyError(f"tu_tur_row is missing required column: {missing}")
-    #Query
-    query = """
-    query
-    ($origin: PlanLabeledLocationInput!,
-    $destination: PlanLabeledLocationInput!,
-    $modes: PlanModesInput!,
-    $preferences: PlanPreferencesInput,
-    $dateTime: PlanDateTimeInput,
-    $before: String,
-    $last: Int,
-    $after: String,
-    $first: Int,
-    $searchWindow: Duration,
-    $itineraryFilter: PlanItineraryFilterInput,
-    $via: [PlanViaLocationInput!])
-    {
-      planConnection(
-        origin: $origin
-        destination: $destination
-        dateTime: $dateTime
-        modes: $modes
-        preferences: $preferences
-        before: $before,
-        last: $last,
-        after: $after,
-        first: $first,
-        searchWindow: $searchWindow
-        itineraryFilter: $itineraryFilter
-        via: $via
-      ) {
-        edges {
-          cursor
-          node { # trip A->Z #"Tur" i TU
-            start
-            end
-            numberOfTransfers
-            emissionsPerPerson {
-              co2 #in grams
-            }
-            systemNotices {
-                tag
-                text
-            }
-            legs { # partial trip: split by mode change # "deltur" i TU
-              mode
-              startTime
-              endTime
-              distance
-              duration
-              
-              from {
-                name
-                stop {
-                  gtfsId
-                  id #gtfsId but base64-encoded
-                  parentStation {
-                    gtfsId
-                    id
-                    name
-                  }
-                }
-              }
-              to {
-                name
-                stop {
-                  gtfsId
-                  id
-                  parentStation {
-                    id
-                    name
-                  }
-                }
-              }
-              route {
-                shortName
-              }
-              generalizedCost
-              legGeometry {
-                length
-                points
-              }
-            }
-          }
-        }
-        pageInfo {
-          startCursor
-          endCursor
-          hasPreviousPage
-          hasNextPage
-        }
-      }
-    }
-    """
 
-    #Variables of query
+    # Determine which optional features are being used
+    has_pagination = any(x is not None for x in [before, last, after, first])
+    has_search_window = search_window is not None
+    has_itinerary_filter = True  # You always include this, but could make it conditional
+    has_via = pass_stopids is not None
+
+    # Build query dynamically
+    query = build_graphql_query(
+        include_pagination=has_pagination,
+        include_search_window=has_search_window,
+        include_itinerary_filter=has_itinerary_filter,
+        include_via=has_via,
+    )
+
+    # Build variables dict (unchanged logic)
     variables = {
         "origin": {
-          "location": {
-            "coordinate": {
-              "latitude": tu_tur_row["orig_lat"],
-              "longitude": tu_tur_row["orig_lon"]
-            }
-          }
-        },
+            "location": {"coordinate": {"latitude": tu_tur_row["orig_lat"], "longitude": tu_tur_row["orig_lon"]}}},
         "destination": {
-          "location": {
-            "coordinate": {
-              "latitude": tu_tur_row["tiladrlat"],
-              "longitude": tu_tur_row["tiladrlon"]
-            }
-          }
-        },
-        "dateTime": {
-          "earliestDeparture": tu_tur_row["depart_dt_str"]
-        },
-        "modes": {
-          "directOnly": direct_only,
-          "transitOnly": transit_only,
-          "direct": direct,
-        },
-        "itineraryFilter": {
-            # "groupSimilarityKeepOne": 0,
-            # "groupSimilarityKeepThree": 0,
-            # "groupedOtherThanSameLegsMaxCostMultiplier": 20,
-            "itineraryFilterDebugProfile": "LIST_ALL",
-        },
-
-        "preferences": {
-            "transit": {
-                "alight": {
-                    "slack": "PT0M"
-                },
-            }
-        }
+            "location": {"coordinate": {"latitude": tu_tur_row["tiladrlat"], "longitude": tu_tur_row["tiladrlon"]}}},
+        "dateTime": {"earliestDeparture": tu_tur_row["depart_dt_str"]},
+        "modes": {"directOnly": direct_only, "transitOnly": transit_only, "direct": direct},
+        "itineraryFilter": {"itineraryFilterDebugProfile": "LIST_ALL"},
+        "preferences": {"transit": {"alight": {"slack": "PT0M"}}},
     }
 
-    if before is not None:
-        variables.update({"before": before})
-    if last is not None:
-        variables.update({"last": last})
-    if after is not None:
-        variables.update({"after": after})
-    if first is not None:
-        variables.update({"first": first})
+    # Add optional variables only if they're needed
+    if has_pagination:
+        if before is not None:
+            variables["before"] = before
+        if last is not None:
+            variables["last"] = last
+        if after is not None:
+            variables["after"] = after
+        if first is not None:
+            variables["first"] = first
 
-    if search_window is not None:
-        variables.update({"searchWindow": search_window})
+    if has_search_window:
+        variables["searchWindow"] = search_window
 
     if route_short_name_json is not None:
         variables["preferences"].setdefault("transit", {}).setdefault("filters", []).append({
-            "include": {
-                "routeShortNames": route_short_name_json,
-            }
+            "include": {"routeShortNames": route_short_name_json}
         })
 
     if pass_stopids is not None:
-        # Create individual via-location for each stop
-        variables["via"] = [
-            {
-                "visit": {
-                    "stopLocationIds": [stop_id]
-                }
-            }
-            for stop_id in pass_stopids
-        ]
+        variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in pass_stopids]
+
     if modes_json is not None:
-        variables["modes"]["transit"] = {
-            "transit": modes_json
-        }
+        variables["modes"]["transit"] = {"transit": modes_json}
 
     if print_query:
         print_for_graphiql(query, variables)
 
     return get_response(url, query, variables)
 
+def build_graphql_query(
+        include_pagination: bool = False,
+        include_search_window: bool = False,
+        include_itinerary_filter: bool = False,
+        include_via: bool = False,
+) -> str:
+    """
+    Dynamically build the GraphQL query string based on which features are needed.
+    """
+    # Base query structure
+    query = """
+    query
+    ($origin: PlanLabeledLocationInput!,
+    $destination: PlanLabeledLocationInput!,
+    $modes: PlanModesInput!,
+    $preferences: PlanPreferencesInput,
+    $dateTime: PlanDateTimeInput"""
+
+    # Add optional variable declarations
+    if include_pagination:
+        query += """,
+    $before: String,
+    $last: Int,
+    $after: String,
+    $first: Int"""
+
+    if include_search_window:
+        query += """,
+    $searchWindow: Duration"""
+
+    if include_itinerary_filter:
+        query += """,
+    $itineraryFilter: PlanItineraryFilterInput"""
+
+    if include_via:
+        query += """,
+    $via: [PlanViaLocationInput!]"""
+
+    query += """)
+    {
+      planConnection(
+        origin: $origin
+        destination: $destination
+        dateTime: $dateTime
+        modes: $modes
+        preferences: $preferences"""
+
+    # Add optional arguments to the planConnection call
+    if include_pagination:
+        query += """,
+        before: $before,
+        last: $last,
+        after: $after,
+        first: $first"""
+
+    if include_search_window:
+        query += """,
+        searchWindow: $searchWindow"""
+
+    if include_itinerary_filter:
+        query += """,
+        itineraryFilter: $itineraryFilter"""
+
+    if include_via:
+        query += """,
+        via: $via"""
+
+    # Rest of the query (edges, nodes, etc.)
+    query += """
+      ) {
+        edges {
+          cursor
+          node {
+            start
+            end
+            numberOfTransfers
+            emissionsPerPerson { co2 }
+            systemNotices { tag text }
+            legs {
+              mode startTime endTime distance duration
+              from { name stop { gtfsId id parentStation { gtfsId id name } } }
+              to { name stop { gtfsId id parentStation { id name } } }
+              route { shortName }
+              generalizedCost
+              legGeometry { length points }
+            }
+          }
+        }
+        pageInfo {
+          startCursor endCursor hasPreviousPage hasNextPage
+        }
+      }
+    }
+    """
+
+    return query
 
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         modes_json: list | None = None,
