@@ -42,7 +42,7 @@ def graphql_json_request(
         modes_json: Optional[list] = None,
         route_short_name_json: Optional[list] = None,
         direct: Optional[list] = None,
-        pass_stopids: Optional[list] = None,
+        via_stopids: Optional[list] = None,
         before: Optional[str] = None,
         last: Optional[int] = None,
         after: Optional[str] = None,
@@ -62,7 +62,7 @@ def graphql_json_request(
     has_pagination = any(x is not None for x in [before, last, after, first])
     has_search_window = search_window is not None
     has_itinerary_filter = True  # You always include this, but could make it conditional
-    has_via = pass_stopids is not None
+    has_via = via_stopids is not None
 
     # Build query dynamically
     query = build_graphql_query(
@@ -72,7 +72,7 @@ def graphql_json_request(
         include_via=has_via,
     )
 
-    # Build variables dict (unchanged logic)
+    # Build variables dict
     variables = {
         "origin": {
             "location": {"coordinate": {"latitude": tu_tur_row["orig_lat"], "longitude": tu_tur_row["orig_lon"]}}},
@@ -103,8 +103,8 @@ def graphql_json_request(
             "include": {"routeShortNames": route_short_name_json}
         })
 
-    if pass_stopids is not None:
-        variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in pass_stopids]
+    if via_stopids is not None:
+        variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in via_stopids]
 
     if modes_json is not None:
         variables["modes"]["transit"] = {"transit": modes_json}
@@ -113,6 +113,7 @@ def graphql_json_request(
         print_for_graphiql(query, variables)
 
     return get_response(url, query, variables)
+
 
 def build_graphql_query(
         include_pagination: bool = False,
@@ -211,19 +212,21 @@ def build_graphql_query(
 
     return query
 
+
+
+
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         modes_json: list | None = None,
                         route_short_name: list | None = None,
-                        pass_stopids: list | None = None,
+                        via_stopids: list | None = None,
                         search_window: str = "PT30M",
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1"):
-    
-        
+
         response = graphql_json_request(
             tu_tur_row=tu_tur_row,
             modes_json=modes_json,
             route_short_name_json=route_short_name,
-            pass_stopids=pass_stopids,
+            via_stopids=via_stopids,
             direct=["WALK"],
             first=50,
             direct_only=False,
@@ -232,9 +235,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
             url=otp_url
         )
 
-        if response is None:
-            return pd.DataFrame()
-
+        if not response.json()["data"]["planConnection"]["edges"]:
+            print("OTP found no route for TurId: ", tu_tur_row["TurId"])
         otp_candidates_df = json_to_df(response)
         response_data = response.json()
         
@@ -257,7 +259,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                 tu_tur_row=tu_tur_row,
                 modes_json=modes_json,
                 route_short_name_json=route_short_name,
-                pass_stopids=pass_stopids,
+                via_stopids=via_stopids,
                 direct=["WALK"],
                 after=endCursor,
                 first=50 - n_forward,
@@ -295,7 +297,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                 tu_tur_row=tu_tur_row,
                 modes_json=modes_json,
                 route_short_name_json=route_short_name,
-                pass_stopids=pass_stopids,
+                via_stopids=via_stopids,
                 direct=["WALK"],
                 before=startCursor,
                 last=50 - n_backward,
