@@ -37,15 +37,15 @@ def print_for_graphiql(query, variables):
     print("```")
 
 def graphql_json_request(
-        tu_tur_row: Optional[pd.Series] = None,
-        modes_json: Optional[list] = None,
-        route_short_name_json: Optional[list] = None,
-        direct: list = None,
-        pass_stopids: Optional[list] = None,
-        before: Optional[str] = None,
-        last: Optional[int] = None,
-        after: Optional[str] = None,
-        first: Optional[int] = None,
+        tu_tur_row: pd.Series | None = None,
+        modes_json: list | None = None,
+        route_short_name_json: list | None = None,
+        direct: list | None = None,
+        pass_stopids: list | None = None,
+        before: str | None = None,
+        last: int | None = None,
+        after: str | None = None,
+        first: int | None = None,
         direct_only: bool = False,
         transit_only: bool = False,
         search_window: str = "PT30M",
@@ -53,10 +53,13 @@ def graphql_json_request(
         print_query: bool = False,
 ) -> requests.Response:
     if direct is None:
-        raise Exception("Direct mode must be specified")
+        direct = ["WALK"]
     if tu_tur_row is None:
-        raise Exception("tu_tur_row must be specified")
-
+        raise ValueError("tu_tur_row must be specified")
+    required_cols = ["orig_lat", "orig_lon", "tiladrlat", "tiladrlon", "depart_dt_str"]
+    missing = [k for k in required_cols if k not in tu_tur_row]
+    if missing:
+        raise KeyError(f"tu_tur_row is missing required column: {missing}")
     #Query
     query = """
     query
@@ -206,18 +209,11 @@ def graphql_json_request(
         variables.update({"searchWindow": search_window})
 
     if route_short_name_json is not None:
-        variables["preferences"] = {
-            "transit": {
-                "alight": {
-                    "slack": "PT0M"
-                },
-                "filters": [{
-                    "include": {
-                        "routeShortNames": route_short_name_json,
-                    }
-                }]
+        variables["preferences"].setdefault("transit", {}).setdefault("filters", []).append({
+            "include": {
+                "routeShortNames": route_short_name_json,
             }
-        }
+        })
 
     if pass_stopids is not None:
         # Create individual via-location for each stop
@@ -240,12 +236,12 @@ def graphql_json_request(
     return get_response(url, query, variables)
 
 
-def load_all_candidates(tu_tur_row,
-                        modes_json,
-                        route_short_name,
-                        pass_stopids,
-                        search_window,
-                        otp_url):
+def load_all_candidates(tu_tur_row: pd.Series | None = None,
+                        modes_json: list | None = None,
+                        route_short_name: list | None = None,
+                        pass_stopids: list | None = None,
+                        search_window: str = "PT30M",
+                        otp_url: str = "http://localhost:8080/otp/gtfs/v1"):
     
         
         response = graphql_json_request(
