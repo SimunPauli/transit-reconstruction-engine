@@ -36,7 +36,7 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
     matches_list = []
 
     for i, row in tu_stations.iterrows():
-        print(f"\n {i} Processing TU station: {row['statnavn']}")
+        #print(f"\n {i} Processing TU station: {row['statnavn']}")
         matches = find_gtfs_stations_for_tu_station(
             tu_station=row,
             name_match_threshold=name_match_threshold,
@@ -44,14 +44,14 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
         )
 
         for mode, stop in matches.items():
-            print(f"{mode}: {stop['name']} (name similarity: {stop.get('name_similarity', 'N/A')})")
+            #print(f"{mode}: {stop['name']} (name similarity: {stop.get('name_similarity', 'N/A')})")
             # Append match to list
             matches_list.append({
                 'tu_station_id': row['id'],
                 'tu_station_name': row['statnavn'],
                 'gtfs_station_id': stop['stop_gtfsId'],
                 'gtfs_station_name': stop['name'],
-                'mode': mode,
+                'otp_mode': mode,
                 'name_similarity': stop.get('name_similarity', None),
                 'distance_degree': stop['distance_degree']
             })
@@ -133,7 +133,7 @@ def find_gtfs_stations_for_tu_station(
     ]
 
     if not active_modes:
-        print(f"No active modes for {tu_station['statnavn']}")
+        print(f"Warning: No active modes for {tu_station['statnavn']}")
         return {}
 
     # 2. Fetch nearby GTFS stops if not provided
@@ -156,7 +156,7 @@ def find_gtfs_stations_for_tu_station(
     ].copy()
 
     if relevant_stops.empty:
-        print(f"No relevant_stops GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for active_modes: {active_modes}")
+        print(f"Warning: No relevant_stops GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for active_modes: {active_modes}")
         return {}
 
     tu_name = str(tu_station.get("statnavn", ""))
@@ -170,7 +170,7 @@ def find_gtfs_stations_for_tu_station(
         ].copy()
 
         if mode_stops.empty:
-            print(f"No GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for mode: {mode}")
+            print(f"Warning: No GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for mode: {mode}")
             continue
 
         # Score by name similarity (token_sort_ratio handles word order differences)
