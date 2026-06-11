@@ -3,6 +3,7 @@ import json
 import textwrap
 import pandas as pd
 import numpy as np
+from typing import Optional, Any
 from otp_parser import json_to_df
 
 def get_response(url, query, variables):
@@ -36,20 +37,25 @@ def print_for_graphiql(query, variables):
     print("```")
 
 def graphql_json_request(
-        tu_tur_row=None,
-        modes_json=None,
-        route_short_name_json=None,
-        direct=["Walk"],
-        before=None,
-        last=None,
-        after=None,
-        first=None,
-        direct_only = False,
-        transit_only = False,
-        search_window = "PT1H30M",
-        url="http://localhost:8080/otp/gtfs/v1",
-        print_query=False,
-    ):
+        tu_tur_row: Optional[pd.Series] = None,
+        modes_json: Optional[list] = None,
+        route_short_name_json: Optional[list] = None,
+        direct: list = None,
+        pass_stopids: Optional[list] = None,
+        before: Optional[str] = None,
+        last: Optional[int] = None,
+        after: Optional[str] = None,
+        first: Optional[int] = None,
+        direct_only: bool = False,
+        transit_only: bool = False,
+        search_window: str = "PT30M",
+        url: str = "http://localhost:8080/otp/gtfs/v1",
+        print_query: bool = False,
+) -> requests.Response:
+    if direct is None:
+        raise Exception("Direct mode must be specified")
+    if tu_tur_row is None:
+        raise Exception("tu_tur_row must be specified")
 
     #Query
     query = """
@@ -64,7 +70,8 @@ def graphql_json_request(
     $after: String,
     $first: Int,
     $searchWindow: Duration,
-    $itineraryFilter: PlanItineraryFilterInput)
+    $itineraryFilter: PlanItineraryFilterInput,
+    $via: [PlanViaLocationInput!])
     {
       planConnection(
         origin: $origin
@@ -78,6 +85,7 @@ def graphql_json_request(
         first: $first,
         searchWindow: $searchWindow
         itineraryFilter: $itineraryFilter
+        via: $via
       ) {
         edges {
           cursor
@@ -211,6 +219,16 @@ def graphql_json_request(
             }
         }
 
+    if pass_stopids is not None:
+        # Create individual via-location for each stop
+        variables["via"] = [
+            {
+                "visit": {
+                    "stopLocationIds": [stop_id]
+                }
+            }
+            for stop_id in pass_stopids
+        ]
     if modes_json is not None:
         variables["modes"]["transit"] = {
             "transit": modes_json
@@ -225,7 +243,8 @@ def graphql_json_request(
 def load_all_candidates(tu_tur_row,
                         modes_json,
                         route_short_name,
-                        search_window, 
+                        pass_stopids,
+                        search_window,
                         otp_url):
     
         
@@ -233,6 +252,7 @@ def load_all_candidates(tu_tur_row,
             tu_tur_row=tu_tur_row,
             modes_json=modes_json,
             route_short_name_json=route_short_name,
+            pass_stopids=pass_stopids,
             direct=["WALK"],
             first=50,
             direct_only=False,
@@ -266,6 +286,7 @@ def load_all_candidates(tu_tur_row,
                 tu_tur_row=tu_tur_row,
                 modes_json=modes_json,
                 route_short_name_json=route_short_name,
+                pass_stopids=pass_stopids,
                 direct=["WALK"],
                 after=endCursor,
                 first=50 - n_forward,
@@ -303,6 +324,7 @@ def load_all_candidates(tu_tur_row,
                 tu_tur_row=tu_tur_row,
                 modes_json=modes_json,
                 route_short_name_json=route_short_name,
+                pass_stopids=pass_stopids,
                 direct=["WALK"],
                 before=startCursor,
                 last=50 - n_backward,
