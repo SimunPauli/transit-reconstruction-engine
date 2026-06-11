@@ -9,9 +9,7 @@ def has_invalid_route_name(route_names) -> bool:
     for route_name in route_names:
         if pd.isna(route_name):
             return True
-
         route_name = str(route_name)
-
         if any(char in route_name for char in INVALID_ROUTE_CHARS):
             return True
 
@@ -39,8 +37,6 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         .map(mode_map)
         .tolist()
     )
-
-
     if not modes_list:
         return [], [], [], []
 

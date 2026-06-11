@@ -68,6 +68,9 @@ def main():
             mode_map,
             otp_mode_routes_cache
         )
+        print(f"route_short_name: {route_names}")
+        print(f"route_names_ext: {route_names_ext}")
+
         if not modes_json:
             print(f"No valid public transport modes found for TurId: {i_TurId}")
             continue
@@ -75,11 +78,9 @@ def main():
         if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and not route_names:
             print(f"No valid route found for TurId: {i_TurId}")
             continue
-        if has_invalid_route_name(route_names):
+        if has_invalid_route_name(route_names) and route_names:
             print(f"Invalid route name: {route_names}")
             continue
-        print(f"route_short_name: {route_names}")
-        print(f"route_names_ext: {route_names_ext}")
 
         #Get the gtfs stop_ids for stations respondent travel through
         via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
