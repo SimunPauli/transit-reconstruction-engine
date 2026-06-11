@@ -235,8 +235,6 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
             url=otp_url
         )
 
-        if not response.json()["data"]["planConnection"]["edges"]:
-            print("OTP found no route for TurId: ", tu_tur_row["TurId"])
         otp_candidates_df = json_to_df(response)
         response_data = response.json()
         
