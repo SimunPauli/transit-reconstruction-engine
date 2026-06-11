@@ -46,10 +46,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 
     modes_json = [{"mode": mode} for mode in modes_list]
 
-    # Ensure Route column is treated as string to prevent type issues
-    # Modifying a copy or using .astype directly on the slice prevents pandas SettingWithCopy warnings
-
-    # 2. Extract explicit routes for modes that provide them (BUS=31, S_TRAIN=32, FERRY=41)
+    # 2. Extract explicit routes for modes that provide them (BUS=31, S_TRAIN=32)
     modes_with_route_names = [31, 32]
     route_names = (
         tu_deltur_sub.loc[
@@ -63,7 +60,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         .drop_duplicates()
         .tolist()
     )
-    # 3. For RAIL, TRAM, SUBWAY, append cached routes if the mode is used in this trip
+    # 3. For RAIL, TRAM, SUBWAY, FERRY, append cached routes if the mode is used in this trip
     route_names_ext = list(route_names)
     if any(mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"] for mode in modes_list):
         for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]:
@@ -81,7 +78,8 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
     for _, row in tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34, 37])].iterrows():
         stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["FromStation"]})
         stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["ToStation"]})
-
+    if not stops_row:
+        return None
     via_stopid = (
         pd.DataFrame(stops_row)
         .dropna(subset=["tu_station_name"])
@@ -89,21 +87,28 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
         .reset_index(drop=True)
     )
     if via_stopid.empty:
-        via_stopids = None
-    else:
-        # Merge and maintain order
-        merged = (
-            via_stopid
-            .merge(
-                tu_gtfs_station_df[["otp_mode", "tu_station_name", "gtfs_station_id"]],
-                on=["otp_mode", "tu_station_name"],
-                how="left"  # preserve order of via_stopid
-            )
+        return None
+
+    required_columns = ["otp_mode", "tu_station_name", "gtfs_station_id"]
+    missing_columns = [column for column in required_columns if column not in tu_gtfs_station_df.columns]
+    if missing_columns:
+        raise KeyError(f"tu_gtfs_station_df is missing required columns: {missing_columns}")
+
+
+    # Merge and maintain order
+    merged = (
+        via_stopid
+        .merge(
+            tu_gtfs_station_df[["otp_mode", "tu_station_name", "gtfs_station_id"]],
+            on=["otp_mode", "tu_station_name"],
+            how="left"  # preserve order of via_stopid
         )
-        # Keep only rows with non-null gtfs_station_id and remove duplicates while preserving order
-        via_stopids = (
-            merged[merged["gtfs_station_id"].notna()]
-            .drop_duplicates(subset=["gtfs_station_id"], keep='first')
-            ["gtfs_station_id"]
-            .tolist()
-        )
+    )
+    # Keep only rows with non-null gtfs_station_id and remove duplicates while preserving order
+    via_stopids = (
+        merged[merged["gtfs_station_id"].notna()]
+        .drop_duplicates(subset=["gtfs_station_id"], keep='first')
+        ["gtfs_station_id"]
+        .tolist()
+    )
+    return via_stopids
