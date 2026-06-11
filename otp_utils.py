@@ -64,8 +64,8 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         .tolist()
     )
     # 3. For RAIL, TRAM, SUBWAY, append cached routes if the mode is used in this trip
+    route_names_ext = list(route_names)
     if any(mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"] for mode in modes_list):
-        route_names_ext = list(route_names)
         for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]:
             if mode in modes_list:
                 route_names_ext = route_names_ext + otp_mode_routes_cache.get(mode, [])
