@@ -42,7 +42,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 
 
     if not modes_list:
-        return [], []
+        return [], [], [], []
 
     modes_json = [{"mode": mode} for mode in modes_list]
 
@@ -68,7 +68,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
         route_names_ext = list(route_names)
         for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]:
             if mode in modes_list:
-                route_names_ext = route_names + otp_mode_routes_cache.get(mode, [])
+                route_names_ext = route_names_ext + otp_mode_routes_cache.get(mode, [])
 
     # 4. Deduplicate and clean up
     route_names = list(set(route_names))
