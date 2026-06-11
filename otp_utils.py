@@ -43,6 +43,9 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
     modes_json = [{"mode": mode} for mode in modes_list]
 
     # 2. Extract explicit routes for modes that provide them (BUS=31, S_TRAIN=32)
+    if not any(mode in ["BUS", "S_TRAIN"] for mode in modes_list):
+        return [], [], modes_json, modes_list
+
     modes_with_route_names = [31, 32]
     route_names = (
         tu_deltur_sub.loc[

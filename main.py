@@ -58,10 +58,11 @@ def main():
     for i, tu_tur_row in tu_tur.iterrows():
         i_TurId = tu_tur_row["TurId"]
         tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
-        print("\n\n_______________________________________________")
+        print("\n\n____________________________________________________________________________________________")
         print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
-        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}.")
+        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}.")
         print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}.")
+        print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
         # Print for debugging
         tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route","FromStation", "ToStation"]
         print("tu_deltur_sub:")
@@ -122,19 +123,32 @@ def main():
             print(f"No OTP trips found for TurId: {i_TurId}")
             continue
 
-        required_routes = set(route_names_ext)
-        iteration_ids_with_all_routes = (
-            otp_candidates_df.groupby("iteration_id")["route_short_name"]
-            .apply(lambda routes: required_routes.issubset(set(routes.astype(str))))
-        )
+        if route_names:
+            required_routes = set(map(str, route_names))
 
-        otp_candidates_df = otp_candidates_df[
-            otp_candidates_df["iteration_id"].isin(
-                iteration_ids_with_all_routes[iteration_ids_with_all_routes].index
+            iteration_ids_with_required_routes = (
+                otp_candidates_df.groupby("iteration_id")["route_short_name"]
+                .apply(
+                    lambda routes: required_routes.issubset(
+                        set(routes.dropna().astype(str))
+                    )
+                )
             )
-        ].reset_index(drop=True)
+
+            otp_candidates_df = otp_candidates_df[
+                otp_candidates_df["iteration_id"].isin(
+                    iteration_ids_with_required_routes[
+                        iteration_ids_with_required_routes
+                    ].index
+                )
+            ].reset_index(drop=True)
+
+            if otp_candidates_df.empty:
+                print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {i_TurId}")
+                continue
+
         if otp_candidates_df.empty:
-            print(f"No OTP trips include all route_names_ext for TurId: {i_TurId}")
+            print(f"No OTP trips include all route_names for TurId: {i_TurId}")
             continue
 
         time_based_match = find_similar_trip(tu_tur_row, otp_candidates_df, arrival_dev_weight=1)
@@ -149,7 +163,9 @@ def main():
         return
 
     all_time_based_matches = pd.concat(time_based_matches, ignore_index=True)
-    all_time_based_matches.to_csv("~/O/TU_Rejseplan/Data/TU/time_based_matches.csv", index=False)
+    all_time_based_matches.to_csv(f"{data_dir}time_based_matches.csv", index=False)
+    print(f"\n\n\n____________________________________________________________________________________________")
+    print(f"\n\n\nall_time_based_matches has been exported to {data_dir}time_based_matches.csv")
     print(f"Saved {len(all_time_based_matches)} time-based matches to time_based_matches.csv")
 
 if __name__ == "__main__":
