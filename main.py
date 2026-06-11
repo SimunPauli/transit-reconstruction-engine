@@ -41,13 +41,13 @@ def main():
     #Small processing of TU data
     tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37, 41])]
     tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] == 6)]
-    tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])]
+    tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
     tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
 
     #Map TU and GTFS stations
     tu_gtfs_station_df = match_tu_gtfs_stations(
         tu_stations,
-        period=(tu_tur["DiaryDate"].min(), tu_tur["DiaryMonth"].max()),
+        period=(tu_tur["DiaryDate"].min(), tu_tur["DiaryDate"].max()),
         bbox_buffer_m=1000,
         name_match_threshold=0.6
     )
@@ -124,6 +124,9 @@ def main():
             continue
 
         if route_names:
+            if "route_short_name" not in otp_candidates_df.columns:
+                print(f"OTP candidates are missing route_short_name for TurId: {i_TurId}")
+                continue
             required_routes = set(map(str, route_names))
 
             iteration_ids_with_required_routes = (
@@ -147,9 +150,29 @@ def main():
                 print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {i_TurId}")
                 continue
 
-        if otp_candidates_df.empty:
-            print(f"No OTP trips include all route_names for TurId: {i_TurId}")
-            continue
+        # Ensure all transit modes from the TU data are used in the OTP itinerary
+        if modes_list:
+            if "mode" not in otp_candidates_df.columns:
+                print(f"OTP candidates are missing mode for TurId: {i_TurId}")
+                continue
+            required_modes = set(modes_list)
+
+            iteration_ids_with_required_modes = (
+                otp_candidates_df.groupby("iteration_id")["mode"]
+                .apply(lambda modes: required_modes.issubset(set(modes)))
+            )
+
+            otp_candidates_df = otp_candidates_df[
+                otp_candidates_df["iteration_id"].isin(
+                    iteration_ids_with_required_modes[
+                        iteration_ids_with_required_modes
+                    ].index
+                )
+            ].reset_index(drop=True)
+
+            if otp_candidates_df.empty:
+                print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {i_TurId}")
+                continue
 
         time_based_match = find_similar_trip(tu_tur_row, otp_candidates_df, arrival_dev_weight=1)
         if time_based_match is None:
