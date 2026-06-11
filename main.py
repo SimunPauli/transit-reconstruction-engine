@@ -58,11 +58,15 @@ def main():
     for i, tu_tur_row in tu_tur.iterrows():
         i_TurId = tu_tur_row["TurId"]
         tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
-        print(f"\n\nTurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
+        print("\n\n_______________________________________________")
+        print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
+        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}.")
+        print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}.")
+        # Print for debugging
+        tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route","FromStation", "ToStation"]
+        print("tu_deltur_sub:")
+        print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
 
-        #Print for debugging
-        tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route", "FromStation", "ToStation"]
-        print(f"tu_deltur_sub: {tu_deltur_sub[tu_deltur_sub_print_col]}")
         route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(
             tu_deltur_sub,
             mode_map,
