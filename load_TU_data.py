@@ -65,33 +65,41 @@ def load_tu(data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/",
     tu_tur["ArrivalMM"] = pd.to_numeric(tu_tur["ArrivalMM"], errors="coerce")
 
     # Depart as datetime
-    tu_tur["depart_dt"] = (
-        pd.Timestamp("1970-01-01")
-        + pd.to_timedelta(tu_tur["DiaryDate"], unit="D", errors="coerce")
-        + pd.to_timedelta(tu_tur["DepartHH"], unit="h", errors="coerce")
-        + pd.to_timedelta(tu_tur["DepartMM"], unit="m", errors="coerce")
-    ) #This will give warnings due to missing values.
-
-    tu_tur["depart_dt"] = tu_tur["depart_dt"].dt.tz_localize(
-        "Europe/Copenhagen",
-        nonexistent="shift_forward",
-        ambiguous="NaT"
+    tu_tur["depart_dt"] = _build_local_datetime(
+        tu_tur,
+        "DiaryDate",
+        "DepartHH",
+        "DepartMM"
     )
+
     tu_tur["depart_dt_str"] = tu_tur["depart_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     # Arrival as datetime
-    tu_tur["arrival_dt"] = (
-        pd.Timestamp("1970-01-01")
-        + pd.to_timedelta(tu_tur["DiaryDate"], unit="D", errors="coerce")
-        + pd.to_timedelta(tu_tur["ArrivalHH"], unit="h", errors="coerce")
-        + pd.to_timedelta(tu_tur["ArrivalMM"], unit="m", errors="coerce")
-    ) #This will give warnings due to missing values.
-
-    tu_tur["arrival_dt"] = tu_tur["arrival_dt"].dt.tz_localize(
-        "Europe/Copenhagen",
-        nonexistent="shift_forward",
-        ambiguous="NaT"
+    tu_tur["arrival_dt"] = _build_local_datetime(
+        tu_tur,
+        "DiaryDate",
+        "ArrivalHH",
+        "ArrivalMM"
     )
+
     tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     return [tu_session, tu_tur, tu_deltur, tu_stations]
+
+def _build_local_datetime(df, date_col, hour_col, minute_col, timezone="Europe/Copenhagen"):
+    valid = df[[date_col, hour_col, minute_col]].notna().all(axis=1)
+
+    result = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+
+    result.loc[valid] = (
+        pd.Timestamp("1970-01-01")
+        + pd.to_timedelta(df.loc[valid, date_col], unit="D")
+        + pd.to_timedelta(df.loc[valid, hour_col], unit="h")
+        + pd.to_timedelta(df.loc[valid, minute_col], unit="m")
+    )
+
+    return result.dt.tz_localize(
+        timezone,
+        nonexistent="shift_forward",
+        ambiguous="NaT"
+    )
