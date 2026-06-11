@@ -75,3 +75,35 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
     route_names_ext = list(set(route_names_ext))
 
     return route_names, route_names_ext, modes_json, modes_list
+
+def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
+    stops_row = []
+    for _, row in tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34, 37])].iterrows():
+        stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["FromStation"]})
+        stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["ToStation"]})
+
+    via_stopid = (
+        pd.DataFrame(stops_row)
+        .dropna(subset=["tu_station_name"])
+        .drop_duplicates(subset=["otp_mode", "tu_station_name"], keep="first")
+        .reset_index(drop=True)
+    )
+    if via_stopid.empty:
+        via_stopids = None
+    else:
+        # Merge and maintain order
+        merged = (
+            via_stopid
+            .merge(
+                tu_gtfs_station_df[["otp_mode", "tu_station_name", "gtfs_station_id"]],
+                on=["otp_mode", "tu_station_name"],
+                how="left"  # preserve order of via_stopid
+            )
+        )
+        # Keep only rows with non-null gtfs_station_id and remove duplicates while preserving order
+        via_stopids = (
+            merged[merged["gtfs_station_id"].notna()]
+            .drop_duplicates(subset=["gtfs_station_id"], keep='first')
+            ["gtfs_station_id"]
+            .tolist()
+        )
