@@ -101,7 +101,7 @@ def json_to_df(response):
                 "route_short_name": route.get("shortName"),
                 "distance_km": round(leg["distance"]/1000,3),
                 "duration_min": int(round(leg["duration"]/60,0)),
-                "waiting_time_min": round((trip.get("waitingTime") or 0)/60,2),
+                "waiting_time_min": round((node.get("waitingTime_total") or 0)/60,2),
                 "from": leg["from"]["name"],
                 "to": leg["to"]["name"],
 
@@ -109,8 +109,7 @@ def json_to_df(response):
                 "generalized_cost": leg["generalizedCost"],
                 "leg_geometry": decode_polyline(leg["legGeometry"]["points"]),
                 "system_notice_tag": system_notice_tag,
-                "system_notice_text": system_notice_text,
-
+                "system_notice_text": system_notice_text
             })
     df = pd.DataFrame(rows, columns=columns)
     return df
