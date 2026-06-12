@@ -2,7 +2,12 @@ import pandas as pd
 import load_TU_data
 from otp_client import get_all_routes_for_mode, load_all_candidates
 from find_similar_trip import find_similar_trip
-from otp_utils import has_invalid_route_name, resolve_route_short_names, get_via_stops
+from otp_utils import (
+    has_invalid_route_name,
+    resolve_route_short_names,
+    get_via_stops,
+    filter_candidates_by_requirements
+)
 from tu_gtfs_stations_match import match_tu_gtfs_stations
 
 def main():
@@ -125,56 +130,21 @@ def main():
             continue
 
 
-        #TODO: Move next two if statements out of main():
-        if route_names:
-            if "route_short_name" not in otp_candidates_df.columns:
-                print(f"OTP candidates are missing route_short_name for TurId: {i_TurId}")
-                continue #TODO: this correct?
-            required_routes = set(map(str, route_names))
+        otp_candidates_df = filter_candidates_by_requirements(
+                otp_candidates_df=otp_candidates_df,
+                route_names=route_names,
+                modes_list=modes_list,
+                tur_id=i_TurId
+        )
+        #calculate waiting time
+        otp_candidates_df = otp_candidates_df.sort_values(
+            ["iteration_id", "start_leg"]
+        ).reset_index(drop=True)
 
-            iteration_ids_with_required_routes = (
-                otp_candidates_df.groupby("iteration_id")["route_short_name"]
-                .apply(
-                    lambda routes: required_routes.issubset(
-                        set(routes.dropna().astype(str))
-                    )
-                )
-            )
+        otp_candidates_df["waitingtime"] = (
+                (otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
+        otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
-            otp_candidates_df = otp_candidates_df[
-                otp_candidates_df["iteration_id"].isin(
-                    iteration_ids_with_required_routes[
-                        iteration_ids_with_required_routes
-                    ].index
-                )
-            ].reset_index(drop=True)
-
-            if otp_candidates_df.empty:
-                print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {i_TurId}")
-                continue
-        # Ensure all transit modes from the TU data are used in the OTP itinerary
-        if modes_list:
-            if "mode" not in otp_candidates_df.columns:
-                print(f"OTP candidates are missing mode for TurId: {i_TurId}")
-                continue
-            required_modes = set(modes_list)
-
-            iteration_ids_with_required_modes = (
-                otp_candidates_df.groupby("iteration_id")["mode"]
-                .apply(lambda modes: required_modes.issubset(set(modes)))
-            )
-
-            otp_candidates_df = otp_candidates_df[
-                otp_candidates_df["iteration_id"].isin(
-                    iteration_ids_with_required_modes[
-                        iteration_ids_with_required_modes
-                    ].index
-                )
-            ].reset_index(drop=True)
-
-            if otp_candidates_df.empty:
-                print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {i_TurId}")
-                continue
 
         time_based_match = find_similar_trip(
             tu_tur_row,
@@ -188,7 +158,9 @@ def main():
         time_based_match["TurId"] = i_TurId
         time_based_matches.append(time_based_match)
 
-        time_based_match_print_col = ["mode", "distance_km", "waiting_time_min", "duration_min", "route_short_name", "from", "to"]
+
+
+        time_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to"]
         print("time_based_match:")
         print(time_based_match[time_based_match_print_col].to_string(index=False, max_colwidth=None))
 

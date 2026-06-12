@@ -111,3 +111,83 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
         .tolist()
     )
     return via_stopids
+
+
+def filter_candidates_by_requirements(
+        otp_candidates_df,
+        route_names: list = None,
+        modes_list: list = None,
+        tur_id: int = None
+) -> tuple[bool, object, str]:
+    """
+    Filter OTP candidates to ensure all required routes and modes are present.
+
+    Args:
+        otp_candidates_df: DataFrame with OTP candidate trips
+        route_names: List of required route short names (optional)
+        modes_list: List of required transit modes (optional)
+        tur_id: Trip ID for logging purposes
+
+    Returns:
+        tuple: (success: bool, filtered_df: DataFrame, message: str)
+               - success: True if filtering succeeded, False if candidates became empty
+               - filtered_df: The filtered DataFrame (or empty if failed)
+               - message: Status or error message for logging
+    """
+    filtered_df = otp_candidates_df.copy()
+
+    # Filter by required routes (for BUS/S_TRAIN)
+    if route_names:
+        if "route_short_name" not in filtered_df.columns:
+            msg = f"OTP candidates are missing route_short_name for TurId: {tur_id}"
+            return False, filtered_df, msg
+
+        required_routes = set(map(str, route_names))
+
+        iteration_ids_with_required_routes = (
+            filtered_df.groupby("iteration_id")["route_short_name"]
+            .apply(
+                lambda routes: required_routes.issubset(
+                    set(routes.dropna().astype(str))
+                )
+            )
+        )
+
+        filtered_df = filtered_df[
+            filtered_df["iteration_id"].isin(
+                iteration_ids_with_required_routes[
+                    iteration_ids_with_required_routes
+                ].index
+            )
+        ].reset_index(drop=True)
+
+        if filtered_df.empty:
+            msg = f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}"
+            return False, filtered_df, msg
+
+    # Filter by required transit modes
+    if modes_list:
+        if "mode" not in filtered_df.columns:
+            msg = f"OTP candidates are missing mode for TurId: {tur_id}"
+            return False, filtered_df, msg
+
+        required_modes = set(modes_list)
+
+        iteration_ids_with_required_modes = (
+            filtered_df.groupby("iteration_id")["mode"]
+            .apply(lambda modes: required_modes.issubset(set(modes)))
+        )
+
+        filtered_df = filtered_df[
+            filtered_df["iteration_id"].isin(
+                iteration_ids_with_required_modes[
+                    iteration_ids_with_required_modes
+                ].index
+            )
+        ].reset_index(drop=True)
+
+        if filtered_df.empty:
+            msg = f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}"
+            return False, filtered_df, msg
+
+    return True, filtered_df, "Filtering completed successfully"
