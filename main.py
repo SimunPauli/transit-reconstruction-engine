@@ -39,7 +39,7 @@ def main():
     otp_mode_routes_cache = {mode: get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
 
     #Small processing of TU data
-    tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37, 41])]
+    tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
     tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] == 6)]
     tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
     tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
@@ -60,8 +60,8 @@ def main():
         tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
         print("\n\n____________________________________________________________________________________________")
         print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
-        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}.")
-        print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}.")
+        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}")
+        print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}")
         print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
         # Print for debugging
         tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route","FromStation", "ToStation"]
@@ -123,10 +123,12 @@ def main():
             print(f"No OTP trips found for TurId: {i_TurId}")
             continue
 
+
+        #TODO: Move next two if statements out of main():
         if route_names:
             if "route_short_name" not in otp_candidates_df.columns:
                 print(f"OTP candidates are missing route_short_name for TurId: {i_TurId}")
-                continue
+                continue #TODO: this correct?
             required_routes = set(map(str, route_names))
 
             iteration_ids_with_required_routes = (
@@ -149,7 +151,6 @@ def main():
             if otp_candidates_df.empty:
                 print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {i_TurId}")
                 continue
-
         # Ensure all transit modes from the TU data are used in the OTP itinerary
         if modes_list:
             if "mode" not in otp_candidates_df.columns:
@@ -174,7 +175,12 @@ def main():
                 print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {i_TurId}")
                 continue
 
-        time_based_match = find_similar_trip(tu_tur_row, otp_candidates_df, arrival_dev_weight=1)
+        time_based_match = find_similar_trip(
+            tu_tur_row,
+            otp_candidates_df,
+            arrival_dev_weight=1,
+            print_devation_details=True
+        )
         if time_based_match is None:
             print(f"No best trip found for TurId: {i_TurId}")
             continue
