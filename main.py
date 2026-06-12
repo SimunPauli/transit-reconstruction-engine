@@ -78,6 +78,8 @@ def main():
 		print("time_based_match:")
 		print(time_based_match[time_based_match_print_col].to_string(index=False, max_colwidth=None))
 
+		time_based_matches.append(time_based_match)
+
 	if not time_based_matches:
 		print("No time-based matches found. Nothing to save.")
 		return
