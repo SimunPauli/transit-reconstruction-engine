@@ -1,27 +1,10 @@
 import pandas as pd
 import load_TU_data
-from otp_client import get_all_routes_for_mode, load_all_candidates
-from find_similar_trip import find_similar_trip
-from otp_utils import (
-    has_invalid_route_name,
-    resolve_route_short_names,
-    get_via_stops,
-    filter_candidates_by_requirements
-)
+from tu_otp_matching import match_tu_trip_to_otp
+from otp_client import get_all_routes_for_mode
 from tu_gtfs_stations_match import match_tu_gtfs_stations
 
 def main():
-    print("Loading TU data...")
-    data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/"
-    tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu(
-        data_dir=data_dir,
-        session_file="tu_session_secret_2015_2025.xlsx",
-        tur_file="tu_tur_secret_2015_2025.xlsx",
-        deltur_file="tu_deltur_2015_2025.xlsx",
-        stations_file="Stationer_tudatabase.xlsx"
-    )
-    print("TU data loaded")
-
     #Configurartion
     mode_map = {
         #TU: OTP
@@ -37,17 +20,30 @@ def main():
     search_window = "PT30M"
     print(f"Search window: {search_window}")
 
-    # RAIL, TRAM and SUBWAY are missing route name in TU.
-    # So taking all routes for these modes. Which will be used when modes
-    # that do include route name in TU only can access those routes, but for
-    # those that do not, all routes will be used.
-    otp_mode_routes_cache = {mode: get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
 
+    print("Loading TU data...")
+    data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/"
+    tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu(
+        data_dir=data_dir,
+        session_file="tu_session_secret_2015_2025.xlsx",
+        tur_file="tu_tur_secret_2015_2025.xlsx",
+        deltur_file="tu_deltur_2015_2025.xlsx",
+        stations_file="Stationer_tudatabase.xlsx"
+    )
     #Small processing of TU data
     tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
     tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] == 6)]
     tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
     tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
+    print("TU data loaded")
+
+
+
+    # RAIL, TRAM and SUBWAY are missing route name in TU.
+    # So taking all routes for these modes. Which will be used when modes
+    # that do include route name in TU only can access those routes, but for
+    # those that do not, all routes will be used.
+    otp_mode_routes_cache = {mode: get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
 
     #Map TU and GTFS stations
     tu_gtfs_station_df = match_tu_gtfs_stations(
@@ -61,104 +57,17 @@ def main():
 
     time_based_matches = []
     for i, tu_tur_row in tu_tur.iterrows():
-        i_TurId = tu_tur_row["TurId"]
-        tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
-        print("\n\n____________________________________________________________________________________________")
-        print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
-        print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}")
-        print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}")
-        print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
-        # Print for debugging
-        tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route","FromStation", "ToStation"]
-        print("tu_deltur_sub:")
-        print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
-
-        route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(
-            tu_deltur_sub,
-            mode_map,
-            otp_mode_routes_cache
-        )
-        print(f"route_short_name: {route_names}")
-        print(f"route_names_ext: {route_names_ext}")
-
-        if not modes_json:
-            print(f"No valid public transport modes found for TurId: {i_TurId}")
-            continue
-        print(f"modes_json: {modes_json}")
-        if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and not route_names:
-            print(f"No valid route found for TurId: {i_TurId}")
-            continue
-        if has_invalid_route_name(route_names) and route_names:
-            print(f"Invalid route name: {route_names}")
-            continue
-
-        #Get the gtfs stop_ids for stations respondent travel through
-        via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
-
-        # 2. Fetch all candidates (handles pagination & concat internally)
-        is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
-        is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
-        if not is_bus_s_train and not is_rail_tram_subway_ferry:
-            raise ValueError("No valid transit modes found. TurId: ", i_TurId, ".")
-        if is_bus_s_train and is_rail_tram_subway_ferry:
-            otp_candidates_df = load_all_candidates(
-                tu_tur_row=tu_tur_row,
-                modes_json=modes_json,
-                route_short_name=route_names_ext,
-                via_stopids=via_stopids,
-                search_window=search_window,
-                otp_url=otp_url)
-        elif is_bus_s_train:
-            otp_candidates_df = load_all_candidates(
-                tu_tur_row=tu_tur_row,
-                modes_json=modes_json,
-                route_short_name=route_names,
-                via_stopids=via_stopids,
-                search_window=search_window,
-                otp_url=otp_url)
-        elif is_rail_tram_subway_ferry:
-            otp_candidates_df = load_all_candidates(
-                tu_tur_row=tu_tur_row,
-                modes_json=modes_json,
-                route_short_name=None,
-                via_stopids=via_stopids,
-                search_window=search_window,
-                otp_url=otp_url)
-
-        if otp_candidates_df.empty:
-            print(f"No OTP trips found for TurId: {i_TurId}")
-            continue
-
-
-        otp_candidates_df = filter_candidates_by_requirements(
-                otp_candidates_df=otp_candidates_df,
-                route_names=route_names,
-                modes_list=modes_list,
-                tur_id=i_TurId
-        )
-        #calculate waiting time
-        otp_candidates_df = otp_candidates_df.sort_values(
-            ["iteration_id", "start_leg"]
-        ).reset_index(drop=True)
-
-        otp_candidates_df["waitingtime"] = (
-                (otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
-        otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
-
-
-        time_based_match = find_similar_trip(
-            tu_tur_row,
-            otp_candidates_df,
-            arrival_dev_weight=1,
-            print_devation_details=True
+        time_based_match = match_tu_trip_to_otp(
+                tu_tur_row,
+                tu_deltur,
+                mode_map,
+                otp_mode_routes_cache,
+                otp_url,
+                search_window,
+                tu_gtfs_station_df,
         )
         if time_based_match is None:
-            print(f"No best trip found for TurId: {i_TurId}")
             continue
-        time_based_match["TurId"] = i_TurId
-        time_based_matches.append(time_based_match)
-
-
 
         time_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to"]
         print("time_based_match:")
