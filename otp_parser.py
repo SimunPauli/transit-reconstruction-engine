@@ -57,13 +57,14 @@ def json_to_df(response):
     rows = []
     columns = [
         "iteration_id",
+        "leg_id",
+
 
         "start_trip",
         "end_trip",
         "start_leg",
         "end_leg",
 
-        "leg_id",
         "mode",
         "route_short_name",
         "distance_km",
@@ -100,7 +101,7 @@ def json_to_df(response):
                 "route_short_name": route.get("shortName"),
                 "distance_km": round(leg["distance"]/1000,3),
                 "duration_min": int(round(leg["duration"]/60,0)),
-                "waiting_time_min": round(leg["waitingTime"],0),
+                "waiting_time_min": round((trip.get("waitingTime") or 0)/60,2),
                 "from": leg["from"]["name"],
                 "to": leg["to"]["name"],
 

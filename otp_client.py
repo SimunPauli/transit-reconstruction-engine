@@ -205,10 +205,7 @@ def build_graphql_query(
               from { name stop { gtfsId id parentStation { gtfsId id name } } }
               to { name stop { gtfsId id parentStation { id name } } }
               route { shortName }
-              trip {
-              tripShortName
-              semanticHash
-              }
+              trip { tripShortName semanticHash }
               generalizedCost
               legGeometry { length points }
             }
@@ -222,8 +219,6 @@ def build_graphql_query(
     """
 
 	return query
-
-
 
 
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
@@ -255,7 +250,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
 
 	while n_forward < 50 and hasNextPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start"]).dt.tz_convert("Europe/Copenhagen")
+		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) <= pd.Timedelta(search_window)).all()
 
 		if not trips_within_window:
@@ -293,7 +288,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 
 	while n_backward < 50 and hasPreviousPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start"]).dt.tz_convert("Europe/Copenhagen")
+		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) >= -pd.Timedelta(search_window)).all()
 
 		if not trips_within_window:

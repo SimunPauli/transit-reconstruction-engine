@@ -93,7 +93,8 @@ def main():
         # 2. Fetch all candidates (handles pagination & concat internally)
         is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
         is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
-
+        if not is_bus_s_train and not is_rail_tram_subway_ferry:
+            raise ValueError("No valid transit modes found. TurId: ", i_TurId, ".")
         if is_bus_s_train and is_rail_tram_subway_ferry:
             otp_candidates_df = load_all_candidates(
                 tu_tur_row=tu_tur_row,
@@ -186,6 +187,10 @@ def main():
             continue
         time_based_match["TurId"] = i_TurId
         time_based_matches.append(time_based_match)
+
+        time_based_match_print_col = ["mode", "distance_km", "waiting_time_min", "duration_min", "route_short_name", "from", "to"]
+        print("time_based_match:")
+        print(time_based_match[time_based_match_print_col].to_string(index=False, max_colwidth=None))
 
     if not time_based_matches:
         print("No time-based matches found. Nothing to save.")
