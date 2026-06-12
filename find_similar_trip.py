@@ -2,7 +2,8 @@ import pandas as pd
 def find_similar_trip(
         tu_tur_row,
         candidate_df,
-        arrival_dev_weight=1):
+        arrival_dev_weight=1,
+        print_devation_details=False):
     candidate_df = candidate_df.copy()
     expected_depart = tu_tur_row["depart_dt"]
     expected_arrival = tu_tur_row["arrival_dt"]
@@ -19,10 +20,10 @@ def find_similar_trip(
     }).reset_index()
 
     # Calculate total deviation (in minutes) for each trip
-    trips["depart_deviation"] = abs((trips["start_dt"] - expected_depart).dt.total_seconds() / 60)
-    trips["arrival_deviation"] = abs((trips["end_dt"] - expected_arrival).dt.total_seconds() / 60)
+    trips["depart_deviation"] = (trips["start_dt"] - expected_depart).dt.total_seconds() / 60
+    trips["arrival_deviation"] = (trips["end_dt"] - expected_arrival).dt.total_seconds() / 60
 
-    trips["total_deviation"] = trips["depart_deviation"] + trips["arrival_deviation"]*arrival_dev_weight
+    trips["total_deviation"] = abs(trips["depart_deviation"]) + abs(trips["arrival_deviation"])*arrival_dev_weight
 
     if trips.empty or trips["total_deviation"].isna().all():
         print("No trips found with similar departure and arrival times.")
@@ -30,10 +31,10 @@ def find_similar_trip(
 
     # Find the best matching trip
     best_iteration = trips.loc[trips["total_deviation"].idxmin(), "iteration_id"]
-
-    print(f"Best matching trip: iteration_id = {best_iteration}")
-    print(f"Deviation details:")
-    print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].sort_values("total_deviation"))
+    if print_devation_details:
+        print(f"Best matching trip: iteration_id = {best_iteration}")
+        print(f"Deviation details:")
+        print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].head(10).sort_values("total_deviation"))
 
     # Filter candidate_df to get only the best trip
     best_trip_candidate_df = candidate_df[candidate_df["iteration_id"] == best_iteration].copy()
