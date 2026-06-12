@@ -6,100 +6,100 @@ def load_tu(data_dir = "/home/simpal/O/TU_Rejseplan/Data/TU/",
             tur_file = "tu_tur_secret_2015_2025.xlsx",
             deltur_file = "tu_deltur_2015_2025.xlsx",
             stations_file = "Stationer_tudatabase.xlsx"):
-    tu_session = pd.read_excel(data_dir + session_file)
-    tu_tur = pd.read_excel(data_dir + tur_file)
-    tu_deltur = pd.read_excel(data_dir + deltur_file)
-    tu_stations = pd.read_excel(data_dir + stations_file)
+	tu_session = pd.read_excel(data_dir + session_file)
+	tu_tur = pd.read_excel(data_dir + tur_file)
+	tu_deltur = pd.read_excel(data_dir + deltur_file)
+	tu_stations = pd.read_excel(data_dir + stations_file)
 
-    tu_stations["id"] = tu_stations.index
+	tu_stations["id"] = tu_stations.index
 
-    # --- Sort tu_session ---
-    tu_session = tu_session.sort_values(by="DiaryDate")
+	# --- Sort tu_session ---
+	tu_session = tu_session.sort_values(by="DiaryDate")
 
-    # --- Join tu_tur + tu_deltur ---
-    tu_deltur = (
-        tu_tur[["SessionId", "TurId"]]
-        .merge(tu_deltur, on="TurId", how="right")
-    )
+	# --- Join tu_tur + tu_deltur ---
+	tu_deltur = (
+		tu_tur[["SessionId", "TurId"]]
+		.merge(tu_deltur, on="TurId", how="right")
+	)
 
-    # --- Number of deltur ---
-    tu_deltur["n_deltur"] = (
-        tu_deltur.groupby("TurId")["Delturnr"]
-        .transform("max")
-    )
+	# --- Number of deltur ---
+	tu_deltur["n_deltur"] = (
+		tu_deltur.groupby("TurId")["Delturnr"]
+		.transform("max")
+	)
 
-    # --- Add Lat/Lon (destination) ---
-    gdf_dest = gpd.GeoDataFrame(
-        tu_tur,
-        geometry=gpd.points_from_xy(tu_tur["tiladre"], tu_tur["tiladrn"]),
-        crs="EPSG:32632"
-    )
-    gdf_dest = gdf_dest.to_crs("EPSG:4326")
+	# --- Add Lat/Lon (destination) ---
+	gdf_dest = gpd.GeoDataFrame(
+		tu_tur,
+		geometry=gpd.points_from_xy(tu_tur["tiladre"], tu_tur["tiladrn"]),
+		crs="EPSG:32632"
+	)
+	gdf_dest = gdf_dest.to_crs("EPSG:4326")
 
-    tu_tur["tiladrlon"] = gdf_dest.geometry.x
-    tu_tur["tiladrlat"] = gdf_dest.geometry.y
+	tu_tur["tiladrlon"] = gdf_dest.geometry.x
+	tu_tur["tiladrlat"] = gdf_dest.geometry.y
 
-    # --- Add Lat/Lon (origin) ---
-    gdf_orig = gpd.GeoDataFrame(
-        tu_tur,
-        geometry=gpd.points_from_xy(tu_tur["orig_e"], tu_tur["orig_n"]),
-        crs="EPSG:32632"
-    )
-    gdf_orig = gdf_orig.to_crs("EPSG:4326")
+	# --- Add Lat/Lon (origin) ---
+	gdf_orig = gpd.GeoDataFrame(
+		tu_tur,
+		geometry=gpd.points_from_xy(tu_tur["orig_e"], tu_tur["orig_n"]),
+		crs="EPSG:32632"
+	)
+	gdf_orig = gdf_orig.to_crs("EPSG:4326")
 
-    tu_tur["orig_lon"] = gdf_orig.geometry.x
-    tu_tur["orig_lat"] = gdf_orig.geometry.y
+	tu_tur["orig_lon"] = gdf_orig.geometry.x
+	tu_tur["orig_lat"] = gdf_orig.geometry.y
 
-    tu_tur = pd.merge(tu_tur, tu_session, on="SessionId", how="left")
-
-
-    from datetime import datetime
-    tu_tur["date"] = datetime(1970, 1, 1) + pd.to_timedelta(tu_tur["DiaryDate"], unit="D")
-    tu_tur["date_str"] = tu_tur["date"].dt.strftime("%Y-%m-%d")
+	tu_tur = pd.merge(tu_tur, tu_session, on="SessionId", how="left")
 
 
-    tu_tur["DiaryDate"] = pd.to_numeric(tu_tur["DiaryDate"], errors="coerce")
-    tu_tur["DepartHH"] = pd.to_numeric(tu_tur["DepartHH"], errors="coerce")
-    tu_tur["DepartMM"] = pd.to_numeric(tu_tur["DepartMM"], errors="coerce")
-    tu_tur["ArrivalHH"] = pd.to_numeric(tu_tur["ArrivalHH"], errors="coerce")
-    tu_tur["ArrivalMM"] = pd.to_numeric(tu_tur["ArrivalMM"], errors="coerce")
+	from datetime import datetime
+	tu_tur["date"] = datetime(1970, 1, 1) + pd.to_timedelta(tu_tur["DiaryDate"], unit="D")
+	tu_tur["date_str"] = tu_tur["date"].dt.strftime("%Y-%m-%d")
 
-    # Depart as datetime
-    tu_tur["depart_dt"] = _build_local_datetime(
-        tu_tur,
-        "DiaryDate",
-        "DepartHH",
-        "DepartMM"
-    )
 
-    tu_tur["depart_dt_str"] = tu_tur["depart_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+	tu_tur["DiaryDate"] = pd.to_numeric(tu_tur["DiaryDate"], errors="coerce")
+	tu_tur["DepartHH"] = pd.to_numeric(tu_tur["DepartHH"], errors="coerce")
+	tu_tur["DepartMM"] = pd.to_numeric(tu_tur["DepartMM"], errors="coerce")
+	tu_tur["ArrivalHH"] = pd.to_numeric(tu_tur["ArrivalHH"], errors="coerce")
+	tu_tur["ArrivalMM"] = pd.to_numeric(tu_tur["ArrivalMM"], errors="coerce")
 
-    # Arrival as datetime
-    tu_tur["arrival_dt"] = _build_local_datetime(
-        tu_tur,
-        "DiaryDate",
-        "ArrivalHH",
-        "ArrivalMM"
-    )
+	# Depart as datetime
+	tu_tur["depart_dt"] = _build_local_datetime(
+		tu_tur,
+		"DiaryDate",
+		"DepartHH",
+		"DepartMM"
+	)
 
-    tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+	tu_tur["depart_dt_str"] = tu_tur["depart_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 
-    return [tu_session, tu_tur, tu_deltur, tu_stations]
+	# Arrival as datetime
+	tu_tur["arrival_dt"] = _build_local_datetime(
+		tu_tur,
+		"DiaryDate",
+		"ArrivalHH",
+		"ArrivalMM"
+	)
+
+	tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+	return [tu_session, tu_tur, tu_deltur, tu_stations]
 
 def _build_local_datetime(df, date_col, hour_col, minute_col, timezone="Europe/Copenhagen"):
-    valid = df[[date_col, hour_col, minute_col]].notna().all(axis=1)
+	valid = df[[date_col, hour_col, minute_col]].notna().all(axis=1)
 
-    result = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+	result = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
-    result.loc[valid] = (
-        pd.Timestamp("1970-01-01")
-        + pd.to_timedelta(df.loc[valid, date_col], unit="D")
-        + pd.to_timedelta(df.loc[valid, hour_col], unit="h")
-        + pd.to_timedelta(df.loc[valid, minute_col], unit="m")
-    )
+	result.loc[valid] = (
+			pd.Timestamp("1970-01-01")
+			+ pd.to_timedelta(df.loc[valid, date_col], unit="D")
+			+ pd.to_timedelta(df.loc[valid, hour_col], unit="h")
+			+ pd.to_timedelta(df.loc[valid, minute_col], unit="m")
+	)
 
-    return result.dt.tz_localize(
-        timezone,
-        nonexistent="shift_forward",
-        ambiguous="NaT"
-    )
+	return result.dt.tz_localize(
+		timezone,
+		nonexistent="shift_forward",
+		ambiguous="NaT"
+	)
