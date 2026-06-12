@@ -113,22 +113,7 @@ def match_tu_trip_to_otp(
 		print(f"No best trip found for TurId: {i_TurId}")
 		return None
 	time_based_match["TurId"] = i_TurId
-	if otp_candidates_df.empty:
-		print(f"No OTP trips found for TurId: {i_TurId}")
-		return None
 
-	time_based_match = find_similar_trip(
-		tu_tur_row,
-		otp_candidates_df,
-		arrival_dev_weight=1,
-		print_devation_details=True,
-	)
-
-	if time_based_match is None:
-		print(f"No best trip found for TurId: {i_TurId}")
-		return None
-
-	time_based_match["TurId"] = i_TurId
 	return time_based_match
 
 def find_similar_trip(
