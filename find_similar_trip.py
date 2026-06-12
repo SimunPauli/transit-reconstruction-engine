@@ -9,8 +9,8 @@ def find_similar_trip(
     expected_arrival = tu_tur_row["arrival_dt"]
 
     # Convert candidate_df times to datetime
-    candidate_df["start_dt"] = pd.to_datetime(candidate_df["start"], utc=True).dt.tz_convert("Europe/Copenhagen")
-    candidate_df["end_dt"] = pd.to_datetime(candidate_df["end"], utc=True).dt.tz_convert("Europe/Copenhagen")
+    candidate_df["start_dt"] = pd.to_datetime(candidate_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+    candidate_df["end_dt"] = pd.to_datetime(candidate_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 
     # Group by iteration_id and get start/end times for each trip
     trips = candidate_df.groupby("iteration_id").agg({
@@ -34,7 +34,7 @@ def find_similar_trip(
     if print_devation_details:
         print(f"Best matching trip: iteration_id = {best_iteration}")
         print(f"Deviation details:")
-        print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].head(10).sort_values("total_deviation"))
+        print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].sort_values("total_deviation").head(10))
 
     # Filter candidate_df to get only the best trip
     best_trip_candidate_df = candidate_df[candidate_df["iteration_id"] == best_iteration].copy()
