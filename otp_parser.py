@@ -56,22 +56,26 @@ def json_to_df(response):
     data = response.json()["data"]["planConnection"]["edges"]
     rows = []
     columns = [
-        "start",
-        "end",
-        "system_notice_tag",
-        "system_notice_text",
         "iteration_id",
+
+        "start_trip",
+        "end_trip",
+        "start_leg",
+        "end_leg",
+
         "leg_id",
         "mode",
         "route_short_name",
         "distance_km",
         "duration_min",
-        "generalized_cost",
-        "start_time",
-        "end_time",
+        "waiting_time_min",
         "from",
         "to",
+
+        "generalized_cost",
         "leg_geometry",
+        "system_notice_tag",
+        "system_notice_text",
     ]
     for j, edge in enumerate(data):
         node = edge["node"]
@@ -82,24 +86,30 @@ def json_to_df(response):
 
         for k, leg in enumerate(node["legs"]):
             route = leg.get("route") or {} #for WALK "shortName" is null
-
+            trip = leg.get("trip") or {}
             rows.append({
-                "start": node["start"],
-                "end": node["end"],
-                "system_notice_tag": system_notice_tag,
-                "system_notice_text": system_notice_text,
                 "iteration_id": j,
                 "leg_id": k,
+
+                "start_trip": node["start"],
+                "end_trip": node["end"],
+                "start_leg": leg["startTime"],
+                "end_leg": leg["endTime"],
+
                 "mode": leg["mode"],
                 "route_short_name": route.get("shortName"),
                 "distance_km": round(leg["distance"]/1000,3),
                 "duration_min": int(round(leg["duration"]/60,0)),
-                "generalized_cost": leg["generalizedCost"],
-                "start_time": leg["startTime"],
-                "end_time": leg["endTime"],
+                "waiting_time_min": round(leg["waitingTime"],0),
                 "from": leg["from"]["name"],
                 "to": leg["to"]["name"],
+
+                "trip_short_name": trip.get("tripShortName"),
+                "generalized_cost": leg["generalizedCost"],
                 "leg_geometry": decode_polyline(leg["legGeometry"]["points"]),
+                "system_notice_tag": system_notice_tag,
+                "system_notice_text": system_notice_text,
+
             })
     df = pd.DataFrame(rows, columns=columns)
     return df
