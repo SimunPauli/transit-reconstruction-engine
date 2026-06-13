@@ -83,6 +83,7 @@ def match_tu_trip_to_otp(
 			otp_url=otp_url)
 	else:
 		print("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
+		return None
 
 	if otp_candidates_df.empty:
 		print(f"No OTP trips found for TurId: {i_TurId}")
@@ -107,7 +108,7 @@ def match_tu_trip_to_otp(
 		tu_tur_row,
 		otp_candidates_df,
 		arrival_dev_weight=1,
-		print_devation_details=True
+		print_deviation_details=True
 	)
 	if time_based_match is None:
 		print(f"No best trip found for TurId: {i_TurId}")
@@ -120,7 +121,7 @@ def find_similar_trip(
 		tu_tur_row,
 		candidate_df,
 		arrival_dev_weight=1,
-		print_devation_details=False):
+		print_deviation_details=False):
 	candidate_df = candidate_df.copy()
 	expected_depart = tu_tur_row["depart_dt"]
 	expected_arrival = tu_tur_row["arrival_dt"]
@@ -148,7 +149,7 @@ def find_similar_trip(
 
 	# Find the best matching trip
 	best_iteration = trips.loc[trips["total_deviation"].idxmin(), "iteration_id"]
-	if print_devation_details:
+	if print_deviation_details:
 		print(f"Best matching trip: iteration_id = {best_iteration}")
 		print(f"Deviation details:")
 		print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].sort_values("total_deviation").head(10))
