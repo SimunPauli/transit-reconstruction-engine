@@ -15,9 +15,6 @@ def has_invalid_route_name(route_names) -> bool:
 
 	return False
 
-
-# ... existing code ...
-
 def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 	"""
 	Extracts and maps transit modes and routes for a given TurId.
@@ -118,7 +115,7 @@ def filter_candidates_by_requirements(
 		route_names: list = None,
 		modes_list: list = None,
 		tur_id: int = None
-) -> tuple[bool, object, str]:
+):
 	"""
 	Filter OTP candidates to ensure all required routes and modes are present.
 
@@ -139,8 +136,8 @@ def filter_candidates_by_requirements(
 	# Filter by required routes (for BUS/S_TRAIN)
 	if route_names:
 		if "route_short_name" not in filtered_df.columns:
-			msg = f"OTP candidates are missing route_short_name for TurId: {tur_id}"
-			return False, filtered_df, msg
+			print(f"OTP candidates are missing route_short_name for TurId: {tur_id}")
+			return None
 
 		required_routes = set(map(str, route_names))
 
@@ -162,14 +159,14 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}"
-			return False, filtered_df, msg
+			print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}")
+			return None
 
 	# Filter by required transit modes
 	if modes_list:
 		if "mode" not in filtered_df.columns:
-			msg = f"OTP candidates are missing mode for TurId: {tur_id}"
-			return False, filtered_df, msg
+			print(f"OTP candidates are missing mode for TurId: {tur_id}")
+			return None
 
 		required_modes = set(modes_list)
 
@@ -187,7 +184,10 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}"
-			return False, filtered_df, msg
+			print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}")
+			return None
 
-	return True, filtered_df, "Filtering completed successfully"
+	#TODO: Add filter that checks order of transit match. Also need to filter trips that e.g. only
+	# include BUS once bus TU includes two separate BUS deltur
+
+	return filtered_df
