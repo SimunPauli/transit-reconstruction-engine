@@ -22,6 +22,7 @@ def main():
 
 	otp_url = config["otp_url"]
 	search_window = config["search_window"]
+	max_itinerary_candidates = config["max_itinerary_candidates"]
 	data_dir = config["paths"]["data_dir"]
 
 	print(f"Search window: {search_window}")
@@ -63,13 +64,14 @@ def main():
 	time_based_matches = []
 	for i, tu_tur_row in tu_tur.iterrows():
 		time_based_match = match_tu_trip_to_otp(
-			tu_tur_row,
-			tu_deltur,
-			mode_map,
-			otp_mode_routes_cache,
-			otp_url,
-			search_window,
-			tu_gtfs_station_df,
+			tu_tur_row =tu_tur_row,
+			tu_deltur=tu_deltur,
+			mode_map=mode_map,
+			otp_mode_routes_cache=otp_mode_routes_cache,
+			otp_url=otp_url,
+			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
+			tu_gtfs_station_df=tu_gtfs_station_df,
 		)
 		if time_based_match is None:
 			continue

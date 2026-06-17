@@ -225,6 +225,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         route_short_name: list | None = None,
                         via_stopids: list | None = None,
                         search_window: str = "PT30M",
+						max_itinerary_candidates = 50,
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1"):
 
 	response = graphql_json_request(
@@ -233,7 +234,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		route_short_name_json=route_short_name,
 		via_stopids=via_stopids,
 		direct=["WALK"],
-		first=50,
+		first=max_itinerary_candidates,
 		direct_only=False,
 		transit_only=True,
 		search_window=search_window,
@@ -248,7 +249,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	n_forward = len(response_data["data"]["planConnection"]["edges"])
 	hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
 
-	while n_forward < 50 and hasNextPage:
+	while n_forward < max_itinerary_candidates and hasNextPage:
 		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) <= pd.Timedelta(search_window)).all()
 
@@ -265,7 +266,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			via_stopids=via_stopids,
 			direct=["WALK"],
 			after=endCursor,
-			first=50 - n_forward,
+			first=max_itinerary_candidates - n_forward,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,
@@ -286,7 +287,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	n_backward = 0
 	hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 
-	while n_backward < 50 and hasPreviousPage:
+	while n_backward < max_itinerary_candidates and hasPreviousPage:
 		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) >= -pd.Timedelta(search_window)).all()
 
@@ -303,7 +304,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			via_stopids=via_stopids,
 			direct=["WALK"],
 			before=startCursor,
-			last=50 - n_backward,
+			last=max_itinerary_candidates - n_backward,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,

@@ -18,6 +18,7 @@ def match_tu_trip_to_otp(
 	otp_mode_routes_cache,
 	otp_url,
 	search_window,
+	max_itinerary_candidates,
 	tu_gtfs_station_df,
 	print_deviation_details= True
 ):
@@ -69,6 +70,7 @@ def match_tu_trip_to_otp(
 			route_short_name=route_names_ext,
 			via_stopids=via_stopids,
 			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url)
 	elif is_bus_s_train:
 		otp_candidates_df = load_all_candidates(
@@ -77,6 +79,7 @@ def match_tu_trip_to_otp(
 			route_short_name=route_names,
 			via_stopids=via_stopids,
 			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url)
 	elif is_rail_tram_subway_ferry:
 		otp_candidates_df = load_all_candidates(
@@ -85,6 +88,7 @@ def match_tu_trip_to_otp(
 			route_short_name=None,
 			via_stopids=via_stopids,
 			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url)
 	else:
 		print("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
