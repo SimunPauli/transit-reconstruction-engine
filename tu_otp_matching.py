@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from otp_client import load_all_candidates
 from otp_utils import (
 	has_invalid_route_name,
@@ -254,68 +255,184 @@ def match_tu_trip_to_otp(
 		tu_gtfs_station_df=tu_gtfs_station_df
 	)
 
-	best_matches = find_similar_trip(
+	best_matches = find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
 		otp_candidates_df,
-		arrival_dev_weight=1,
-		last_leg_dist_weight=1,
+		w_departure_min=1.0,
+		w_arrival_min=1.0,
+		w_walk_min=1.0,
+		w_transit_min=1.0,
+		w_walk_km=1.0,
+		w_transit_km=1.0,
 		print_deviation_details=True
 	)
 	if best_matches is None:
 		print(f"No best trip found for TurId: {i_TurId}")
 		return None
-	for match_name, match_df in best_matches.items():
-		match_df["TurId"] = i_TurId
-		match_df["match_type"] = match_name
 
 	return best_matches
 
-def find_similar_trip(
+def find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
 		candidate_df,
-		arrival_dev_weight=1,
-		last_leg_dist_weight=1,
+		w_departure_min=1.0,
+		w_arrival_min=1.0,
+		w_walk_min=1.0,
+		w_transit_min=1.0,
+		w_walk_km=1.0,
+		w_transit_km=1.0,
 		print_deviation_details=False):
+	"""
+	Find the best matching OTP trip using weighted RMSE.
+
+	Calculates squared differences for:
+	- Departure time (minutes)
+	- Arrival time (minutes)
+	- Duration per leg (minutes) - split by WALK vs transit
+	- Distance per leg (km) - split by WALK vs transit
+
+	Parameters
+	----------
+	tu_tur_row : pd.Series
+		Row from tu_tur with trip-level info (depart_dt, arrival_dt, etc.)
+	tu_deltur_sub : pd.DataFrame
+		Subset of tu_deltur for this TurId, with Delturnr, StageMode, StageLength, StageDurationMin
+	candidate_df : pd.DataFrame
+		OTP candidates with tu_Delturnr column already added
+	w_departure_min : float
+		Weight for departure time difference
+	w_arrival_min : float
+		Weight for arrival time difference
+	w_walk_min : float
+		Weight for WALK leg duration difference
+	w_transit_min : float
+		Weight for transit leg duration difference
+	w_walk_km : float
+		Weight for WALK leg distance difference
+	w_transit_km : float
+		Weight for transit leg distance difference
+	print_deviation_details : bool
+		Whether to print top 10 matches
+
+	Returns
+	-------
+	pd.DataFrame
+		Best matching trip (all legs from single iteration_id)
+	"""
 	candidate_df = candidate_df.copy()
+
+	# Expected values from TU
 	expected_depart = tu_tur_row["depart_dt"]
 	expected_arrival = tu_tur_row["arrival_dt"]
 
-	# Convert candidate_df times to datetime
+	# Convert times to datetime
 	candidate_df["start_trip"] = pd.to_datetime(candidate_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 	candidate_df["end_trip"] = pd.to_datetime(candidate_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 
+	# Map TU leg attributes by Delturnr
+	tu_leg_duration = (
+		tu_deltur_sub
+		.set_index("Delturnr")["StageDurationMin"]
+		.astype(float)
+	)
 	tu_leg_dist = (
 		tu_deltur_sub
 		.set_index("Delturnr")["StageLength"]
 		.astype(float)
 	)
+
+	candidate_df["tu_duration_min"] = candidate_df["tu_Delturnr"].map(tu_leg_duration)
 	candidate_df["tu_distance_km"] = candidate_df["tu_Delturnr"].map(tu_leg_dist)
 
-	# Group by iteration_id and get start/end times for each trip
+	# Calculate per-leg squared differences
+	# For legs with no TU match (tu_Delturnr is NA), the difference is 0 (don't penalize extra OTP legs)
+	candidate_df["sq_diff_duration_min"] = 0.0
+	candidate_df["sq_diff_distance_km"] = 0.0
+
+	# Only calculate differences for matched legs
+	matched_mask = candidate_df["tu_Delturnr"].notna()
+
+	candidate_df.loc[matched_mask, "sq_diff_duration_min"] = (
+			(candidate_df.loc[matched_mask, "duration_min"] - candidate_df.loc[matched_mask, "tu_duration_min"]) ** 2
+	)
+	candidate_df.loc[matched_mask, "sq_diff_distance_km"] = (
+			(candidate_df.loc[matched_mask, "distance_km"] - candidate_df.loc[matched_mask, "tu_distance_km"]) ** 2
+	)
+
+	# Apply weights based on mode (WALK vs transit)
+	candidate_df["weighted_sq_diff_duration"] = 0.0
+	candidate_df["weighted_sq_diff_distance"] = 0.0
+
+	walk_mask = (candidate_df["mode"] == "WALK") & matched_mask
+	transit_mask = (candidate_df["mode"] != "WALK") & matched_mask
+
+	candidate_df.loc[walk_mask, "weighted_sq_diff_duration"] = (
+			w_walk_min * candidate_df.loc[walk_mask, "sq_diff_duration_min"]
+	)
+	candidate_df.loc[walk_mask, "weighted_sq_diff_distance"] = (
+			w_walk_km * candidate_df.loc[walk_mask, "sq_diff_distance_km"]
+	)
+
+	candidate_df.loc[transit_mask, "weighted_sq_diff_duration"] = (
+			w_transit_min * candidate_df.loc[transit_mask, "sq_diff_duration_min"]
+	)
+	candidate_df.loc[transit_mask, "weighted_sq_diff_distance"] = (
+			w_transit_km * candidate_df.loc[transit_mask, "sq_diff_distance_km"]
+	)
+
+	# Aggregate per iteration
 	trips = candidate_df.groupby("iteration_id").agg({
 		"start_trip": "first",
-		"end_trip": "first", #start/end are start/stop of the whole trip not that leg (deltur)
+		"end_trip": "first",
+		"weighted_sq_diff_duration": "sum",
+		"weighted_sq_diff_distance": "sum",
 		"system_notice_tag": "first"
 	}).reset_index()
 
-	# Calculate total deviation (in minutes) for each trip
-	trips["depart_deviation"] = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
-	trips["arrival_deviation"] = (trips["end_trip"] - expected_arrival).dt.total_seconds() / 60
+	# Calculate trip-level time deviations (minutes)
+	trips["depart_deviation_min"] = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
+	trips["arrival_deviation_min"] = (trips["end_trip"] - expected_arrival).dt.total_seconds() / 60
 
-	trips["total_deviation"] = abs(trips["depart_deviation"]) + abs(trips["arrival_deviation"])*arrival_dev_weight
+	trips["sq_diff_depart"] = w_departure_min * (trips["depart_deviation_min"] ** 2)
+	trips["sq_diff_arrival"] = w_arrival_min * (trips["arrival_deviation_min"] ** 2)
 
-	if trips.empty or trips["total_deviation"].isna().all():
-		print("No trips found with similar departure and arrival times.")
+	# Total sum of weighted squared differences
+	trips["sum_weighted_sq_diff"] = (
+			trips["sq_diff_depart"] +
+			trips["sq_diff_arrival"] +
+			trips["weighted_sq_diff_duration"] +
+			trips["weighted_sq_diff_distance"]
+	)
+
+	# Calculate number of terms for RMSE (denominator)
+	# Always have departure + arrival = 2 terms
+	# Plus number of matched legs × 2 (duration + distance per leg)
+	n_matched_legs_per_iteration = (
+		candidate_df[candidate_df["tu_Delturnr"].notna()]
+		.groupby("iteration_id")
+		.size()
+	)
+	trips["n_terms"] = 2 + (n_matched_legs_per_iteration * 2)
+	trips["n_terms"] = trips["n_terms"].fillna(2).astype(int)  # If no matched legs, just departure + arrival
+
+	# Calculate RMSE
+	trips["rmse"] = np.sqrt(trips["sum_weighted_sq_diff"] / trips["n_terms"])
+
+	if trips.empty or trips["rmse"].isna().all():
+		print("No trips found with valid RMSE.")
 		return None
 
-	# Find the best matching trip
-	best_iteration = trips.loc[trips["total_deviation"].idxmin(), "iteration_id"]
+	# Find the best matching trip (minimum RMSE)
+	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
+
 	if print_deviation_details:
 		print(f"Best matching trip: iteration_id = {best_iteration}")
-		print(f"Deviation details:")
-		print(trips[["iteration_id", "depart_deviation", "arrival_deviation", "total_deviation"]].sort_values("total_deviation").head(10))
+		print(f"RMSE details (top 10):")
+		detail_cols = ["iteration_id", "depart_deviation_min", "arrival_deviation_min",
+		               "weighted_sq_diff_duration", "weighted_sq_diff_distance", "rmse"]
+		print(trips[detail_cols].sort_values("rmse").head(10).to_string(index=False))
 
 	# Filter candidate_df to get only the best trip
 	best_trip_candidate_df = candidate_df[candidate_df["iteration_id"] == best_iteration].copy()
