@@ -129,8 +129,6 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
-
-
 	trips = find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
