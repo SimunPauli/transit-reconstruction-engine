@@ -6,6 +6,150 @@ from otp_utils import (
 	get_via_stops,
 	filter_candidates_by_requirements
 )
+def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_station_df):
+	"""
+	Add a tu_Delturnr column to OTP legs by aligning each OTP itinerary with the TU leg sequence.
+
+	OTP may contain legs missing from TU, especially transfer WALK legs between transit legs.
+	Those unmatched OTP legs get pd.NA.
+
+	Matching rules:
+	- Legs are matched in chronological/order sequence within each iteration_id.
+	- WALK matches TU StageMode == 1.
+	- Transit matches TU otp_mode, e.g. BUS, SUBWAY, S_TRAIN, RAIL, TRAM, FERRY.
+	- For BUS/S_TRAIN, route_short_name is also checked when TU Route is available.
+	- For non-bus transit, FromStation/ToStation are matched against GTFS station IDs via tu_gtfs_station_df.
+	"""
+	otp_candidates_df = otp_candidates_df.copy()
+
+	tu_legs = (
+		tu_deltur_sub
+		.sort_values("Delturnr")
+		.reset_index(drop=True)
+		.copy()
+	)
+
+	# Build a lookup: (otp_mode, tu_station_name) → set of gtfs_station_ids
+	station_lookup = {}
+	if tu_gtfs_station_df is not None and not tu_gtfs_station_df.empty:
+		for _, row in tu_gtfs_station_df.iterrows():
+			key = (row["otp_mode"], row["tu_station_name"])
+			if key not in station_lookup:
+				station_lookup[key] = set()
+			station_lookup[key].add(row["gtfs_station_id"])
+
+	def _clean(value):
+		if pd.isna(value):
+			return None
+		value = str(value).strip()
+		if not value or value.lower() in {"nan", "none"}:
+			return None
+		return value
+
+	def _extract_gtfs_id(otp_stop_field):
+		"""Extract GTFS station ID from OTP 'from' or 'to' field (which contains stop names)."""
+		# OTP stores stop info in the GraphQL response. The actual GTFS ID should be in the response.
+		# Since you're only getting stop names in 'from'/'to', we need the GTFS ID from elsewhere.
+		# This is a placeholder - you'll need to adapt based on what's actually in otp_candidates_df
+		return _clean(otp_stop_field)
+
+	def _station_matches(tu_station_name, otp_stop_name, mode):
+		"""Check if TU station matches OTP stop using GTFS mapping."""
+		tu_station_name = _clean(tu_station_name)
+		otp_stop_name = _clean(otp_stop_name)
+
+		if tu_station_name is None:
+			return True
+		if otp_stop_name is None:
+			return False
+
+		# Try exact GTFS ID match first if available
+		lookup_key = (mode, tu_station_name)
+		if lookup_key in station_lookup:
+			# Check if otp_stop_name contains any of the mapped GTFS IDs
+			# or if it matches the station name pattern
+			gtfs_ids = station_lookup[lookup_key]
+			for gtfs_id in gtfs_ids:
+				if gtfs_id in otp_stop_name:
+					return True
+
+		# Fallback to fuzzy name matching
+		return tu_station_name.casefold() in otp_stop_name.casefold()
+
+	def _route_matches(tu_route, otp_route):
+		tu_route = _clean(tu_route)
+		otp_route = _clean(otp_route)
+
+		if tu_route is None:
+			return True
+		if otp_route is None:
+			return False
+
+		return tu_route == otp_route
+
+	def _leg_matches(otp_leg, tu_leg):
+		tu_mode = tu_leg.get("otp_mode")
+
+		if pd.isna(tu_mode):
+			tu_mode = "WALK" if tu_leg.get("StageMode") == 1 else None
+
+		if otp_leg["mode"] != tu_mode:
+			return False
+
+		# For BUS/S_TRAIN, check route name
+		if otp_leg["mode"] in {"BUS", "S_TRAIN"}:
+			if not _route_matches(tu_leg.get("Route"), otp_leg.get("route_short_name")):
+				return False
+
+		# For transit with stations, check station match using GTFS mapping
+		if otp_leg["mode"] in {"SUBWAY", "RAIL", "TRAM", "FERRY", "S_TRAIN"}:
+			if not _station_matches(
+				tu_leg.get("FromStation"),
+				otp_leg.get("from"),
+				otp_leg["mode"]
+			):
+				return False
+			if not _station_matches(
+				tu_leg.get("ToStation"),
+				otp_leg.get("to"),
+				otp_leg["mode"]
+			):
+				return False
+
+		return True
+
+	def _align_iteration(iteration_df):
+		iteration_df = iteration_df.sort_values("leg_id").copy()
+
+		delturnrs = []
+		tu_pos = 0
+
+		for _, otp_leg in iteration_df.iterrows():
+			matched_delturnr = pd.NA
+
+			while tu_pos < len(tu_legs):
+				tu_leg = tu_legs.iloc[tu_pos]
+
+				if _leg_matches(otp_leg, tu_leg):
+					matched_delturnr = tu_leg["Delturnr"]
+					tu_pos += 1
+					break
+
+				# If the current TU leg does not match this OTP leg, do not consume the TU leg.
+				# The OTP leg is treated as an extra OTP leg, e.g. a transfer walk missing in TU.
+				break
+
+			delturnrs.append(matched_delturnr)
+
+		iteration_df["tu_Delturnr"] = delturnrs
+		return iteration_df
+
+	return (
+		otp_candidates_df
+		.groupby("iteration_id", group_keys=False)
+		.apply(_align_iteration)
+		.reset_index(drop=True)
+	)
 
 def match_tu_trip_to_otp(
 	tu_tur_row,
@@ -104,6 +248,12 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
+	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df
+	)
+
 	best_matches = find_similar_trip(
 		tu_tur_row,
 		tu_deltur_sub,
@@ -137,11 +287,11 @@ def find_similar_trip(
 	candidate_df["end_trip"] = pd.to_datetime(candidate_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 
 	tu_leg_dist = (
-		tu_deltur_sub["StageLength"]
-		.reset_index(drop=True)
+		tu_deltur_sub
+		.set_index("Delturnr")["StageLength"]
 		.astype(float)
 	)
-	candidate_df["tu_distance_km"] = candidate_df["leg_id"].map(tu_leg_dist)
+	candidate_df["tu_distance_km"] = candidate_df["tu_Delturnr"].map(tu_leg_dist)
 
 	# Group by iteration_id and get start/end times for each trip
 	trips = candidate_df.groupby("iteration_id").agg({
