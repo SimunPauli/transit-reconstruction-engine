@@ -112,6 +112,7 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
 
 def filter_candidates_by_requirements(
 		otp_candidates_df,
+		tu_deltur_sub,
 		route_names: list = None,
 		modes_list: list = None,
 		tur_id: int = None
@@ -187,7 +188,40 @@ def filter_candidates_by_requirements(
 			print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}")
 			return None
 
-	#TODO: Add filter that checks order of transit match. Also need to filter trips that e.g. only
-	# include BUS once bus TU includes two separate BUS deltur
+	# Filter by TU transit leg order
+	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
+		tu_transit_delturnrs = (
+			tu_deltur_sub
+			.loc[tu_deltur_sub["otp_mode"].notna() & (tu_deltur_sub["otp_mode"] in ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"])]
+			.sort_values("Delturnr")["Delturnr"]
+			.tolist()
+		)
+
+		if tu_transit_delturnrs:
+			valid_ids = (
+				otp_candidates_df
+				.groupby("iteration_id")
+				.filter(lambda g: _tu_transit_legs_matched_in_order(g, tu_transit_delturnrs))
+				["iteration_id"]
+				.unique()
+			)
+			filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
+
+			if filtered_df.empty:
+				print(f"No OTP trips matched all TU transit legs in order for TurId: {tur_id}")
+				return None
 
 	return filtered_df
+
+def _tu_transit_legs_matched_in_order(otp_candidates_sub, tu_transit_delturnrs):
+    """
+    Check that all TU transit Delturnrs appear in this OTP iteration's
+    matched Delturnrs, in order (as a subsequence).
+    """
+    matched = (
+        otp_candidates_sub.loc[otp_candidates_sub["tu_Delturnr"].notna(), "tu_Delturnr"]
+        .tolist()
+    )
+    # Check subsequence
+    it = iter(matched)
+    return all(delturnr in it for delturnr in tu_transit_delturnrs)

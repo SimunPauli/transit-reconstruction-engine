@@ -94,12 +94,25 @@ def match_tu_trip_to_otp(
 		print(f"No OTP trips found for TurId: {i_TurId}")
 		return None
 
+
+	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df
+	)
+
 	otp_candidates_df = filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
 		route_names=route_names,
 		modes_list=modes_list,
 		tur_id=i_TurId
 	)
+
+	if otp_candidates_df is None or otp_candidates_df.empty:
+		print(f"No OTP trips left after filtering for TurId: {i_TurId}")
+		return None
+
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
 		["iteration_id", "start_leg"]
@@ -109,11 +122,7 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
-	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
-		otp_candidates_df=otp_candidates_df,
-		tu_deltur_sub=tu_deltur_sub,
-		tu_gtfs_station_df=tu_gtfs_station_df
-	)
+
 
 	trips = find_best_match_by_rmse(
 		tu_tur_row,
@@ -312,8 +321,6 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 	- For BUS/S_TRAIN, route_short_name is also checked when TU Route is available.
 	- For non-bus transit, FromStation/ToStation are matched against GTFS station IDs via tu_gtfs_station_df.
 	"""
-	otp_candidates_df = otp_candidates_df.copy()
-
 	tu_legs = (
 		tu_deltur_sub
 		.sort_values("Delturnr")
