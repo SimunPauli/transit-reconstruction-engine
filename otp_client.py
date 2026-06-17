@@ -196,7 +196,6 @@ def build_graphql_query(
           node {
             start
             end
-            waitingTime
             numberOfTransfers
             emissionsPerPerson { co2 }
             systemNotices { tag text }
