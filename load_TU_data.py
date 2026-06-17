@@ -1,11 +1,15 @@
 import pandas as pd
 import geopandas as gpd
+from pathlib import Path
 
 def load_tu(data_dir,
             session_file,
             tur_file,
             deltur_file,
             stations_file):
+
+	data_dir = Path(data_dir)
+
 	tu_session = pd.read_excel(data_dir / session_file)
 	tu_tur = pd.read_excel(data_dir / tur_file)
 	tu_deltur = pd.read_excel(data_dir / deltur_file)
