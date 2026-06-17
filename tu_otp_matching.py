@@ -94,13 +94,16 @@ def match_tu_trip_to_otp(
 		print(f"No OTP trips found for TurId: {i_TurId}")
 		return None
 
-
+	# Match otp leg with TU delturnr (leg number). This will add column to otp_candidates_df
+	# with delturnr to each leg. Missing legs from TU will get pd.NA
 	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df
 	)
 
+	# 	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
+	# 	is matched.
 	otp_candidates_df = filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,

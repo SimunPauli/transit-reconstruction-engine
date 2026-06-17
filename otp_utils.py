@@ -118,10 +118,12 @@ def filter_candidates_by_requirements(
 		tur_id: int = None
 ):
 	"""
-	Filter OTP candidates to ensure all required routes and modes are present.
+	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
+	is matched.
 
 	Args:
 		otp_candidates_df: DataFrame with OTP candidate trips
+		tu_deltur_sub: DataFrame with TU deltur legs
 		route_names: List of required route short names (optional)
 		modes_list: List of required transit modes (optional)
 		tur_id: Trip ID for logging purposes
