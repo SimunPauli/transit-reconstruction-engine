@@ -61,9 +61,9 @@ def main():
 	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
 	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"])
 
-	time_based_matches = []
+	rmse_based_matches = []
 	for i, tu_tur_row in tu_tur.iterrows():
-		time_based_match = match_tu_trip_to_otp(
+		rmse_based_match = match_tu_trip_to_otp(
 			tu_tur_row =tu_tur_row,
 			tu_deltur=tu_deltur,
 			mode_map=mode_map,
@@ -73,24 +73,25 @@ def main():
 			max_itinerary_candidates=max_itinerary_candidates,
 			tu_gtfs_station_df=tu_gtfs_station_df,
 		)
-		if time_based_match is None:
+		if rmse_based_match is None:
+			print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
 			continue
 
-		time_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to"]
-		print("time_based_match:")
-		print(time_based_match[time_based_match_print_col].to_string(index=False, max_colwidth=None))
+		rmse_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to"]
+		print("rmse_based_match:")
+		print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
 
-		time_based_matches.append(time_based_match)
+		rmse_based_matches.append(rmse_based_match)
 
-	if not time_based_matches:
-		print("No time-based matches found. Nothing to save.")
+	if not rmse_based_matches:
+		print("No rmse-based matches found. Nothing to save.")
 		return
 
-	all_time_based_matches = pd.concat(time_based_matches, ignore_index=True)
-	all_time_based_matches.to_csv(config["paths"]["time_based_matches_file"], index=False)
+	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
+	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
 	print(f"\n\n\n____________________________________________________________________________________________")
-	print(f"\n\n\nall_time_based_matches has been exported to {config['paths']['time_based_matches_file']}")
-	print(f"Saved {len(all_time_based_matches)} time-based matches to {config['paths']['time_based_matches_file'].name}")
+	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
+	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
 
 if __name__ == "__main__":
 	import sys

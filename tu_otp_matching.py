@@ -155,9 +155,9 @@ def match_tu_trip_to_otp(
 		print(trips[detail_cols].sort_values("rmse").head(10).to_string(index=False))
 
 	# Filter otp_candidates_df to get only the best trip
-	best_trip_candidate_df = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
+	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
 
-	return best_trip_candidate_df
+	return best_trip_candidate
 
 def find_best_match_by_rmse(
 		tu_tur_row,
