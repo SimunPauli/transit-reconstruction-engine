@@ -69,7 +69,6 @@ def json_to_df(response):
 		"route_short_name",
 		"distance_km",
 		"duration_min",
-		"waiting_time_min",
 		"from",
 		"to",
 
@@ -101,7 +100,6 @@ def json_to_df(response):
 				"route_short_name": route.get("shortName"),
 				"distance_km": round(leg["distance"]/1000,3),
 				"duration_min": int(round(leg["duration"]/60,0)),
-				"waiting_time_min": round((node.get("waitingTime_total") or 0)/60,2),
 				"from": leg["from"]["name"],
 				"to": leg["to"]["name"],
 
