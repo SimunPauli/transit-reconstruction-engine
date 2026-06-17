@@ -104,42 +104,55 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
-	time_based_match = find_similar_trip(
+	best_matches = find_similar_trip(
 		tu_tur_row,
+		tu_deltur_sub,
 		otp_candidates_df,
 		arrival_dev_weight=1,
+		last_leg_dist_weight=1,
 		print_deviation_details=True
 	)
-	if time_based_match is None:
+	if best_matches is None:
 		print(f"No best trip found for TurId: {i_TurId}")
 		return None
-	time_based_match["TurId"] = i_TurId
+	for match_name, match_df in best_matches.items():
+		match_df["TurId"] = i_TurId
+		match_df["match_type"] = match_name
 
-	return time_based_match
+	return best_matches
 
 def find_similar_trip(
 		tu_tur_row,
+		tu_deltur_sub,
 		candidate_df,
 		arrival_dev_weight=1,
+		last_leg_dist_weight=1,
 		print_deviation_details=False):
 	candidate_df = candidate_df.copy()
 	expected_depart = tu_tur_row["depart_dt"]
 	expected_arrival = tu_tur_row["arrival_dt"]
 
 	# Convert candidate_df times to datetime
-	candidate_df["start_dt"] = pd.to_datetime(candidate_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
-	candidate_df["end_dt"] = pd.to_datetime(candidate_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+	candidate_df["start_trip"] = pd.to_datetime(candidate_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+	candidate_df["end_trip"] = pd.to_datetime(candidate_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+
+	tu_leg_dist = (
+		tu_deltur_sub["StageLength"]
+		.reset_index(drop=True)
+		.astype(float)
+	)
+	candidate_df["tu_distance_km"] = candidate_df["leg_id"].map(tu_leg_dist)
 
 	# Group by iteration_id and get start/end times for each trip
 	trips = candidate_df.groupby("iteration_id").agg({
-		"start_dt": "first",
-		"end_dt": "first", #start/end are start/stop of the whole trip not that leg (deltur)
+		"start_trip": "first",
+		"end_trip": "first", #start/end are start/stop of the whole trip not that leg (deltur)
 		"system_notice_tag": "first"
 	}).reset_index()
 
 	# Calculate total deviation (in minutes) for each trip
-	trips["depart_deviation"] = (trips["start_dt"] - expected_depart).dt.total_seconds() / 60
-	trips["arrival_deviation"] = (trips["end_dt"] - expected_arrival).dt.total_seconds() / 60
+	trips["depart_deviation"] = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
+	trips["arrival_deviation"] = (trips["end_trip"] - expected_arrival).dt.total_seconds() / 60
 
 	trips["total_deviation"] = abs(trips["depart_deviation"]) + abs(trips["arrival_deviation"])*arrival_dev_weight
 
