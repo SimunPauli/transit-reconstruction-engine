@@ -192,10 +192,14 @@ def filter_candidates_by_requirements(
 
 	# Filter by TU transit leg order
 	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
+		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
+
 		tu_transit_delturnrs = (
 			tu_deltur_sub
-			.loc[tu_deltur_sub["otp_mode"].notna() & (tu_deltur_sub["otp_mode"] in ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"])]
-			.sort_values("Delturnr")["Delturnr"]
+			.loc[
+				tu_deltur_sub["otp_mode"].notna()
+				& tu_deltur_sub["otp_mode"].isin(transit_modes)
+			]			.sort_values("Delturnr")["Delturnr"]
 			.tolist()
 		)
 
