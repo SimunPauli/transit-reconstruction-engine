@@ -120,6 +120,6 @@ if __name__ == "__main__":
 		def write(self, data): [file.write(data) for file in self.files]
 		def flush(self): [file.flush() for file in self.files]
 
-	with open(config["paths"]["data_dir"]["log_file"], "w", encoding="utf-8") as log_file:
+	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
 		with redirect_stdout(Tee(sys.stdout, log_file)):
 			main()
