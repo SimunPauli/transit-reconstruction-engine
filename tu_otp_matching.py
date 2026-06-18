@@ -74,6 +74,7 @@ def match_tu_trip_to_otp(
 
 	# Get the gtfs stop_ids for stations respondent travel through
 	via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
+	print(f"via_stopids: {via_stopids}")
 
 	# 2. Fetch all candidates (handles pagination & concat internally)
 	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
@@ -109,7 +110,6 @@ def match_tu_trip_to_otp(
 			otp_url=otp_url)
 	else:
 		return _return_not_found("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
-
 	if otp_candidates_df.empty:
 		return _return_not_found(f"No OTP trips found for TurId: {i_TurId}")
 
@@ -418,7 +418,7 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 		tu_mode = tu_leg.get("otp_mode")
 
 		if pd.isna(tu_mode):
-			tu_mode = "WALK" if tu_leg.get("StageMode") == 1 else None
+			tu_mode = "WALK"  #TODO: All non transit modes set to WALK for now!
 
 		if otp_leg["mode"] != tu_mode:
 			return False
@@ -429,7 +429,7 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 				return False
 
 		# For transit with stations, check station match using GTFS mapping
-		if otp_leg["mode"] in {"SUBWAY", "RAIL", "TRAM", "FERRY", "S_TRAIN"}:
+		if otp_leg["mode"] in {"SUBWAY", "RAIL", "TRAM", "FERRY", "S_TRAIN"}: #TODO: check ferry has station
 			if not _station_matches(
 				tu_leg.get("FromStation"),
 				otp_leg.get("from"),
@@ -447,7 +447,6 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 
 	def _align_iteration(iteration_df):
 		iteration_id = iteration_df.name
-		iteration_df.insert(0, "iteration_id", iteration_id)
 		iteration_df = iteration_df.sort_values("leg_id").copy()
 
 		delturnrs = []
@@ -471,6 +470,8 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 			delturnrs.append(matched_delturnr)
 
 		iteration_df["tu_Delturnr"] = delturnrs
+		iteration_df["iteration_id"] = iteration_id
+
 		return iteration_df
 
 	return (

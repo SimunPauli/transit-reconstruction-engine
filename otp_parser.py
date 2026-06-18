@@ -71,6 +71,8 @@ def json_to_df(response):
 		"duration_min",
 		"from",
 		"to",
+		"from_gtfs_id",
+		"to_gtfs_id",
 
 		"generalized_cost",
 		"leg_geometry",
@@ -87,6 +89,10 @@ def json_to_df(response):
 		for k, leg in enumerate(node["legs"]):
 			route = leg.get("route") or {} #for WALK "shortName" is null
 			trip = leg.get("trip") or {}
+			from_location = leg.get("from") or {}
+			to_location = leg.get("to") or {}
+			from_stop = from_location.get("stop") or {}
+			to_stop = to_location.get("stop") or {}
 			rows.append({
 				"iteration_id": j,
 				"leg_id": k,
@@ -100,8 +106,10 @@ def json_to_df(response):
 				"route_short_name": route.get("shortName"),
 				"distance_km": round(leg["distance"]/1000,3),
 				"duration_min": int(round(leg["duration"]/60,0)),
-				"from": leg["from"]["name"],
-				"to": leg["to"]["name"],
+				"from": from_location["name"],
+				"to": to_location["name"],
+				"from_gtfs_id": from_stop.get("gtfsId"),
+				"to_gtfs_id": to_stop.get("gtfsId"),
 
 				"trip_short_name": trip.get("tripShortName"),
 				"generalized_cost": leg["generalizedCost"],
