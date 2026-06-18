@@ -69,9 +69,7 @@ def match_tu_trip_to_otp(
 	if not modes_json:
 		return _return_not_found(f"No valid public transport modes found for TurId: {i_TurId}")
 	print(f"modes_json: {modes_json}")
-	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and not route_names:
-		return _return_not_found(f"No valid route found for TurId: {i_TurId}")
-	if has_invalid_route_name(route_names) and route_names:
+	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and has_invalid_route_name(route_names):
 		return _return_not_found(f"Invalid route name: {route_names}")
 
 	# Get the gtfs stop_ids for stations respondent travel through
@@ -125,7 +123,7 @@ def match_tu_trip_to_otp(
 
 	# 	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
 	# 	is matched.
-	otp_candidates_df = filter_candidates_by_requirements(
+	otp_candidates_df, msg_filter = filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		route_names=route_names,
@@ -134,7 +132,7 @@ def match_tu_trip_to_otp(
 	)
 
 	if otp_candidates_df is None or otp_candidates_df.empty:
-		return _return_not_found(f"No OTP trips left after filtering for TurId: {i_TurId}")
+		return _return_not_found(msg_filter)
 
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(

@@ -9,7 +9,9 @@ def has_invalid_route_name(route_names) -> bool:
 	for route_name in route_names:
 		if pd.isna(route_name):
 			return True
-		route_name = str(route_name)
+		route_name = str(route_name).strip()
+		if not route_name or route_name.lower() in {"nan", "none"}:
+			return True
 		if any(char in route_name for char in INVALID_ROUTE_CHARS):
 			return True
 
@@ -49,13 +51,13 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 			tu_deltur_sub["StageMode"].isin(modes_with_route_names),
 			"Route"
 		]
-		.dropna()
-		.astype(str)
-		.str.strip()
-		.loc[lambda routes: ~routes.str.lower().isin(["", "nan", "none", "?"])]
+		.map(lambda route: route.strip() if isinstance(route, str) else route)
 		.drop_duplicates()
 		.tolist()
 	)
+	if not has_invalid_route_name(route_names):
+		route_names = [str(route_name).strip() for route_name in route_names]
+
 	# 3. For RAIL, TRAM, SUBWAY, FERRY, append cached routes if the mode is used in this trip
 	route_names_ext = list(route_names)
 	if any(mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"] for mode in modes_list):
@@ -162,8 +164,8 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			print(f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}")
-			return None
+			msg = f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}"
+			return None, msg
 
 	# Filter by required transit modes
 	if modes_list:
@@ -187,8 +189,8 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			print(f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}")
-			return None
+			msg = f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}"
+			return None, msg
 
 	# Filter by TU transit leg order
 	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
@@ -214,10 +216,10 @@ def filter_candidates_by_requirements(
 			filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
 
 			if filtered_df.empty:
-				print(f"No OTP trips matched all TU transit legs in order for TurId: {tur_id}")
-				return None
+				msg = f"No OTP trips matched all TU transit legs in order for TurId: {tur_id}"
+				return None, msg
 
-	return filtered_df
+	return filtered_df, ""
 
 def _tu_transit_legs_matched_in_order(otp_candidates_sub, tu_transit_delturnrs):
     """
