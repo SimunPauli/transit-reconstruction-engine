@@ -156,7 +156,6 @@ def match_tu_trip_to_otp(
 	)
 	if trips is None:
 		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
-
 	# Find the best matching trip (minimum RMSE)
 	best_trip_summary = trips.loc[trips["rmse"].idxmin()].copy()
 	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
@@ -170,6 +169,7 @@ def match_tu_trip_to_otp(
 
 	# Filter otp_candidates_df to get only the best trip
 	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
+	best_trip_candidate["TurId"] = i_TurId
 
 	if return_trip_summary:
 		trip_summary = {
@@ -181,8 +181,8 @@ def match_tu_trip_to_otp(
 			"rmse": best_trip_summary["rmse"],
 			"depart_deviation_min": best_trip_summary["depart_deviation_min"],
 			"arrival_deviation_min": best_trip_summary["arrival_deviation_min"],
-			"weighted_sq_diff_duration": best_trip_summary["weighted_sq_diff_duration"],
-			"weighted_sq_diff_distance": best_trip_summary["weighted_sq_diff_distance"],
+			"weighted_diff_duration": np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),
+			"weighted_diff_distance": np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),
 			"iteration_id": best_iteration
 		}
 		return best_trip_candidate, trip_summary
@@ -280,7 +280,7 @@ def find_best_match_by_rmse(
 	otp_candidates_df["weighted_sq_diff_duration"] = 0.0
 	otp_candidates_df["weighted_sq_diff_distance"] = 0.0
 
-	walk_mask = (otp_candidates_df["mode"] == "WALK") & matched_mask
+	walk_mask = (otp_candidates_df["mode"] == "WALK") & matched_mask #TODO: How about non-transit non-walk? Car, bycycle...
 	transit_mask = (otp_candidates_df["mode"] != "WALK") & matched_mask
 
 	otp_candidates_df.loc[walk_mask, "weighted_sq_diff_duration"] = (
