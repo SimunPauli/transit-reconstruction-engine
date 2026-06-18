@@ -67,6 +67,7 @@ def json_to_df(response):
 
 		"mode",
 		"route_short_name",
+		"route_gtfs_id",
 		"distance_km",
 		"duration_min",
 		"from",
@@ -104,6 +105,7 @@ def json_to_df(response):
 
 				"mode": leg["mode"],
 				"route_short_name": route.get("shortName"),
+				"route_gtfs_id": route.get("gtfsId"),
 				"distance_km": round(leg["distance"]/1000,3),
 				"duration_min": int(round(leg["duration"]/60,0)),
 				"from": from_location["name"],

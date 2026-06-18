@@ -203,7 +203,7 @@ def build_graphql_query(
               mode startTime endTime distance duration
               from { name stop { gtfsId id parentStation { gtfsId id name } } }
               to { name stop { gtfsId id parentStation { id name } } }
-              route { shortName }
+              route { shortName gtfsId}
               trip { tripShortName semanticHash }
               generalizedCost
               legGeometry { length points }
