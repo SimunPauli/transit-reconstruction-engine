@@ -356,6 +356,8 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 	- For BUS/S_TRAIN, route_short_name is also checked when TU Route is available.
 	- For non-bus transit, FromStation/ToStation are matched against GTFS station IDs via tu_gtfs_station_df.
 	"""
+	from tu_gtfs_stations_match import _normalise_name
+
 	tu_legs = (
 		tu_deltur_sub
 		.sort_values("Delturnr")
@@ -367,52 +369,34 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 	station_lookup = {}
 	if tu_gtfs_station_df is not None and not tu_gtfs_station_df.empty:
 		for _, row in tu_gtfs_station_df.iterrows():
-			key = (row["otp_mode"], row["tu_station_name"])
+			key = (row["otp_mode"],_normalise_name(str(row["tu_station_name"])))
 			if key not in station_lookup:
 				station_lookup[key] = set()
 			station_lookup[key].add(row["gtfs_station_id"])
 
-	def _clean(value):
-		if pd.isna(value):
-			return None
-		value = str(value).strip()
-		if not value or value.lower() in {"nan", "none"}:
-			return None
-		return value
-
-	def _station_matches(tu_station_name, otp_stop_name, mode):
-		"""Check if TU station matches OTP stop using GTFS mapping."""
-		tu_station_name = _clean(tu_station_name)
-		otp_stop_name = _clean(otp_stop_name)
-
-		if tu_station_name is None:
-			return True
-		if otp_stop_name is None:
-			return False
-
-		# Try exact GTFS ID match first if available
-		lookup_key = (mode, tu_station_name)
-		if lookup_key in station_lookup:
-			# Check if otp_stop_name contains any of the mapped GTFS IDs
-			# or if it matches the station name pattern
-			gtfs_ids = station_lookup[lookup_key]
-			for gtfs_id in gtfs_ids:
-				if gtfs_id in otp_stop_name:
-					return True
-
-		# Fallback to fuzzy name matching
-		return tu_station_name.casefold() in otp_stop_name.casefold()
-
 	def _route_matches(tu_route, otp_route):
-		tu_route = _clean(tu_route)
-		otp_route = _clean(otp_route)
-
-		if tu_route is None:
+		if tu_route is None or (isinstance(tu_route, float) and pd.isna(tu_route)):
 			return True
-		if otp_route is None:
+		if otp_route is None or (isinstance(otp_route, float) and pd.isna(otp_route)):
+			return False
+		tu_route = str(tu_route).strip()
+		otp_route = str(otp_route).strip()
+		if not tu_route:
+			return True
+		return tu_route == otp_route
+
+	def _station_matches(tu_station_name, otp_gtfs_id, mode):
+		"""Check if TU station matches OTP stop using GTFS mapping."""
+		if tu_station_name is None or (isinstance(tu_station_name, float) and pd.isna(tu_station_name)):
+			return True
+		if otp_gtfs_id is None and pd.isna(otp_gtfs_id):
 			return False
 
-		return tu_route == otp_route
+		lookup_key = (mode, _normalise_name(str(tu_station_name)))
+		if lookup_key in station_lookup:
+			return otp_gtfs_id in station_lookup[lookup_key]
+
+		return False
 
 	def _leg_matches(otp_leg, tu_leg):
 		tu_mode = tu_leg.get("otp_mode")
@@ -432,13 +416,13 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 		if otp_leg["mode"] in {"SUBWAY", "RAIL", "TRAM", "FERRY", "S_TRAIN"}: #TODO: check ferry has station
 			if not _station_matches(
 				tu_leg.get("FromStation"),
-				otp_leg.get("from"),
+				otp_leg.get("from_gtfs_id"),
 				otp_leg["mode"]
 			):
 				return False
 			if not _station_matches(
 				tu_leg.get("ToStation"),
-				otp_leg.get("to"),
+				otp_leg.get("to_gtfs_id"),
 				otp_leg["mode"]
 			):
 				return False
