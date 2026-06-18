@@ -20,10 +20,32 @@ def match_tu_trip_to_otp(
 	search_window,
 	max_itinerary_candidates,
 	tu_gtfs_station_df,
-	print_deviation_details= True
+	print_deviation_details= True,
+	return_trip_summary= False
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+
+	def _empty_trip_summary(last_print_if_not_found):
+		return {
+			"TurId": i_TurId,
+			"SessionId": tu_tur_row.get("SessionId"),
+			"trip_found": 0,
+			"trip_not_found": 1,
+			"last_print_if_not_found": last_print_if_not_found,
+			"rmse": pd.NA,
+			"depart_deviation_min": pd.NA,
+			"arrival_deviation_min": pd.NA,
+			"weighted_sq_diff_duration": pd.NA,
+			"weighted_sq_diff_distance": pd.NA,
+			"iteration_id": pd.NA
+		}
+
+	def _return_not_found(last_print_if_not_found):
+		print(last_print_if_not_found)
+		if return_trip_summary:
+			return None, _empty_trip_summary(last_print_if_not_found)
+		return None
 
 	print("\n\n____________________________________________________________________________________________")
 	print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
@@ -45,15 +67,12 @@ def match_tu_trip_to_otp(
 	print(f"route_names_ext: {route_names_ext}")
 
 	if not modes_json:
-		print(f"No valid public transport modes found for TurId: {i_TurId}")
-		return None
+		return _return_not_found(f"No valid public transport modes found for TurId: {i_TurId}")
 	print(f"modes_json: {modes_json}")
 	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and not route_names:
-		print(f"No valid route found for TurId: {i_TurId}")
-		return None
+		return _return_not_found(f"No valid route found for TurId: {i_TurId}")
 	if has_invalid_route_name(route_names) and route_names:
-		print(f"Invalid route name: {route_names}")
-		return None
+		return _return_not_found(f"Invalid route name: {route_names}")
 
 	# Get the gtfs stop_ids for stations respondent travel through
 	via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
@@ -91,12 +110,10 @@ def match_tu_trip_to_otp(
 			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url)
 	else:
-		print("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
-		return None
+		return _return_not_found("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
 
 	if otp_candidates_df.empty:
-		print(f"No OTP trips found for TurId: {i_TurId}")
-		return None
+		return _return_not_found(f"No OTP trips found for TurId: {i_TurId}")
 
 	# Match otp leg with TU delturnr (leg number). This will add column to otp_candidates_df
 	# with delturnr to each leg. Missing legs from TU will get pd.NA
@@ -117,8 +134,7 @@ def match_tu_trip_to_otp(
 	)
 
 	if otp_candidates_df is None or otp_candidates_df.empty:
-		print(f"No OTP trips left after filtering for TurId: {i_TurId}")
-		return None
+		return _return_not_found(f"No OTP trips left after filtering for TurId: {i_TurId}")
 
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
@@ -141,10 +157,10 @@ def match_tu_trip_to_otp(
 		w_transit_km=1.0
 	)
 	if trips is None:
-		print(f"No best trip found for TurId: {i_TurId}")
-		return None
+		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
 
 	# Find the best matching trip (minimum RMSE)
+	best_trip_summary = trips.loc[trips["rmse"].idxmin()].copy()
 	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
 
 	if print_deviation_details:
@@ -156,6 +172,22 @@ def match_tu_trip_to_otp(
 
 	# Filter otp_candidates_df to get only the best trip
 	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
+
+	if return_trip_summary:
+		trip_summary = {
+			"TurId": i_TurId,
+			"SessionId": tu_tur_row.get("SessionId"),
+			"trip_found": 1,
+			"trip_not_found": 0,
+			"last_print_if_not_found": "",
+			"rmse": best_trip_summary["rmse"],
+			"depart_deviation_min": best_trip_summary["depart_deviation_min"],
+			"arrival_deviation_min": best_trip_summary["arrival_deviation_min"],
+			"weighted_sq_diff_duration": best_trip_summary["weighted_sq_diff_duration"],
+			"weighted_sq_diff_distance": best_trip_summary["weighted_sq_diff_distance"],
+			"iteration_id": best_iteration
+		}
+		return best_trip_candidate, trip_summary
 
 	return best_trip_candidate
 

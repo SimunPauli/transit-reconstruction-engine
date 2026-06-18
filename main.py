@@ -20,6 +20,7 @@ def main():
 		35: "BUS"
 	}
 
+	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
 	otp_url = config["otp_url"]
 	search_window = config["search_window"]
 	max_itinerary_candidates = config["max_itinerary_candidates"]
@@ -62,9 +63,11 @@ def main():
 	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"])
 
 	rmse_based_matches = []
+	trip_matching_summaries = []
+
 	for i, tu_tur_row in tu_tur.iterrows():
-		rmse_based_match = match_tu_trip_to_otp(
-			tu_tur_row =tu_tur_row,
+		match_result = match_tu_trip_to_otp(
+			tu_tur_row=tu_tur_row,
 			tu_deltur=tu_deltur,
 			mode_map=mode_map,
 			otp_mode_routes_cache=otp_mode_routes_cache,
@@ -72,7 +75,14 @@ def main():
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
 			tu_gtfs_station_df=tu_gtfs_station_df,
+			return_trip_summary=return_trip_summary
 		)
+
+		if return_trip_summary:
+			rmse_based_match, trip_matching_summary = match_result
+			trip_matching_summaries.append(trip_matching_summary)
+		else:
+			rmse_based_match = match_result
 		if rmse_based_match is None:
 			print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
 			continue
@@ -82,13 +92,18 @@ def main():
 		print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
 
 		rmse_based_matches.append(rmse_based_match)
+		trip_matching_summaries.append(trip_matching_summary)
 
 	if not rmse_based_matches:
 		print("No rmse-based matches found. Nothing to save.")
+		if trip_matching_summaries:
+			pd.DataFrame(trip_matching_summaries).to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
 	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
+	trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
+	trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
