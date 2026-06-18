@@ -10,6 +10,7 @@ def load_config(config_path="config.json"):
 	config["paths"]["data_dir"] = data_dir
 	config["paths"]["log_file"] = Path(config["paths"]["log_file"]).expanduser()
 	config["paths"]["rmse_based_matches_file"] = data_dir / config["paths"]["rmse_based_matches_file"]
+	config["paths"]["trip_matching_summaries_file"] = data_dir / config["paths"]["trip_matching_summaries_file"]
 	config["paths"]["tu_gtfs_station_file"] = data_dir / config["paths"]["tu_gtfs_station_file"]
 	config["paths"]["map_file"] = Path(config["paths"]["map_file"]).expanduser()
 
