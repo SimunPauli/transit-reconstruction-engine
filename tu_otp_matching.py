@@ -173,10 +173,12 @@ def match_tu_trip_to_otp(
 	if print_deviation_details:
 		print(f"Best matching trip: iteration_id = {best_iteration}")
 		print(f"RMSE details (top 10):")
+		trips_display = trips.copy()
+		trips_display["weighted_diff_duration"] = np.sqrt(trips_display["weighted_sq_diff_duration"])
+		trips_display["weighted_diff_distance"] = np.sqrt(trips_display["weighted_sq_diff_distance"])
 		detail_cols = ["iteration_id", "depart_deviation_min", "arrival_deviation_min",
-		               "weighted_sq_diff_duration", "weighted_sq_diff_distance", "rmse"]
-		print(trips[detail_cols].sort_values("rmse").head(10).to_string(index=False))
-
+		               "weighted_diff_duration", "weighted_diff_distance", "rmse"]
+		print(trips_display[detail_cols].sort_values("rmse").head(10).to_string(index=False))
 	# Filter otp_candidates_df to get only the best trip
 	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
 	best_trip_candidate["TurId"] = i_TurId
@@ -315,13 +317,13 @@ def find_best_match_by_rmse(
 	trips["depart_deviation_min"] = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
 	trips["arrival_deviation_min"] = (trips["end_trip"] - expected_arrival).dt.total_seconds() / 60
 
-	trips["sq_diff_depart"] = w_departure_min * (trips["depart_deviation_min"] ** 2)
-	trips["sq_diff_arrival"] = w_arrival_min * (trips["arrival_deviation_min"] ** 2)
+	trips["weighted_sq_diff_depart"] = w_departure_min * (trips["depart_deviation_min"] ** 2)
+	trips["weighted_sq_diff_arrival"] = w_arrival_min * (trips["arrival_deviation_min"] ** 2)
 
 	# Total sum of weighted squared differences
 	trips["sum_weighted_sq_diff"] = (
-			trips["sq_diff_depart"] +
-			trips["sq_diff_arrival"] +
+			trips["weighted_sq_diff_depart"] +
+			trips["weighted_sq_diff_arrival"] +
 			trips["weighted_sq_diff_duration"] +
 			trips["weighted_sq_diff_distance"]
 	)
@@ -334,8 +336,8 @@ def find_best_match_by_rmse(
 		.groupby("iteration_id")
 		.size()
 	)
-	trips["n_terms"] = 2 + (n_matched_legs_per_iteration * 2)
-	trips["n_terms"] = trips["n_terms"].fillna(2).astype(int)  # If no matched legs, just departure + arrival
+	trips["n_terms"] = 2 + trips["iteration_id"].map(n_matched_legs_per_iteration) * 2
+	trips["n_terms"] = trips["n_terms"].fillna(2).astype(int)
 
 	# Calculate RMSE
 	trips["rmse"] = np.sqrt(trips["sum_weighted_sq_diff"] / trips["n_terms"])
