@@ -16,14 +16,20 @@ def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
 	"""
 	return pd.to_datetime(series, utc=True, errors="coerce").dt.tz_convert(timezone)
 
-def get_response(url, query, variables):
-	response = requests.post(
-		url,
-		json={
-			"query": query,
-			"variables": variables
-		}
-	)
+def get_response(url, query, variables, timeout=60):
+	try:
+		response = requests.post(
+			url,
+			json={
+				"query": query,
+				"variables": variables
+			},
+			timeout=timeout
+		)
+	except Timeout as exc:
+		raise TimeoutError(f"OTP request timed out after {timeout} seconds.") from exc
+	except RequestException as exc:
+		raise ConnectionError(f"OTP request failed: {exc}") from exc
 	if response.status_code != 200:
 		raise Exception(response.text)
 	if "errors" in response.json():
@@ -62,6 +68,7 @@ def graphql_json_request(
 		search_window: str = "PT30M",
 		url: str = "http://localhost:8080/otp/gtfs/v1",
 		print_query: bool = False,
+		timeout: int = 60
 ) -> requests.Response:
 	if direct is None:
 		direct = ["WALK"]
@@ -122,7 +129,7 @@ def graphql_json_request(
 	if print_query:
 		print_for_graphiql(query, variables)
 
-	return get_response(url, query, variables)
+	return get_response(url, query, variables, timeout=timeout)
 
 
 def build_graphql_query(
@@ -229,6 +236,21 @@ def build_graphql_query(
 
 	return query
 
+def _candidate_start_bounds(otp_candidates_df: pd.DataFrame):
+	if otp_candidates_df.empty or "start_trip" not in otp_candidates_df.columns:
+		return None, None
+
+	start_times = (
+		pd.to_datetime(otp_candidates_df["start_trip"], utc=True, errors="coerce")
+		.dt.tz_convert(LOCAL_TIMEZONE)
+		.dropna()
+		.drop_duplicates()
+	)
+
+	if start_times.empty:
+		return None, None
+
+	return start_times.min(), start_times.max()
 
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         modes_json: list | None = None,
@@ -236,7 +258,9 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         via_stopids: list | None = None,
                         search_window: str = "PT30M",
 						max_itinerary_candidates = 50,
-                        otp_url: str = "http://localhost:8080/otp/gtfs/v1"):
+                        otp_url: str = "http://localhost:8080/otp/gtfs/v1",
+                        request_timeout: int = 60,
+                        print_query: bool = False):
 
 	response = graphql_json_request(
 		tu_tur_row=tu_tur_row,
@@ -248,26 +272,29 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		direct_only=False,
 		transit_only=True,
 		search_window=search_window,
-		url=otp_url
+		url=otp_url,
+		print_query=print_query,
+		timeout=request_timeout
 	)
 
 	otp_candidates_df = json_to_df(response)
 	response_data = response.json()
 
 	resp_depart_dt = tu_tur_row["depart_dt"]
+	search_delta = pd.Timedelta(search_window)
+	window_start = resp_depart_dt - search_delta
+	window_end = resp_depart_dt + search_delta
 
 	n_forward = len(response_data["data"]["planConnection"]["edges"])
 	hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
-
 	while n_forward < max_itinerary_candidates and hasNextPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
-		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) <= pd.Timedelta(search_window)).all()
-
-		if not trips_within_window:
+		_, latest_start_df = _candidate_start_bounds(otp_candidates_df)
+		if latest_start_df is None or (latest_start_df >= window_end):
 			break
 
 		endCursor = response_data["data"]["planConnection"]["pageInfo"]["endCursor"]
-
+		if not endCursor:
+			break
 		# Send forward request to OTP
 		response = graphql_json_request(
 			tu_tur_row=tu_tur_row,
@@ -280,10 +307,14 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,
-			url=otp_url
+			url=otp_url,
+			print_query=print_query,
+			timeout=request_timeout
 		)
 
 		otp_candidates_forward_df = json_to_df(response)
+		if otp_candidates_forward_df.empty:
+			break
 
 		# Add iteration_id to the forward dataframe
 		offset = otp_candidates_df["iteration_id"].max() + 1
@@ -298,13 +329,13 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 
 	while n_backward < max_itinerary_candidates and hasPreviousPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
-		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) >= -pd.Timedelta(search_window)).all()
-
-		if not trips_within_window:
+		earliest_start_df, _ = _candidate_start_bounds(otp_candidates_df)
+		if earliest_start_df is None or (earliest_start_df <= window_start):
 			break
 
 		startCursor = response_data["data"]["planConnection"]["pageInfo"]["startCursor"]
+		if not startCursor:
+			break
 
 		# Send backward request to OTP
 		response = graphql_json_request(
@@ -318,11 +349,14 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,
-			url=otp_url
+			url=otp_url,
+			print_query=print_query,
+			timeout=request_timeout
 		)
 
 		otp_candidates_backward_df = json_to_df(response)
-
+		if otp_candidates_backward_df.empty:
+			break
 		# Add iteration_id to the backward dataframe
 		offset = otp_candidates_df["iteration_id"].min() - otp_candidates_backward_df["iteration_id"].max() - 1
 		otp_candidates_backward_df["iteration_id"] = otp_candidates_backward_df["iteration_id"] + offset
