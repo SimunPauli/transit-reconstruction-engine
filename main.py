@@ -41,7 +41,7 @@ def main():
 	)
 	#Small processing of TU data
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
-	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] != 1)]
+	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024)]
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
 	print("TU data loaded")
@@ -98,10 +98,12 @@ def main():
 
 		if return_trip_summary:
 			rmse_based_match, trip_matching_summary = match_result
-			trip_matching_summaries.append(trip_matching_summary)
 		else:
 			rmse_based_match = match_result
+			trip_matching_summary = None
 		if rmse_based_match is None:
+			if return_trip_summary:
+				trip_matching_summaries.append(trip_matching_summary)
 			print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
 			continue
 
