@@ -6,6 +6,16 @@ import numpy as np
 from typing import Optional, Any
 from otp_parser import json_to_df
 
+LOCAL_TIMEZONE = "Europe/Copenhagen"
+def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
+	"""
+	Parse OTP datetime strings as absolute instants and convert them to local time.
+
+	OTP returns ISO datetime strings with offsets, e.g. '2024-06-17T05:57:24+02:00'.
+	Using utc=True guarantees timezone-aware parsing before tz_convert.
+	"""
+	return pd.to_datetime(series, utc=True, errors="coerce").dt.tz_convert(timezone)
+
 def get_response(url, query, variables):
 	response = requests.post(
 		url,
@@ -250,7 +260,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
 
 	while n_forward < max_itinerary_candidates and hasNextPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
+		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) <= pd.Timedelta(search_window)).all()
 
 		if not trips_within_window:
@@ -288,7 +298,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 
 	while n_backward < max_itinerary_candidates and hasPreviousPage:
-		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"]).dt.tz_convert("Europe/Copenhagen")
+		otp_candidates_df["start_dt"] = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
 		trips_within_window = ((otp_candidates_df["start_dt"] - resp_depart_dt) >= -pd.Timedelta(search_window)).all()
 
 		if not trips_within_window:
