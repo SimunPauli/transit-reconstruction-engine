@@ -65,7 +65,7 @@ def load_tu(data_dir,
 	tu_tur["DiaryDate"] = pd.to_numeric(tu_tur["DiaryDate"], errors="coerce")
 	tu_tur["DepartHH"] = pd.to_numeric(tu_tur["DepartHH"], errors="coerce")
 	tu_tur["DepartMM"] = pd.to_numeric(tu_tur["DepartMM"], errors="coerce")
-	tu_tur["ArrivalHH"] = pd.to_numeric(tu_tur["ArrivalHH"], errors="coerce")
+	tu_tur["ArrivalHH"] = pd.to_numeric(tu_tur["ArrivalHH"], errors="coerce") #arrivalHH goes beyond 24 if corosses midnight
 	tu_tur["ArrivalMM"] = pd.to_numeric(tu_tur["ArrivalMM"], errors="coerce")
 
 	# Depart as datetime

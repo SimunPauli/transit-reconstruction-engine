@@ -36,8 +36,8 @@ def match_tu_trip_to_otp(
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
 			"arrival_deviation_min": pd.NA,
-			"weighted_sq_diff_duration": pd.NA,
-			"weighted_sq_diff_distance": pd.NA,
+			"weighted_diff_duration": pd.NA,
+			"weighted_diff_distance": pd.NA,
 			"iteration_id": pd.NA
 		}
 
@@ -178,11 +178,11 @@ def match_tu_trip_to_otp(
 			"trip_found": 1,
 			"trip_not_found": 0,
 			"last_print_if_not_found": "",
-			"rmse": best_trip_summary["rmse"],
-			"depart_deviation_min": best_trip_summary["depart_deviation_min"],
-			"arrival_deviation_min": best_trip_summary["arrival_deviation_min"],
-			"weighted_diff_duration": np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),
-			"weighted_diff_distance": np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),
+			"rmse": round(best_trip_summary["rmse"],3),
+			"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
+			"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
+			"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
+			"weighted_diff_distance": round(np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),3),
 			"iteration_id": best_iteration
 		}
 		return best_trip_candidate, trip_summary
@@ -231,11 +231,6 @@ def find_best_match_by_rmse(
 		Weight for transit leg distance difference
 	print_deviation_details : bool
 		Whether to print top 10 matches
-
-	Returns
-	-------
-	pd.DataFrame
-		Best matching trip (all legs from single iteration_id)
 	"""
 
 	# Expected values from TU
