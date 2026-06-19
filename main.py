@@ -81,14 +81,19 @@ def main():
 				return_trip_summary=return_trip_summary,
 				request_timeout=request_timeout
 			)
-		except TimeoutError as exc:
-			print(f"Skipping TurId {tu_tur_row['TurId']}: {exc}")
-			continue
-		except ConnectionError as exc:
-			print(f"Skipping TurId {tu_tur_row['TurId']}: {exc}")
-			continue
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
+			if return_trip_summary:
+				trip_matching_summaries.append({
+					"TurId": tu_tur_row['TurId'],
+					"SessionId": tu_tur_row.get("SessionId"),
+					"trip_found": 0,
+					"trip_not_found": 1,
+					"last_print_if_not_found": str(exc),
+					"rmse": pd.NA, "depart_deviation_min": pd.NA,
+					"arrival_deviation_min": pd.NA, "weighted_diff_duration": pd.NA,
+					"weighted_diff_distance": pd.NA, "iteration_id": pd.NA
+				})
 			continue
 
 		if return_trip_summary:
@@ -105,7 +110,8 @@ def main():
 		print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
 
 		rmse_based_matches.append(rmse_based_match)
-		trip_matching_summaries.append(trip_matching_summary)
+		if return_trip_summary:
+			trip_matching_summaries.append(trip_matching_summary)
 
 	if not rmse_based_matches:
 		print("No rmse-based matches found. Nothing to save.")
@@ -115,8 +121,9 @@ def main():
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
 	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
-	trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
-	trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
+	if return_trip_summary:
+		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
+		trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
