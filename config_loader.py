@@ -6,6 +6,7 @@ def load_config(config_path="config.json"):
 		config = json.load(file)
 
 	output_dir = Path(config["paths"]["output_dir"]).expanduser()
+	output_dir.mkdir(parents=True, exist_ok=True)
 
 	config["paths"]["output_dir"] = output_dir
 	config["paths"]["log_file"] = output_dir / config["paths"]["log_file"]
