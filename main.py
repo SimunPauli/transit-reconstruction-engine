@@ -21,9 +21,11 @@ def main():
 	}
 
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
-	otp_url = config["otp_url"]
-	search_window = config["search_window"]
-	max_itinerary_candidates = config["max_itinerary_candidates"]
+	config_request = config.get("request")
+	otp_url = config_request["otp_url"]
+	search_window = config_request["search_window"]
+	max_itinerary_candidates = config_request["max_itinerary_candidates"]
+	request_timeout = config_request["request_timeout"]
 	data_dir = config["paths"]["data_dir"]
 
 	print(f"Search window: {search_window}")
@@ -39,7 +41,7 @@ def main():
 	)
 	#Small processing of TU data
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
-	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] == 6)]
+	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024) & (tu_tur["DiaryMonth"] != 1)]
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
 	print("TU data loaded")
@@ -66,17 +68,28 @@ def main():
 	trip_matching_summaries = []
 
 	for i, tu_tur_row in tu_tur.iterrows():
-		match_result = match_tu_trip_to_otp(
-			tu_tur_row=tu_tur_row,
-			tu_deltur=tu_deltur,
-			mode_map=mode_map,
-			otp_mode_routes_cache=otp_mode_routes_cache,
-			otp_url=otp_url,
-			search_window=search_window,
-			max_itinerary_candidates=max_itinerary_candidates,
-			tu_gtfs_station_df=tu_gtfs_station_df,
-			return_trip_summary=return_trip_summary
-		)
+		try:
+			match_result = match_tu_trip_to_otp(
+				tu_tur_row=tu_tur_row,
+				tu_deltur=tu_deltur,
+				mode_map=mode_map,
+				otp_mode_routes_cache=otp_mode_routes_cache,
+				otp_url=otp_url,
+				search_window=search_window,
+				max_itinerary_candidates=max_itinerary_candidates,
+				tu_gtfs_station_df=tu_gtfs_station_df,
+				return_trip_summary=return_trip_summary,
+				request_timeout=request_timeout
+			)
+		except TimeoutError as exc:
+			print(f"Skipping TurId {tu_tur_row['TurId']}: {exc}")
+			continue
+		except ConnectionError as exc:
+			print(f"Skipping TurId {tu_tur_row['TurId']}: {exc}")
+			continue
+		except Exception as exc:
+			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
+			continue
 
 		if return_trip_summary:
 			rmse_based_match, trip_matching_summary = match_result

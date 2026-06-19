@@ -21,7 +21,8 @@ def match_tu_trip_to_otp(
 	max_itinerary_candidates,
 	tu_gtfs_station_df,
 	print_deviation_details= True,
-	return_trip_summary= False
+	return_trip_summary= False,
+	request_timeout=60
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -89,7 +90,10 @@ def match_tu_trip_to_otp(
 			via_stopids=via_stopids,
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url)
+			otp_url=otp_url,
+			print_query=False,
+			request_timeout=request_timeout
+		)
 	elif is_bus_s_train:
 		otp_candidates_df = load_all_candidates(
 			tu_tur_row=tu_tur_row,
@@ -98,7 +102,10 @@ def match_tu_trip_to_otp(
 			via_stopids=via_stopids,
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url)
+			otp_url=otp_url,
+			print_query=False,
+			request_timeout=request_timeout
+		)
 	elif is_rail_tram_subway_ferry:
 		otp_candidates_df = load_all_candidates(
 			tu_tur_row=tu_tur_row,
@@ -107,9 +114,12 @@ def match_tu_trip_to_otp(
 			via_stopids=via_stopids,
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url)
+			otp_url=otp_url,
+			print_query=False,
+			request_timeout=request_timeout
+		)
 	else:
-		return _return_not_found("No valid transit modes found. TurId: ", i_TurId, ". Something went wrong.")
+		return _return_not_found(f"No valid transit modes found. TurId: {i_TurId}. Something went wrong.")
 	if otp_candidates_df.empty:
 		return _return_not_found(f"No OTP trips found for TurId: {i_TurId}")
 
