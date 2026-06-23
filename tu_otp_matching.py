@@ -144,7 +144,7 @@ def match_tu_trip_to_otp(
 		tur_id=i_TurId
 	)
 
-	if otp_candidates_df is None or otp_candidates_df.empty:
+	if otp_candidates_df.empty:
 		return _return_not_found(msg_filter)
 
 	# calculate waiting time

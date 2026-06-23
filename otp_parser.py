@@ -75,6 +75,7 @@ def json_to_df(response):
 		"from_gtfs_id",
 		"to_gtfs_id",
 
+		"trip_short_name",
 		"generalized_cost",
 		"leg_geometry",
 		"system_notice_tag",
