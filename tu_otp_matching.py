@@ -74,8 +74,11 @@ def match_tu_trip_to_otp(
 		return _return_not_found(f"Invalid route name: {route_names}")
 
 	# Get the gtfs stop_ids for stations respondent travel through
-	via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
-	print(f"via_stopids: {via_stopids}")
+	if not tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34])].empty:
+		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
+		print(f"via_stopids: {via_stopids}")
+	else:
+		via_stopids = None
 
 	# 2. Fetch all candidates (handles pagination & concat internally)
 	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)

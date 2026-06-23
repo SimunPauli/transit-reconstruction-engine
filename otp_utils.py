@@ -72,8 +72,10 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 	return route_names, route_names_ext, modes_json, modes_list
 
 def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
+	if tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34])].empty:
+		return None
 	stops_row = []
-	for _, row in tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34, 37])].iterrows():
+	for _, row in tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34])].iterrows(): #TRAM is only added in data-processing. And my stationlist does not include these TRAM stations.
 		stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["FromStation"]})
 		stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["ToStation"]})
 	if not stops_row:
