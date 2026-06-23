@@ -74,7 +74,7 @@ def match_tu_trip_to_otp(
 		return _return_not_found(f"Invalid route name: {route_names}")
 
 	# Get the gtfs stop_ids for stations respondent travel through
-	if not tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34])].empty:
+	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
 		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
 		print(f"via_stopids: {via_stopids}")
 	else:
@@ -411,8 +411,8 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 	def _leg_matches(otp_leg, tu_leg):
 		tu_mode = tu_leg.get("otp_mode")
 
-		if pd.isna(tu_mode):
-			tu_mode = "WALK"  #TODO: All non transit modes set to WALK for now!
+		if pd.isna(tu_mode): #This takes advantage of the fact that only transit legs have otp_mode values.
+			tu_mode = "WALK"  #TODO: All non-transit modes set to WALK for now!
 
 		if otp_leg["mode"] != tu_mode:
 			return False
@@ -421,9 +421,8 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 		if otp_leg["mode"] in {"BUS", "S_TRAIN"}:
 			if not _route_matches(tu_leg.get("Route"), otp_leg.get("route_short_name")):
 				return False
-
 		# For transit with stations, check station match using GTFS mapping
-		if otp_leg["mode"] in {"SUBWAY", "RAIL", "TRAM", "FERRY", "S_TRAIN"}: #TODO: check ferry has station
+		elif otp_leg["mode"] in {"SUBWAY", "RAIL", "S_TRAIN"}:
 			if not _station_matches(
 				tu_leg.get("FromStation"),
 				otp_leg.get("from_gtfs_id"),
@@ -437,6 +436,7 @@ def add_tu_delturnr_to_otp_candidates(otp_candidates_df, tu_deltur_sub, tu_gtfs_
 			):
 				return False
 
+			#TRAM and FERRY only have stops and route_name when it has been added manually during data-processing
 		return True
 
 	def _align_iteration(iteration_df):
