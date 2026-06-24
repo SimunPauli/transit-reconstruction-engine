@@ -158,7 +158,7 @@ def match_tu_trip_to_otp(
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
 	#find root sum squared of weighted differences
-	trips = find_best_match_by_score(
+	trips = find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
 		otp_candidates_df
@@ -166,8 +166,8 @@ def match_tu_trip_to_otp(
 	if trips is None:
 		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
 	# Find the best matching trip (minimum RMSE)
-	best_trip_summary = trips.loc[trips["score"].idxmin()].copy()
-	best_iteration = trips.loc[trips["score"].idxmin(), "iteration_id"]
+	best_trip_summary = trips.loc[trips["rmse"].idxmin()].copy()
+	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
 
 	if print_deviation_details:
 		print(f"Best matching trip: iteration_id = {best_iteration}")
@@ -189,7 +189,7 @@ def match_tu_trip_to_otp(
 			"trip_found": 1,
 			"trip_not_found": 0,
 			"last_print_if_not_found": "",
-			"score": round(best_trip_summary["score"],3),
+			"rmse": round(best_trip_summary["rmse"],3),
 			"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
 			"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
 			"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
@@ -200,12 +200,12 @@ def match_tu_trip_to_otp(
 
 	return best_trip_candidate
 
-def find_best_match_by_score(
+def find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
 		otp_candidates_df):
 	"""
-	Find the best matching OTP trip using weighted RMSE.
+	Find the best matching OTP trip using weighted sum of squares (we call it rmse).
 
 	Calculates weighted squared differences for:
 	- Departure time (minutes)
@@ -214,7 +214,6 @@ def find_best_match_by_score(
 	- Distance per leg (km) - split by street_mode vs transit
 
 	Parameters "w_" are weights for each of the metrics.
-	RMSE denominator is always 4: depart, arrival, sum_duration, sum_distance.
 	"""
 	config = get_config()
 	config_weights = config["squared_error_weights"]
@@ -288,11 +287,11 @@ def find_best_match_by_score(
 		trips["weighted_sq_diff_distance"]
 	)
 
-	# square for interprability. Doesn't affect the ranking across trips.
-	trips["wss"] = np.sqrt(trips["sum_weighted_sq_diff"])
+	# root for interpretability. Doesn't affect the ranking across trips.
+	trips["rmse"] = np.sqrt(trips["sum_weighted_sq_diff"])
 
-	if trips.empty or trips["wss"].isna().all():
-		print("No trips found with valid Weighted Sum of Squares (wss) values.")
+	if trips.empty or trips["rmse"].isna().all():
+		print("No trips found with valid Weighted Sum of Squares (rmse) values.")
 		return None
 
 	return trips
