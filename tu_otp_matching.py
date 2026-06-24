@@ -7,6 +7,7 @@ from otp_utils import (
 	get_via_stops,
 	filter_candidates_by_requirements
 )
+from config import get_config
 
 
 
@@ -159,13 +160,7 @@ def match_tu_trip_to_otp(
 	trips = find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
-		otp_candidates_df,
-		w_departure_min=1.0,
-		w_arrival_min=1.0,
-		w_walk_min=1.0,
-		w_transit_min=1.0,
-		w_walk_km=1.0,
-		w_transit_km=1.0
+		otp_candidates_df
 	)
 	if trips is None:
 		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
@@ -207,46 +202,27 @@ def match_tu_trip_to_otp(
 def find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
-		otp_candidates_df,
-		w_departure_min=1.0,
-		w_arrival_min=1.0,
-		w_walk_min=1.0,
-		w_transit_min=1.0,
-		w_walk_km=1.0,
-		w_transit_km=1.0,
-		print_deviation_details=False):
+		otp_candidates_df):
 	"""
 	Find the best matching OTP trip using weighted RMSE.
 
 	Calculates squared differences for:
 	- Departure time (minutes)
 	- Arrival time (minutes)
-	- Duration per leg (minutes) - split by WALK vs transit
-	- Distance per leg (km) - split by WALK vs transit
+	- Duration per leg (minutes) - split by street_mode vs transit
+	- Distance per leg (km) - split by street_mode vs transit
 
-	Parameters
-	----------
-	tu_tur_row : pd.Series
-		Row from tu_tur with trip-level info (depart_dt, arrival_dt, etc.)
-	tu_deltur_sub : pd.DataFrame
-		Subset of tu_deltur for this TurId, with Delturnr, StageMode, StageLength, StageDurationMin
-	otp_candidates_df : pd.DataFrame
-		OTP candidates with tu_Delturnr column already added
-	w_departure_min : float
-		Weight for departure time difference
-	w_arrival_min : float
-		Weight for arrival time difference
-	w_walk_min : float
-		Weight for WALK leg duration difference
-	w_transit_min : float
-		Weight for transit leg duration difference
-	w_walk_km : float
-		Weight for WALK leg distance difference
-	w_transit_km : float
-		Weight for transit leg distance difference
-	print_deviation_details : bool
-		Whether to print top 10 matches
+	Parameters "w_" are weights for each of the metrics.
 	"""
+	#Access config data
+	config = get_config()
+	config_weights = config["rmse_weights"]
+	w_departure_min = config_weights["w_departure_min"],
+	w_arrival_min = config_weights["w_arrival_min"],
+	w_street_mode_min = config_weights["w_street_mode_min"]
+	w_transit_min = config_weights["w_transit_min"]
+	w_street_mode_km = config_weights["w_street_mode_km"]
+	w_transit_km = config_weights["w_transit_km"]
 
 	# Expected values from TU
 	expected_depart = tu_tur_row["depart_dt"]
@@ -286,18 +262,21 @@ def find_best_match_by_rmse(
 			(otp_candidates_df.loc[matched_mask, "distance_km"] - otp_candidates_df.loc[matched_mask, "tu_distance_km"]) ** 2
 	)
 
-	# Apply weights based on mode (WALK vs transit)
+	# Apply weights based on mode (street_mode vs transit)
 	otp_candidates_df["weighted_sq_diff_duration"] = 0.0
 	otp_candidates_df["weighted_sq_diff_distance"] = 0.0
 
-	walk_mask = (otp_candidates_df["mode"] == "WALK") & matched_mask #TODO: How about non-transit non-walk? Car, bycycle...
-	transit_mask = (otp_candidates_df["mode"] != "WALK") & matched_mask
+	street_modes = ["WALK", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
+	                "CAR_HAILING", "CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE",
+	                "SCOOTER_RENTAL"]
+	street_mode_mask = (otp_candidates_df["mode"].isin(street_modes)) & matched_mask
+	transit_mask = (otp_candidates_df["mode"].isin(street_modes) == False) & matched_mask
 
-	otp_candidates_df.loc[walk_mask, "weighted_sq_diff_duration"] = (
-			w_walk_min * otp_candidates_df.loc[walk_mask, "sq_diff_duration_min"]
+	otp_candidates_df.loc[street_mode_mask, "weighted_sq_diff_duration"] = (
+			w_street_mode_min * otp_candidates_df.loc[street_mode_mask, "sq_diff_duration_min"]
 	)
-	otp_candidates_df.loc[walk_mask, "weighted_sq_diff_distance"] = (
-			w_walk_km * otp_candidates_df.loc[walk_mask, "sq_diff_distance_km"]
+	otp_candidates_df.loc[street_mode_mask, "weighted_sq_diff_distance"] = (
+			w_street_mode_km * otp_candidates_df.loc[street_mode_mask, "sq_diff_distance_km"]
 	)
 
 	otp_candidates_df.loc[transit_mask, "weighted_sq_diff_duration"] = (
