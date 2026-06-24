@@ -252,6 +252,58 @@ def _candidate_start_bounds(otp_candidates_df: pd.DataFrame):
 
 	return start_times.min(), start_times.max()
 
+
+def _deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
+	"""
+	Remove duplicate itineraries caused by pagination overlap.
+	Two itineraries are considered the same if they share the same start_trip and end_trip.
+
+	When duplicates exist, keeps the iteration_id with:
+	1. Lowest absolute value
+	2. In case of tie, the non-negative one (e.g., keep 0 over -0, keep 1 over -1)
+
+	Then reassigns iteration_id to be contiguous (0, 1, 2, ...).
+	"""
+	if otp_candidates_df.empty:
+		return otp_candidates_df
+
+	# Get the first occurrence of each trip (by start_trip and end_trip)
+	trip_keys = (
+		otp_candidates_df
+		.groupby("iteration_id")[["start_trip", "end_trip"]]
+		.first()
+		.reset_index()
+	)
+
+	# Group by (start_trip, end_trip) to find duplicates
+	trip_key_to_ids = {}
+	for _, row in trip_keys.iterrows():
+		key = (row["start_trip"], row["end_trip"])
+		if key not in trip_key_to_ids:
+			trip_key_to_ids[key] = []
+		trip_key_to_ids[key].append(row["iteration_id"])
+
+	# For each duplicate group, select the best iteration_id
+	keep_ids = []
+	for iteration_ids in trip_key_to_ids.values():
+		if len(iteration_ids) == 1:
+			# No duplicate
+			keep_ids.append(iteration_ids[0])
+		else:
+			# Multiple duplicates: pick by lowest |id|, then prefer >= 0
+			best_id = min(iteration_ids, key=lambda x: (abs(x), x < 0))
+			keep_ids.append(best_id)
+
+	# Filter to keep only selected iteration_ids
+	deduped = otp_candidates_df[otp_candidates_df["iteration_id"].isin(keep_ids)].copy()
+
+	# Reassign iteration_id to be contiguous based on sorted order
+	id_map = {old_id: new_id for new_id, old_id in enumerate(sorted(keep_ids))}
+	deduped["iteration_id"] = deduped["iteration_id"].map(id_map)
+
+	return deduped.reset_index(drop=True)
+
+
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         modes_json: list | None = None,
                         route_short_name: list | None = None,
@@ -261,7 +313,17 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1",
                         request_timeout: int = 60,
                         print_query: bool = False):
+	"""
+	Fetch all OTP itinerary candidates within the search_window using bidirectional pagination.
 
+	Performs initial query, then iteratively fetches forward and backward itineraries until
+	reaching max_itinerary_candidates or search window boundaries. Deduplicates results before
+	returning.
+
+	Returns:
+		DataFrame with columns: iteration_id, leg_id, start_trip, end_trip, mode,
+		route_short_name, distance_km, duration_min, and other leg attributes.
+	"""
 	response = graphql_json_request(
 		tu_tur_row=tu_tur_row,
 		modes_json=modes_json,
@@ -365,6 +427,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		response_data = response.json()
 		hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 		n_backward += len(response_data["data"]["planConnection"]["edges"])
+
+	otp_candidates_df = _deduplicate_itineraries(otp_candidates_df)
 
 	return otp_candidates_df
 
