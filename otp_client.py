@@ -70,8 +70,6 @@ def graphql_json_request(
 		print_query: bool = False,
 		timeout: int = 60
 ) -> requests.Response:
-	if direct is None:
-		direct = ["WALK"]
 	if tu_tur_row is None:
 		raise ValueError("tu_tur_row must be specified")
 
@@ -96,10 +94,13 @@ def graphql_json_request(
 		"destination": {
 			"location": {"coordinate": {"latitude": tu_tur_row["tiladrlat"], "longitude": tu_tur_row["tiladrlon"]}}},
 		"dateTime": {"earliestDeparture": tu_tur_row["depart_dt_str"]},
-		"modes": {"directOnly": direct_only, "transitOnly": transit_only, "direct": direct},
+		"modes": {"directOnly": direct_only, "transitOnly": transit_only},
 		"itineraryFilter": {"itineraryFilterDebugProfile": "LIST_ALL"},
 		"preferences": {"transit": {"alight": {"slack": "PT0M"}}},
 	}
+
+	if direct is not None:
+		variables["modes"]["direct"] = direct
 
 	# Add optional variables only if they're needed
 	if has_pagination:
