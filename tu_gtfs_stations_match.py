@@ -1,5 +1,5 @@
 import pandas as pd
-import geopandas as gpd
+import utm
 from otp_client import get_stops_by_bbox_query
 import re
 from collections import Counter
@@ -23,14 +23,15 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
 		tu_stations = tu_stations[mask].copy()
 
 	# --- Add Lat/Lon (destination) ---
-	gdf_dest = gpd.GeoDataFrame(
-		tu_stations,
-		geometry=gpd.points_from_xy(tu_stations["e"], tu_stations["n"]),
-		crs="EPSG:32632"
+	lat_lon = [
+		utm.to_latlon(e, n, zone_number=32, northern=True)
+		for e, n in zip(tu_stations["e"], tu_stations["n"])
+	]
+
+	tu_stations[["lat", "lon"]] = pd.DataFrame(
+		lat_lon,
+		index=tu_stations.index,
 	)
-	gdf_dest = gdf_dest.to_crs("EPSG:4326")
-	tu_stations["lon"] = gdf_dest.geometry.x
-	tu_stations["lat"] = gdf_dest.geometry.y
 
 	# Collect results
 	matches_list = []
