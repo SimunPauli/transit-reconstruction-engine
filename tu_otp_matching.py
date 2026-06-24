@@ -157,7 +157,8 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
-	trips = find_best_match_by_rmse(
+	#find root sum squared of weighted differences
+	trips = find_best_match_by_score(
 		tu_tur_row,
 		tu_deltur_sub,
 		otp_candidates_df
@@ -165,8 +166,8 @@ def match_tu_trip_to_otp(
 	if trips is None:
 		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
 	# Find the best matching trip (minimum RMSE)
-	best_trip_summary = trips.loc[trips["rmse"].idxmin()].copy()
-	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
+	best_trip_summary = trips.loc[trips["score"].idxmin()].copy()
+	best_iteration = trips.loc[trips["score"].idxmin(), "iteration_id"]
 
 	if print_deviation_details:
 		print(f"Best matching trip: iteration_id = {best_iteration}")
@@ -188,7 +189,7 @@ def match_tu_trip_to_otp(
 			"trip_found": 1,
 			"trip_not_found": 0,
 			"last_print_if_not_found": "",
-			"rmse": round(best_trip_summary["rmse"],3),
+			"score": round(best_trip_summary["score"],3),
 			"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
 			"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
 			"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
@@ -199,133 +200,99 @@ def match_tu_trip_to_otp(
 
 	return best_trip_candidate
 
-def find_best_match_by_rmse(
+def find_best_match_by_score(
 		tu_tur_row,
 		tu_deltur_sub,
 		otp_candidates_df):
 	"""
 	Find the best matching OTP trip using weighted RMSE.
 
-	Calculates squared differences for:
+	Calculates weighted squared differences for:
 	- Departure time (minutes)
 	- Arrival time (minutes)
 	- Duration per leg (minutes) - split by street_mode vs transit
 	- Distance per leg (km) - split by street_mode vs transit
 
 	Parameters "w_" are weights for each of the metrics.
+	RMSE denominator is always 4: depart, arrival, sum_duration, sum_distance.
 	"""
-	#Access config data
 	config = get_config()
-	config_weights = config["rmse_weights"]
-	w_departure_min = config_weights["w_departure_min"],
-	w_arrival_min = config_weights["w_arrival_min"],
+	config_weights = config["squared_error_weights"]
+	w_departure_min   = config_weights["w_departure_min"]
+	w_arrival_min     = config_weights["w_arrival_min"]
 	w_street_mode_min = config_weights["w_street_mode_min"]
-	w_transit_min = config_weights["w_transit_min"]
-	w_street_mode_km = config_weights["w_street_mode_km"]
-	w_transit_km = config_weights["w_transit_km"]
+	w_transit_min     = config_weights["w_transit_min"]
+	w_street_mode_km  = config_weights["w_street_mode_km"]
+	w_transit_km      = config_weights["w_transit_km"]
 
-	# Expected values from TU
-	expected_depart = tu_tur_row["depart_dt"]
+	expected_depart  = tu_tur_row["depart_dt"]
 	expected_arrival = tu_tur_row["arrival_dt"]
 
-	# Convert times to datetime
-	otp_candidates_df["start_trip"] = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
-	otp_candidates_df["end_trip"] = pd.to_datetime(otp_candidates_df["end_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+	legs = otp_candidates_df.copy()
+
+	# Convert trip-level times to local datetime
+	legs["start_trip"] = pd.to_datetime(legs["start_trip"], utc=True).dt.tz_convert("Europe/Copenhagen")
+	legs["end_trip"]   = pd.to_datetime(legs["end_trip"],   utc=True).dt.tz_convert("Europe/Copenhagen")
 
 	# Map TU leg attributes by Delturnr
-	tu_leg_duration = (
-		tu_deltur_sub
-		.set_index("Delturnr")["StageDurationMin"]
-		.astype(float)
-	)
-	tu_leg_dist = (
-		tu_deltur_sub
-		.set_index("Delturnr")["StageLength"]
-		.astype(float)
-	)
+	tu_leg_duration = tu_deltur_sub.set_index("Delturnr")["StageDurationMin"].astype(float)
+	tu_leg_dist     = tu_deltur_sub.set_index("Delturnr")["StageLength"].astype(float)
 
-	otp_candidates_df["tu_duration_min"] = otp_candidates_df["tu_Delturnr"].map(tu_leg_duration)
-	otp_candidates_df["tu_distance_km"] = otp_candidates_df["tu_Delturnr"].map(tu_leg_dist)
+	legs["tu_duration_min"] = legs["tu_Delturnr"].map(tu_leg_duration)
+	legs["tu_distance_km"]  = legs["tu_Delturnr"].map(tu_leg_dist)
 
-	# Calculate per-leg squared differences
-	# For legs with no TU match (tu_Delturnr is NA), the difference is 0 (don't penalize extra OTP legs)
-	otp_candidates_df["sq_diff_duration_min"] = 0.0
-	otp_candidates_df["sq_diff_distance_km"] = 0.0
+	street_modes = {
+		"WALK", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
+		"CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE", "SCOOTER_RENTAL"
+	}
 
-	# Only calculate differences for matched legs
-	matched_mask = otp_candidates_df["tu_Delturnr"].notna()
+	matched_mask     = legs["tu_Delturnr"].notna()
+	street_mode_mask = legs["mode"].isin(street_modes) & matched_mask
+	transit_mask     = ~legs["mode"].isin(street_modes) & matched_mask
 
-	otp_candidates_df.loc[matched_mask, "sq_diff_duration_min"] = (
-			(otp_candidates_df.loc[matched_mask, "duration_min"] - otp_candidates_df.loc[matched_mask, "tu_duration_min"]) ** 2
-	)
-	otp_candidates_df.loc[matched_mask, "sq_diff_distance_km"] = (
-			(otp_candidates_df.loc[matched_mask, "distance_km"] - otp_candidates_df.loc[matched_mask, "tu_distance_km"]) ** 2
-	)
+	# Weighted squared differences — 0 for unmatched legs (no penalty for extra OTP legs)
+	legs["weighted_sq_diff_duration"] = 0.0
+	legs["weighted_sq_diff_distance"] = 0.0
 
-	# Apply weights based on mode (street_mode vs transit)
-	otp_candidates_df["weighted_sq_diff_duration"] = 0.0
-	otp_candidates_df["weighted_sq_diff_distance"] = 0.0
-
-	street_modes = ["WALK", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
-	                "CAR_HAILING", "CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE",
-	                "SCOOTER_RENTAL"]
-	street_mode_mask = (otp_candidates_df["mode"].isin(street_modes)) & matched_mask
-	transit_mask = (otp_candidates_df["mode"].isin(street_modes) == False) & matched_mask
-
-	otp_candidates_df.loc[street_mode_mask, "weighted_sq_diff_duration"] = (
-			w_street_mode_min * otp_candidates_df.loc[street_mode_mask, "sq_diff_duration_min"]
-	)
-	otp_candidates_df.loc[street_mode_mask, "weighted_sq_diff_distance"] = (
-			w_street_mode_km * otp_candidates_df.loc[street_mode_mask, "sq_diff_distance_km"]
-	)
-
-	otp_candidates_df.loc[transit_mask, "weighted_sq_diff_duration"] = (
-			w_transit_min * otp_candidates_df.loc[transit_mask, "sq_diff_duration_min"]
-	)
-	otp_candidates_df.loc[transit_mask, "weighted_sq_diff_distance"] = (
-			w_transit_km * otp_candidates_df.loc[transit_mask, "sq_diff_distance_km"]
-	)
+	for mask, w_min, w_km in [
+		(street_mode_mask, w_street_mode_min, w_street_mode_km),
+		(transit_mask,     w_transit_min,     w_transit_km),
+	]:
+		legs.loc[mask, "weighted_sq_diff_duration"] = (
+			w_min * ((legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"]) ** 2)
+		)
+		legs.loc[mask, "weighted_sq_diff_distance"] = (
+			w_km * ((legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"]) ** 2)
+		)
 
 	# Aggregate per iteration
-	trips = otp_candidates_df.groupby("iteration_id").agg({
-		"start_trip": "first",
-		"end_trip": "first",
-		"weighted_sq_diff_duration": "sum",
-		"weighted_sq_diff_distance": "sum",
-		"system_notice_tag": "first"
-	}).reset_index()
+	trips = legs.groupby("iteration_id").agg(
+		start_trip = ("start_trip", "first"),
+		end_trip = ("end_trip", "first"),
+		weighted_sq_diff_duration = ("weighted_sq_diff_duration", "sum"),
+		weighted_sq_diff_distance = ("weighted_sq_diff_distance", "sum"),
+		system_notice_tag = ("system_notice_tag", "first"),
+	).reset_index()
 
-	# Calculate trip-level time deviations (minutes)
-	trips["depart_deviation_min"] = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
-	trips["arrival_deviation_min"] = (trips["end_trip"] - expected_arrival).dt.total_seconds() / 60
+	# Trip-level time deviations
+	trips["depart_deviation_min"]  = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
+	trips["arrival_deviation_min"] = (trips["end_trip"]   - expected_arrival).dt.total_seconds() / 60
 
-	trips["weighted_sq_diff_depart"] = w_departure_min * (trips["depart_deviation_min"] ** 2)
-	trips["weighted_sq_diff_arrival"] = w_arrival_min * (trips["arrival_deviation_min"] ** 2)
+	trips["weighted_sq_diff_depart"]  = w_departure_min * (trips["depart_deviation_min"] ** 2)
+	trips["weighted_sq_diff_arrival"] = w_arrival_min   * (trips["arrival_deviation_min"] ** 2)
 
-	# Total sum of weighted squared differences
 	trips["sum_weighted_sq_diff"] = (
-			trips["weighted_sq_diff_depart"] +
-			trips["weighted_sq_diff_arrival"] +
-			trips["weighted_sq_diff_duration"] +
-			trips["weighted_sq_diff_distance"]
+		trips["weighted_sq_diff_depart"]    +
+		trips["weighted_sq_diff_arrival"]   +
+		trips["weighted_sq_diff_duration"]  +
+		trips["weighted_sq_diff_distance"]
 	)
 
-	# Calculate number of terms for RMSE (denominator)
-	# Always have departure + arrival = 2 terms
-	# Plus number of matched legs × 2 (duration + distance per leg)
-	n_matched_legs_per_iteration = (
-		otp_candidates_df[otp_candidates_df["tu_Delturnr"].notna()]
-		.groupby("iteration_id")
-		.size()
-	)
-	trips["n_terms"] = 2 + trips["iteration_id"].map(n_matched_legs_per_iteration) * 2
-	trips["n_terms"] = trips["n_terms"].fillna(2).astype(int)
+	# square for interprability. Doesn't affect the ranking across trips.
+	trips["wss"] = np.sqrt(trips["sum_weighted_sq_diff"])
 
-	# Calculate RMSE
-	trips["rmse"] = np.sqrt(trips["sum_weighted_sq_diff"] / trips["n_terms"])
-
-	if trips.empty or trips["rmse"].isna().all():
-		print("No trips found with valid RMSE.")
+	if trips.empty or trips["wss"].isna().all():
+		print("No trips found with valid Weighted Sum of Squares (wss) values.")
 		return None
 
 	return trips
