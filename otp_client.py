@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, Any
 from otp_parser import json_to_df
+from test_main import tu_deltur_sub
 
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
@@ -54,10 +55,10 @@ def print_for_graphiql(query, variables):
 
 
 def graphql_json_request(
-		tu_tur_row: Optional[pd.Series] = None,
+		tu_tur_row: pd.Series | None = None,
+		tu_deltur_sub: pd.Series | None = None,
 		modes_json: Optional[list] = None,
 		route_short_name_json: Optional[list] = None,
-		direct: Optional[list] = None,
 		via_stopids: Optional[list] = None,
 		before: Optional[str] = None,
 		last: Optional[int] = None,
@@ -68,11 +69,13 @@ def graphql_json_request(
 		search_window: str = "PT30M",
 		url: str = "http://localhost:8080/otp/gtfs/v1",
 		print_query: bool = False,
-		timeout: int = 60
+		timeout: int = 60,
+		direct: Optional[list] = None,
 ) -> requests.Response:
 	if tu_tur_row is None:
-		raise ValueError("tu_tur_row must be specified")
-
+		raise ValueError("tu_tur_row must be specified to graphql_json_request")
+	if tu_deltur_sub is None:
+		raise ValueError("tu_deltur_sub must be specified to graphql_json_request")
 	# Determine which optional features are being used
 	has_pagination = any(x is not None for x in [before, last, after, first])
 	has_search_window = search_window is not None
@@ -99,7 +102,7 @@ def graphql_json_request(
 		"preferences": {"transit": {"alight": {"slack": "PT0M"}}},
 	}
 
-	if direct is not None:
+	if tu_deltur_sub is not None:
 		variables["modes"]["direct"] = direct
 
 	# Add optional variables only if they're needed
@@ -130,6 +133,8 @@ def graphql_json_request(
 	if print_query:
 		print_for_graphiql(query, variables)
 
+	if direct is not None:
+		variables["modes"]["direct"] = direct
 	return get_response(url, query, variables, timeout=timeout)
 
 
@@ -364,7 +369,6 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			modes_json=modes_json,
 			route_short_name_json=route_short_name,
 			via_stopids=via_stopids,
-			direct=["WALK"],
 			after=endCursor,
 			first=max_itinerary_candidates - n_forward,
 			direct_only=False,
@@ -406,7 +410,6 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			modes_json=modes_json,
 			route_short_name_json=route_short_name,
 			via_stopids=via_stopids,
-			direct=["WALK"],
 			before=startCursor,
 			last=max_itinerary_candidates - n_backward,
 			direct_only=False,
