@@ -297,9 +297,9 @@ def _deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
 	# Filter to keep only selected iteration_ids
 	deduped = otp_candidates_df[otp_candidates_df["iteration_id"].isin(keep_ids)].copy()
 
-	# Reassign iteration_id to be contiguous based on sorted order
-	id_map = {old_id: new_id for new_id, old_id in enumerate(sorted(keep_ids))}
-	deduped["iteration_id"] = deduped["iteration_id"].map(id_map)
+	# # Reassign iteration_id to be contiguous based on sorted order
+	# id_map = {old_id: new_id for new_id, old_id in enumerate(sorted(keep_ids))}
+	# deduped["iteration_id"] = deduped["iteration_id"].map(id_map)
 
 	return deduped.reset_index(drop=True)
 
