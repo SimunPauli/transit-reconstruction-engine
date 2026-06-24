@@ -18,7 +18,7 @@ def load_tu(data_dir,
 	tu_stations["id"] = tu_stations.index
 
 	# --- Sort tu_session ---
-	tu_session = tu_session.sort_values(by="DiaryDate")
+	tu_session = tu_session.sort_values(by="SessionId")
 
 	# --- Join tu_tur + tu_deltur ---
 	tu_deltur = (
@@ -77,7 +77,7 @@ def load_tu(data_dir,
 	)
 
 	tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
-
+	tu_tur.sort_values(by="TurId")
 	return [tu_session, tu_tur, tu_deltur, tu_stations]
 
 def _build_local_datetime(df, date_col, hour_col, minute_col, timezone="Europe/Copenhagen"):
