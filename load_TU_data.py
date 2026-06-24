@@ -1,5 +1,5 @@
 import pandas as pd
-import geopandas as gpd
+import utm
 from pathlib import Path
 
 def load_tu(data_dir,
@@ -33,26 +33,16 @@ def load_tu(data_dir,
 	)
 
 	# --- Add Lat/Lon (destination) ---
-	gdf_dest = gpd.GeoDataFrame(
-		tu_tur,
-		geometry=gpd.points_from_xy(tu_tur["tiladre"], tu_tur["tiladrn"]),
-		crs="EPSG:32632"
+	tu_tur[["tiladrlat", "tiladrlon"]] = tu_tur.apply(
+		lambda row: pd.Series(utm.to_latlon(row["tiladre"], row["tiladrn"], zone_number=32, zone_letter='N')),
+		axis=1
 	)
-	gdf_dest = gdf_dest.to_crs("EPSG:4326")
-
-	tu_tur["tiladrlon"] = gdf_dest.geometry.x
-	tu_tur["tiladrlat"] = gdf_dest.geometry.y
 
 	# --- Add Lat/Lon (origin) ---
-	gdf_orig = gpd.GeoDataFrame(
-		tu_tur,
-		geometry=gpd.points_from_xy(tu_tur["orig_e"], tu_tur["orig_n"]),
-		crs="EPSG:32632"
+	tu_tur[["orig_lat", "orig_lon"]] = tu_tur.apply(
+		lambda row: pd.Series(utm.to_latlon(row["orig_e"], row["orig_n"], zone_number=32, zone_letter='N')),
+		axis=1
 	)
-	gdf_orig = gdf_orig.to_crs("EPSG:4326")
-
-	tu_tur["orig_lon"] = gdf_orig.geometry.x
-	tu_tur["orig_lat"] = gdf_orig.geometry.y
 
 	tu_tur = pd.merge(tu_tur, tu_session, on="SessionId", how="left")
 
