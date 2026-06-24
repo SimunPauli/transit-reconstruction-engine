@@ -11,13 +11,24 @@ def main():
 	#Configurartion
 	mode_map = {
 		#TU: OTP
+		#Transit modes:
 		31: "BUS",
 		32: "S_TRAIN",
 		33: "RAIL",
 		34: "SUBWAY",
 		37: "TRAM",
 		41: "FERRY",
-		35: "BUS"
+		35: "BUS",
+		#Street modes:
+		1: "WALK",
+		2: "BIKE",
+		7: "WALK", #Electric wheelchair. Assumed to have same speed as regular walk. Very few observations
+		8: "BIKE", #Electric bike. Assumed to have same speed as regular bike. Few observations.
+		11: "CAR",
+		12: "CAR", #van
+		25: "CAR", #Taxi
+		26: "CAR", #Non-public bus
+		#TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
 	}
 
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
@@ -62,7 +73,7 @@ def main():
 		name_match_threshold=0.6
 	)
 	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
-	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"])
+	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=";", decimal=",")
 
 	rmse_based_matches = []
 	trip_matching_summaries = []
@@ -118,14 +129,14 @@ def main():
 	if not rmse_based_matches:
 		print("No rmse-based matches found. Nothing to save.")
 		if trip_matching_summaries:
-			pd.DataFrame(trip_matching_summaries).to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
+			pd.DataFrame(trip_matching_summaries).to_csv(config["paths"]["trip_matching_summaries_file"], index=False, sep=";", decimal=",")
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
-	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
+	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False, sep=";", decimal=",")
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
-		trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False)
+		trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False, sep=";", decimal=",")
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
