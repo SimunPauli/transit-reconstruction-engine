@@ -5,9 +5,8 @@ import pandas as pd
 import numpy as np
 from typing import Optional, Any
 from otp_parser import json_to_df
-from test_main import tu_deltur_sub
+from constant import MODE_MAP, LOCAL_TIMEZONE
 
-LOCAL_TIMEZONE = "Europe/Copenhagen"
 def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
 	"""
 	Parse OTP datetime strings as absolute instants and convert them to local time.
@@ -102,8 +101,6 @@ def graphql_json_request(
 		"preferences": {"transit": {"alight": {"slack": "PT0M"}}},
 	}
 
-	if tu_deltur_sub is not None:
-		variables["modes"]["direct"] = direct
 
 	# Add optional variables only if they're needed
 	if has_pagination:
@@ -135,6 +132,7 @@ def graphql_json_request(
 
 	if direct is not None:
 		variables["modes"]["direct"] = direct
+
 	return get_response(url, query, variables, timeout=timeout)
 
 
@@ -311,6 +309,7 @@ def _deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_all_candidates(tu_tur_row: pd.Series | None = None,
+                        tu_deltur_sub: pd.DataFrame | None = None,
                         modes_json: list | None = None,
                         route_short_name: list | None = None,
                         via_stopids: list | None = None,
@@ -332,10 +331,10 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	"""
 	response = graphql_json_request(
 		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=tu_deltur_sub,
 		modes_json=modes_json,
 		route_short_name_json=route_short_name,
 		via_stopids=via_stopids,
-		direct=["WALK"],
 		first=max_itinerary_candidates,
 		direct_only=False,
 		transit_only=True,
@@ -366,6 +365,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		# Send forward request to OTP
 		response = graphql_json_request(
 			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
 			modes_json=modes_json,
 			route_short_name_json=route_short_name,
 			via_stopids=via_stopids,
@@ -407,6 +407,7 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		# Send backward request to OTP
 		response = graphql_json_request(
 			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
 			modes_json=modes_json,
 			route_short_name_json=route_short_name,
 			via_stopids=via_stopids,
