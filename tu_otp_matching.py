@@ -15,7 +15,6 @@ from config import get_config
 def match_tu_trip_to_otp(
 	tu_tur_row,
 	tu_deltur,
-	mode_map,
 	otp_mode_routes_cache,
 	otp_url,
 	search_window,
@@ -62,7 +61,6 @@ def match_tu_trip_to_otp(
 
 	route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(
 		tu_deltur_sub,
-		mode_map,
 		otp_mode_routes_cache
 	)
 	print(f"route_short_name: {route_names}")
@@ -89,6 +87,7 @@ def match_tu_trip_to_otp(
 	if is_bus_s_train and is_rail_tram_subway_ferry:
 		otp_candidates_df = load_all_candidates(
 			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
 			modes_json=modes_json,
 			route_short_name=route_names_ext,
 			via_stopids=via_stopids,
@@ -101,6 +100,7 @@ def match_tu_trip_to_otp(
 	elif is_bus_s_train:
 		otp_candidates_df = load_all_candidates(
 			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
 			modes_json=modes_json,
 			route_short_name=route_names,
 			via_stopids=via_stopids,
@@ -113,6 +113,7 @@ def match_tu_trip_to_otp(
 	elif is_rail_tram_subway_ferry:
 		otp_candidates_df = load_all_candidates(
 			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
 			modes_json=modes_json,
 			route_short_name=None,
 			via_stopids=via_stopids,

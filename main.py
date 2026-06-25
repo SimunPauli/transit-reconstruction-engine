@@ -4,32 +4,10 @@ from tu_otp_matching import match_tu_trip_to_otp
 from otp_client import get_all_routes_for_mode
 from tu_gtfs_stations_match import match_tu_gtfs_stations
 from config_loader import load_config
+from constant import MODE_MAP
 
 def main():
 	config = load_config()
-
-	#Configurartion
-	mode_map = {
-		#TU: OTP
-		#Transit modes:
-		31: "BUS",
-		32: "S_TRAIN",
-		33: "RAIL",
-		34: "SUBWAY",
-		37: "TRAM",
-		41: "FERRY",
-		35: "BUS",
-		#Street modes:
-		1: "WALK",
-		2: "BIKE",
-		7: "WALK", #Electric wheelchair. Assumed to have same speed as regular walk. Very few observations
-		8: "BIKE", #Electric bike. Assumed to have same speed as regular bike. Few observations.
-		11: "CAR",
-		12: "CAR", #van
-		25: "CAR", #Taxi
-		26: "CAR", #Non-public bus
-		#TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
-	}
 
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
 	config_request = config.get("request")
@@ -54,7 +32,7 @@ def main():
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
 	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024)]
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
-	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(mode_map)
+	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
 	print("TU data loaded")
 
 
@@ -83,7 +61,6 @@ def main():
 			match_result = match_tu_trip_to_otp(
 				tu_tur_row=tu_tur_row,
 				tu_deltur=tu_deltur,
-				mode_map=mode_map,
 				otp_mode_routes_cache=otp_mode_routes_cache,
 				otp_url=otp_url,
 				search_window=search_window,

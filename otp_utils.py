@@ -1,6 +1,5 @@
 import pandas as pd
-
-INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
+from constant import MODE_MAP, INVALID_ROUTE_CHARS
 
 def has_invalid_route_name(route_names) -> bool:
 	if not route_names:
@@ -17,7 +16,7 @@ def has_invalid_route_name(route_names) -> bool:
 
 	return False
 
-def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
+def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache):
 	"""
 	Extracts and maps transit modes and routes for a given TurId.
 	Handles fallback routes for RAIL, TRAM, and SUBWAY using a cache.
@@ -33,7 +32,7 @@ def resolve_route_short_names(tu_deltur_sub, mode_map, otp_mode_routes_cache):
 		tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin(valid_stage_modes),
 		"StageMode"]
 		.drop_duplicates()
-		.map(mode_map)
+		.map(MODE_MAP)
 		.tolist()
 	)
 	if not modes_list:
