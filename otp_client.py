@@ -255,19 +255,22 @@ def _get_access_egress(tu_deltur_sub: pd.DataFrame):
 	first_mode = int(tu_deltur_sub["StageMode"].iloc[0])
 	last_mode = int(tu_deltur_sub["StageMode"].iloc[-1])
 
-	def _normalise_access_egress_mode(stage_mode: int):
-		if stage_mode < 27: #Street modes are less than 27 in TU StageMode
+	def _normalise_access_egress_mode(stage_mode: int, side: str):
+		if stage_mode < 27:  # Street modes are less than 27 in TU StageMode
 			mode = ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
 		else:
-			mode = "WALK" #fallback
+			mode = "WALK"  # fallback
 
-		if mode == "CAR_PICKUP":
-			return ["WALK", "CAR_PICKUP"] #CAR_PICKUP need WALK to also be included
+		if mode == "CAR_DROP_OFF":
+			if side == "access":
+				return ["WALK", "CAR_DROP_OFF"]
+			if side == "egress":
+				return ["WALK", "CAR_PICKUP"]
 
 		return mode
 
-	tu_access = _normalise_access_egress_mode(first_mode)
-	tu_egress = _normalise_access_egress_mode(last_mode)
+	tu_access = _normalise_access_egress_mode(first_mode, "access")
+	tu_egress = _normalise_access_egress_mode(last_mode, "egress")
 
 	return tu_access, tu_egress
 

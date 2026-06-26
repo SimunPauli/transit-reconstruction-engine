@@ -29,10 +29,10 @@ ACCESS_EGRESS_MODE_MAP = {
 	2: "WALK", #Bicycle
 	7: "WALK",
 	8: "WALK", #This is e-scooter
-	11: "CAR_PICKUP",
-	12: "CAR_PICKUP",
-	25: "CAR_PICKUP",
-	26: "CAR_PICKUP",
+	11: "CAR_DROP_OFF",
+	12: "CAR_DROP_OFF",
+	25: "CAR_DROP_OFF",
+	26: "CAR_DROP_OFF",
 }
 
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
