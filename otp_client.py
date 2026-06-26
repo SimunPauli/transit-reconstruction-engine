@@ -262,7 +262,7 @@ def _get_access_egress(tu_deltur_sub: pd.DataFrame):
 			mode = "WALK" #fallback
 
 		if mode == "CAR_PICKUP":
-			return ["WALK", "CAR_PICKUP"]
+			return ["WALK", "CAR_PICKUP"] #CAR_PICKUP need WALK to also be included
 
 		return mode
 

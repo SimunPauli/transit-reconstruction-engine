@@ -439,8 +439,10 @@ def add_tu_delturnr_to_otp_candidates(
 		.reset_index(drop=True)
 	)
 	otp_candidates_df["duration_min_otp"] = otp_candidates_df["duration_min"]
+	otp_candidates_df["duration_min_otp"] = otp_candidates_df["duration_min"].astype(float)
 	otp_candidates_df.loc[otp_candidates_df["is_bike_placeholder"], "duration_min"] = (
 		otp_candidates_df.loc[otp_candidates_df["is_bike_placeholder"], "duration_min"]
 		* WALK_BIKE_TIME_RATIO
-	)
+	).round().astype(int)
+	otp_candidates_df.loc[otp_candidates_df["is_bike_placeholder"], "mode"] = "BICYCLE"
 	return otp_candidates_df
