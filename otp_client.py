@@ -8,15 +8,6 @@ from typing import Optional, Any
 from otp_parser import json_to_df
 from constant import ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
 
-def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
-	"""
-	Parse OTP datetime strings as absolute instants and convert them to local time.
-
-	OTP returns ISO datetime strings with offsets, e.g. '2024-06-17T05:57:24+02:00'.
-	Using utc=True guarantees timezone-aware parsing before tz_convert.
-	"""
-	return pd.to_datetime(series, utc=True, errors="coerce").dt.tz_convert(timezone)
-
 def get_response(url, query, variables, timeout=60):
 	try:
 		response = requests.post(
