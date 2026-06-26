@@ -20,5 +20,16 @@ MODE_MAP = {
 	# TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
 }
 
+PLAN_ACCESS_EGRESS_MODE_MAP = {
+	1: "WALK",
+	2: "BICYCLE",
+	7: "WALK",
+	8: "BICYCLE",
+	11: "CAR_PICKUP",
+	12: "CAR_PICKUP",
+	25: "CAR_PICKUP",
+	26: "CAR_PICKUP",
+}
+
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
