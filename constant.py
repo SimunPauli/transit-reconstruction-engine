@@ -23,11 +23,12 @@ MODE_MAP = {
 	# TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
 }
 
+#BIKE doesn't work well with OTP. So setting it to walk, then later reducing the time by WALK_BIKE_TIME_RATIO
 ACCESS_EGRESS_MODE_MAP = {
 	1: "WALK",
-	2: "BICYCLE",
+	2: "WALK", #Bicycle
 	7: "WALK",
-	8: "BICYCLE",
+	8: "WALK", #This is e-scooter
 	11: "CAR_PICKUP",
 	12: "CAR_PICKUP",
 	25: "CAR_PICKUP",
@@ -37,4 +38,4 @@ ACCESS_EGRESS_MODE_MAP = {
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 
-WALK_BIKE_TIME_RATIO = config["walk_bike_speed_ratio"]
+WALK_BIKE_TIME_RATIO = config["walk_bike_time_ratio"]
