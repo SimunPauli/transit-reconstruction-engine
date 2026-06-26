@@ -137,7 +137,7 @@ def match_tu_trip_to_otp(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
-		bike_stage_modes=(2,)
+		bike_stage_modes=(2,8)
 	)
 
 	# 	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
@@ -306,7 +306,7 @@ def add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df,
 		tu_deltur_sub,
 		tu_gtfs_station_df,
-		bike_stage_modes=(2,)
+		bike_stage_modes=(2,8)
 ):
 	"""
 	Add a tu_Delturnr column to OTP legs by aligning each OTP itinerary with the TU leg sequence.
@@ -363,7 +363,7 @@ def add_tu_delturnr_to_otp_candidates(
 
 	def _leg_matches(otp_leg, tu_deltur_sub_leg):
 		tu_mode = tu_deltur_sub_leg.get("otp_mode")
-		tu_stage_mode = int(tu_deltur_sub_leg.get("stage_mode"))
+		tu_stage_mode = int(tu_deltur_sub_leg.get("StageMode"))
 
 		if tu_stage_mode in bike_stage_modes:
 			tu_mode = "WALK"
