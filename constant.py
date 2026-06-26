@@ -37,4 +37,4 @@ ACCESS_EGRESS_MODE_MAP = {
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 
-WALK_BIKE_SPEED_RATIO = config["walk_bike_speed_ratio"]
+WALK_BIKE_TIME_RATIO = config["walk_bike_speed_ratio"]

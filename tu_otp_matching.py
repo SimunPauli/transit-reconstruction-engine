@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from constant import WALK_BIKE_SPEED_RATIO
+from constant import WALK_BIKE_TIME_RATIO
 from otp_client import load_all_candidates
 from otp_utils import (
 	has_invalid_route_name,
@@ -441,6 +441,6 @@ def add_tu_delturnr_to_otp_candidates(
 	otp_candidates_df["duration_min_otp"] = otp_candidates_df["duration_min"]
 	otp_candidates_df.loc[otp_candidates_df["is_bike_placeholder"], "duration_min"] = (
 		otp_candidates_df.loc[otp_candidates_df["is_bike_placeholder"], "duration_min"]
-		* WALK_BIKE_SPEED_RATIO
+		* WALK_BIKE_TIME_RATIO
 	)
 	return otp_candidates_df
