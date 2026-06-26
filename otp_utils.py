@@ -159,13 +159,13 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required BUS/S_TRAIN routes for TurId: {tur_id}"
+			msg = f"No OTP trips include all required BUS/S_TRAIN routes_names: {route_names}"
 			return pd.DataFrame(), msg
 
 	# Filter by required transit modes
 	if modes_list:
 		if "mode" not in filtered_df.columns:
-			msg = f"OTP candidates are missing mode for TurId: {tur_id}"
+			msg = f"OTP candidates are missing column mode"
 			return pd.DataFrame(), msg
 
 		required_modes = set(modes_list)
@@ -184,7 +184,7 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required transit modes ({modes_list}) for TurId: {tur_id}"
+			msg = f"No OTP trips include all required transit modes: {modes_list}"
 			return pd.DataFrame(), msg
 
 	# Filter by TU transit leg order
@@ -211,7 +211,7 @@ def filter_candidates_by_requirements(
 			filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
 
 			if filtered_df.empty:
-				msg = f"No OTP trips matched all TU transit legs in order for TurId: {tur_id}"
+				msg = f"No OTP trips matched all TU transit legs in correct sequence."
 				return pd.DataFrame(), msg
 
 	return filtered_df, ""
