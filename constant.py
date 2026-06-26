@@ -1,3 +1,6 @@
+from config_loader import load_config
+config = load_config()
+
 MODE_MAP = {
 	# TU: OTP
 	# Transit modes:
@@ -33,3 +36,5 @@ ACCESS_EGRESS_MODE_MAP = {
 
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
+
+WALK_BIKE_SPEED_RATIO = config["walk_bike_speed_ratio"]
