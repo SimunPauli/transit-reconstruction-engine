@@ -22,7 +22,8 @@ def match_tu_trip_to_otp(
 	tu_gtfs_station_df,
 	print_deviation_details= True,
 	return_trip_summary= False,
-	request_timeout=60
+	request_timeout=60,
+	print_query=False
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -94,7 +95,7 @@ def match_tu_trip_to_otp(
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url,
-			print_query=False,
+			print_query=print_query,
 			request_timeout=request_timeout
 		)
 	elif is_bus_s_train:
@@ -107,7 +108,7 @@ def match_tu_trip_to_otp(
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url,
-			print_query=False,
+			print_query=print_query,
 			request_timeout=request_timeout
 		)
 	elif is_rail_tram_subway_ferry:
@@ -120,7 +121,7 @@ def match_tu_trip_to_otp(
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
 			otp_url=otp_url,
-			print_query=False,
+			print_query=print_query,
 			request_timeout=request_timeout
 		)
 	else:
