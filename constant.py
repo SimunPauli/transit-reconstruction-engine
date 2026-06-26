@@ -20,7 +20,7 @@ MODE_MAP = {
 	# TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
 }
 
-PLAN_ACCESS_EGRESS_MODE_MAP = {
+ACCESS_EGRESS_MODE_MAP = {
 	1: "WALK",
 	2: "BICYCLE",
 	7: "WALK",

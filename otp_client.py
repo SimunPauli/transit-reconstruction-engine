@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, Any
 from otp_parser import json_to_df
-from constant import PLAN_ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
+from constant import ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
 
 def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
 	"""
@@ -266,7 +266,7 @@ def _get_access_egress(tu_deltur_sub: pd.DataFrame):
 
 	def _normalise_access_egress_mode(stage_mode: int):
 		if stage_mode < 27: #Street modes are less than 27 in TU StageMode
-			mode = PLAN_ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
+			mode = ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
 		else:
 			mode = "WALK" #fallback
 
