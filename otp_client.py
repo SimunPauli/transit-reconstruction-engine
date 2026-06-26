@@ -1,11 +1,12 @@
 import requests
+from requests.exceptions import Timeout, RequestException
 import json
 import textwrap
 import pandas as pd
 import numpy as np
 from typing import Optional, Any
 from otp_parser import json_to_df
-from constant import MODE_MAP, LOCAL_TIMEZONE
+from constant import PLAN_ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
 
 def parse_otp_datetime(series, timezone = LOCAL_TIMEZONE):
 	"""
@@ -89,14 +90,32 @@ def graphql_json_request(
 		include_via=has_via,
 	)
 
+	tu_access, tu_egress = _get_access_egress(tu_deltur_sub)
+
 	# Build variables dict
 	variables = {
 		"origin": {
-			"location": {"coordinate": {"latitude": tu_tur_row["orig_lat"], "longitude": tu_tur_row["orig_lon"]}}},
+			"location": {
+				"coordinate": {
+					"latitude": tu_tur_row["orig_lat"],
+					"longitude": tu_tur_row["orig_lon"]
+				}
+			}
+		},
 		"destination": {
-			"location": {"coordinate": {"latitude": tu_tur_row["tiladrlat"], "longitude": tu_tur_row["tiladrlon"]}}},
+			"location": {
+				"coordinate": {
+					"latitude": tu_tur_row["tiladrlat"],
+					"longitude": tu_tur_row["tiladrlon"]
+				}
+			}
+		},
 		"dateTime": {"earliestDeparture": tu_tur_row["depart_dt_str"]},
-		"modes": {"directOnly": direct_only, "transitOnly": transit_only},
+		"modes": {
+			"directOnly": direct_only,
+			"transitOnly": transit_only,
+			"transit": {"access": tu_access, "egress": tu_egress}
+		},
 		"itineraryFilter": {"itineraryFilterDebugProfile": "LIST_ALL"},
 		"preferences": {"transit": {"alight": {"slack": "PT0M"}}},
 	}
@@ -125,7 +144,7 @@ def graphql_json_request(
 		variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in via_stopids]
 
 	if modes_json is not None:
-		variables["modes"]["transit"] = {"transit": modes_json}
+		variables["modes"].setdefault("transit", {})["transit"] = modes_json
 
 	if print_query:
 		print_for_graphiql(query, variables)
@@ -177,11 +196,12 @@ def build_graphql_query(
 	query += """)
     {
       planConnection(
-        origin: $origin
-        destination: $destination
-        dateTime: $dateTime
-        modes: $modes
-        preferences: $preferences"""
+        origin: $origin,
+        destination: $destination,
+        dateTime: $dateTime,
+        modes: $modes,
+        preferences: $preferences,
+        """
 
 	# Add optional arguments to the planConnection call
 	if include_pagination:
@@ -239,6 +259,26 @@ def build_graphql_query(
     """
 
 	return query
+
+def _get_access_egress(tu_deltur_sub: pd.DataFrame):
+	first_mode = int(tu_deltur_sub["StageMode"].iloc[0])
+	last_mode = int(tu_deltur_sub["StageMode"].iloc[-1])
+
+	def _normalise_access_egress_mode(stage_mode: int):
+		if stage_mode < 27: #Street modes are less than 27 in TU StageMode
+			mode = PLAN_ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
+		else:
+			mode = "WALK" #fallback
+
+		if mode == "CAR_PICKUP":
+			return ["WALK", "CAR_PICKUP"]
+
+		return mode
+
+	tu_access = _normalise_access_egress_mode(first_mode)
+	tu_egress = _normalise_access_egress_mode(last_mode)
+
+	return tu_access, tu_egress
 
 def _candidate_start_bounds(otp_candidates_df: pd.DataFrame):
 	if otp_candidates_df.empty or "start_trip" not in otp_candidates_df.columns:
