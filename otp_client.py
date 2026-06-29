@@ -55,6 +55,8 @@ def graphql_json_request(
 		last: Optional[int] = None,
 		after: Optional[str] = None,
 		first: Optional[int] = None,
+		walk_reluctance: float = 2,
+		car_reluctance: float = 2,
 		direct_only: bool = False,
 		transit_only: bool = False,
 		search_window: str = "PT30M",
@@ -108,7 +110,21 @@ def graphql_json_request(
 			"transit": {"access": tu_access, "egress": tu_egress}
 		},
 		"itineraryFilter": {"itineraryFilterDebugProfile": "LIST_ALL"},
-		"preferences": {"transit": {"alight": {"slack": "PT0M"}}},
+		"preferences": {
+			"transit": {
+				"alight": {
+					"slack": "PT0M",
+				}
+			},
+			"street": {
+				"walk": {
+					"reluctance": walk_reluctance
+				},
+				"car": {
+					"reluctance": car_reluctance
+				}
+			}
+		}
 	}
 
 
@@ -219,6 +235,7 @@ def build_graphql_query(
 	# pattern id, i.e. this value can be used to check whether two patterns are the
 	# same, even if their ids have changed.
 
+	#TripShort
 
 	# Rest of the query (edges, nodes, etc.)
 	query += """
@@ -347,6 +364,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         modes_json: list | None = None,
                         route_short_name: list | None = None,
                         via_stopids: list | None = None,
+                        walk_reluctance: float = 2,
+                        car_reluctance: float = 2,
                         search_window: str = "PT30M",
 						max_itinerary_candidates = 50,
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1",
@@ -370,6 +389,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		route_short_name_json=route_short_name,
 		via_stopids=via_stopids,
 		first=max_itinerary_candidates,
+		walk_reluctance=walk_reluctance,
+		car_reluctance=car_reluctance,
 		direct_only=False,
 		transit_only=True,
 		search_window=search_window,
@@ -405,6 +426,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			via_stopids=via_stopids,
 			after=endCursor,
 			first=max_itinerary_candidates - n_forward,
+			walk_reluctance=walk_reluctance,
+			car_reluctance=car_reluctance,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,
@@ -447,6 +470,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			via_stopids=via_stopids,
 			before=startCursor,
 			last=max_itinerary_candidates - n_backward,
+			walk_reluctance=walk_reluctance,
+			car_reluctance=car_reluctance,
 			direct_only=False,
 			transit_only=True,
 			search_window=search_window,
