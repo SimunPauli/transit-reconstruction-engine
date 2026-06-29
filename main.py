@@ -104,16 +104,16 @@ def main():
 			trip_matching_summaries.append(trip_matching_summary)
 
 	if not rmse_based_matches:
-		print("No rmse-based matches found. Nothing to save.")
+		print("No rmse-based matches found.")
 		if trip_matching_summaries:
-			pd.DataFrame(trip_matching_summaries).to_csv(config["paths"]["trip_matching_summaries_file"], index=False, sep=";", decimal=",")
+			pd.DataFrame(trip_matching_summaries).to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
-	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False, sep=";", decimal=",")
+	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
-		trip_matching_summaries.to_csv(config["paths"]["trip_matching_summaries_file"], index=False, sep=";", decimal=",")
+		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
