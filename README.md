@@ -1,0 +1,374 @@
+# TU Trip Reproducer
+### Reproducing TU Trips — using OTP and GTFS
+
+This project reproduces public transport trips from the Danish National Travel Survey
+(**Transportvaneundersøgelsen**, TU) using a modified version of
+[OpenTripPlanner (OTP) - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+and GTFS data.
+
+For each trip in TU, the tool queries OTP for candidate itineraries and selects the
+best match using a weighted RMSE score across departure time, arrival time, leg
+duration, and leg distance.
+
+The GTFS data is updated about every 10, and is available to DTU back to 2015 (with 
+degrading quality). Each GTFS feed extents 90 days into the future and are mostly 
+indentical, therefore I've createed a code for merging feed across time 
+[GTFS temporal merger - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+
+
+The repository is public so that researchers who use the reproduced trip data can
+inspect how it was produced. Running the tool itself requires access to the
+confidential TU data.
+
+This project will be extended with choice-set generation for route choice modelling.
+
+---
+
+## Requirements
+
+- Python 3.13+
+- A running instance of the modified OTP (link above), loaded with the relevant GTFS
+  data, accessible at the `otp_url` defined in `config.json`
+
+---
+
+## Setup
+
+
+bash python -m venv venv source venv/bin/activate pip install -r requirements.txt``` 
+
+---
+
+## Configuration
+
+The project is configured via a `config.json` file in the project root.
+`config.json` is excluded from version control.
+
+Create it based on the template below:
+```
+{
+  "request": {
+    "otp_url": "http://localhost:8080/otp/gtfs/v1",
+    "search_window": "PT1H",
+    "max_itinerary_candidates": 50,
+    "request_timeout": 30
+  },
+
+  "matching": {
+    "return_trip_summary": true,
+    "print_deviation": true
+  },
+  "paths": {
+    "data_dir": "/home/user/Reproducing/Data/TU/",
+    "output_dir": "/home/user/Reproducing/Output/",
+    "log_file": "rmse_based_matches.log",
+    "rmse_based_matches_file": "rmse_based_matches.xlsx",
+    "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
+    "tu_gtfs_station_file": "tu_gtfs_station_df.xlsx",
+    "map_file": "map.htmlz"
+  },
+
+  "tu_files": {
+    "session_file": "tu_session_secret_2024.xlsx",
+    "tur_file": "tu_tur_secret_2024.xlsx",
+    "deltur_file": "tu_deltur_2024.xlsx",
+    "stations_file": "Stationer_tudatabase.xlsx"
+  },
+  "tu_subset": {
+    "year": 2024,
+    "tu_PtPrimMode": [31, 32, 33, 34, 37]
+  },
+  "station_matching": {
+    "bbox_buffer_m": 1000,
+    "station_name_threshold": 0.6
+  },
+  "squared_error_weights": {
+    "w_departure_min": 1.0,
+    "w_arrival_min": 1.0,
+    "w_street_mode_min": 0.0,
+    "w_street_mode_km": 1.0,
+    "w_transit_min": 1.0,
+    "w_transit_km": 0.0
+  },
+  "walk_bike_time_ratio": 0.266
+}
+```
+### Configuration reference
+
+| Key | Description |
+|-----|-------------|
+| `request.otp_url` | GraphQL endpoint of the running OTP instance |
+| `request.search_window` | ISO 8601 duration — time window searched around departure time |
+| `request.max_itinerary_candidates` | Maximum number of OTP itineraries to fetch per trip |
+| `request.request_timeout` | HTTP timeout in seconds for OTP requests |
+| `matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
+| `matching.print_deviation` | Whether to print RMSE deviation details per trip |
+| `paths.data_dir` | Directory containing the TU input Excel files |
+| `paths.output_dir` | Directory where all output files are written |
+| `paths.log_file` | Log file name (relative to `output_dir`) |
+| `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
+| `paths.trip_matching_summaries_file` | Output file for per-trip match summaries |
+| `paths.tu_gtfs_station_file` | Output file for the TU–GTFS station mapping |
+| `paths.map_file` | Output file name for optional map visualisation |
+| `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
+| `station_matching.station_name_threshold` | Minimum cosine similarity (0–1) for a station name match |
+| `squared_error_weights` | Weights applied to each component of the RMSE score |
+| `walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
+
+---
+
+## Input data
+
+The TU data is confidential and not included in this repository.
+The tool expects four Excel files, with at minimum the columns listed below.
+
+### Session file (`tu_files.session_file`)
+
+| Column | Description |
+|--------|-------------|
+| `SessionId` | |
+
+### Trip file (`tu_files.tur_file`)
+
+| Column | Description |
+|--------|-------------|
+| `TurId` | |
+| `SessionId` | |
+| `DiaryDate` | Days since 1970-01-01 |
+| `DiaryYear` | |
+| `PtPrimMode` | Primary public transport mode code |
+| `DepartHH` | Departure hour |
+| `DepartMM` | Departure minute |
+| `ArrivalHH` | Arrival hour (may exceed 24 for trips crossing midnight) |
+| `ArrivalMM` | Arrival minute |
+| `orig_e` | Origin easting (UTM zone 32N) |
+| `orig_n` | Origin northing (UTM zone 32N) |
+| `tiladre` | Destination easting (UTM zone 32N) |
+| `tiladrn` | Destination northing (UTM zone 32N) |
+
+### Leg file (`tu_files.deltur_file`)
+
+| Column | Description |
+|--------|-------------|
+| `TurId` | |
+| `Delturnr` | Leg sequence number within a trip |
+| `StageMode` | Transport mode code |
+| `StageLength` | Leg distance (km) |
+| `StageDurationMin` | Leg duration (minutes) |
+| `StageWaitMin` | Waiting time before leg (minutes) |
+| `Route` | Route short name (for bus and S-train legs) |
+| `FromStation` | Boarding station name |
+| `ToStation` | Alighting station name |
+
+### Stations file (`tu_files.stations_file`)
+
+| Column | Description |
+|--------|-------------|
+| `statnavn` | Station name |
+| `e` | Easting (UTM zone 32N) |
+| `n` | Northing (UTM zone 32N) |
+| `OpenDate` | Days since 1970-01-01; blank if open before data collection period |
+| `ClosedDate` | Days since 1970-01-01; blank if still open |
+| `stog` | 1 if the station serves S-train |
+| `metro` | 1 if the station serves metro |
+| `andettog` | 1 if the station serves regional/intercity rail |
+| `letbane` | 1 if the station serves light rail (tram) |
+
+---
+
+## Running
+
+Ensure OTP is running and accessible at the configured `otp_url`, then:
+
+
+bash python main.py
+
+All console output is mirrored to the log file defined in `config.json`.
+
+---
+
+## Output
+
+All output files are written to `paths.output_dir`.
+
+| File | Description |
+|------|-------------|
+| `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
+| `trip_matching_summaries_file` | Per-trip summary including RMSE score and deviation metrics |
+| `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
+| `log_file` | Full console log of the run |
+
+---
+
+## How to run
+
+1. **Load TU data** — session, trip, leg, and station data are read from Excel.
+2. **Match TU stations to GTFS** — each TU station is matched to a GTFS stop via
+   bounding-box queries to OTP, filtered by name similarity and proximity.
+3. **For each TU trip:**
+   - OTP is queried via the `planConnection` GraphQL API for candidate itineraries
+     within the search window, using bidirectional pagination.
+   - Candidates are filtered to ensure all required transit modes and route names
+     from TU are present, in the correct order.
+   - Each OTP leg is aligned to the corresponding TU leg.
+   - The best itinerary is selected by minimising a weighted RMSE across departure
+     time, arrival time, leg duration, and leg distance.
+4. **Results are exported** to Excel.
+
+
+
+
+## How it works
+
+### Overview
+
+TU records each trip as an ordered sequence of legs (*delture*), where each leg
+has a mode, duration, distance, and — for bus and S-train — route name.
+For rail, metro, and S-train it also records station names.
+
+The goal is to find, for each TU trip, the specific real-world transit itinerary
+the respondent most likely took, expressed as a routable GTFS itinerary from OTP.
+
+---
+
+### 1. Pre-run: TU station → GTFS stop mapping
+
+Before trip matching begins, every TU station in the stations file is mapped to
+one or more GTFS stops in OTP. For each station:
+
+1. OTP is queried for all GTFS stops within a configurable bounding box
+   (`bbox_buffer_m`).
+2. Stops are filtered to those that serve a mode relevant to that station (S-train,
+   metro, rail, or tram).
+3. Among the remaining stops, the closest one whose name meets a minimum cosine
+   similarity threshold (`station_name_threshold`) against the TU station name is
+   selected. If no stop clears the threshold, the closest stop by distance is used.
+
+The result is a lookup table — `tu_gtfs_station_df` — mapping
+`(otp_mode, tu_station_name)` → `gtfs_station_id`. This is used later to constrain
+OTP queries and to verify that candidate itineraries pass through the correct
+stations.
+
+---
+
+### 2. Per-trip: building the OTP query
+
+For each TU trip, the legs are inspected to determine what constraints to pass to
+OTP:
+
+**Transit modes** — the set of distinct transit modes in the trip's legs is extracted
+and passed to OTP so that only itineraries using those modes are returned.
+
+**Route names** — TU records route short names for bus and S-train legs. These are
+passed to OTP as a route filter so that only itineraries containing those specific
+routes are considered. For rail, metro, tram — where TU does not record
+route names — all routes for those modes are fetched from OTP at startup and used
+as the filter set.
+
+**Via stops** — for S-train, rail, and metro legs, the boarding and alighting
+stations recorded in TU are resolved to GTFS stop IDs using the pre-built station
+mapping. These are passed to OTP as `via` constraints, forcing candidate itineraries
+to pass through those stops in order.
+
+**Access/egress mode** — the first and last legs of the TU trip determine the
+access and egress mode passed to OTP (walk, car drop-off/pick-up, or bicycle).
+OTP normally routes each mode only on infrastructure that mode is permitted to use.
+However, because cyclists tend to take the shortest path even when it crosses
+pedestrian-only infrastructure, the modified OTP used by this project allows
+bicycles to use all pedestrian paths as well. The reverse — pedestrians using
+bicycle paths — is also permitted, reflecting Danish traffic rules where
+pedestrians may use a cycling path when no pedestrian alternative is available.
+These adjustments are intentional: the goal is trip reproduction, not strict
+mode-segregated routing.
+
+---
+
+### 3. Fetching candidates from OTP
+
+OTP is queried via the `planConnection` GraphQL API with the constraints above,
+starting from the TU departure time. Because OTP returns a paginated result, the
+tool fetches itineraries both forward and backward in time until it has up to
+`max_itinerary_candidates` itineraries within the `search_window`, or the `search_window`
+boundary is reached. Duplicate itineraries from pagination overlap are removed.
+
+If the initial query returns no valid candidates after filtering, the tool retries
+with progressively reduced reluctance values for each transit mode
+(currently at 0.9, 0.7, and 0.5), first for individual modes and then for combinations,
+until a match is found or all attempts are exhausted. This has little effect on resualts,
+should be looked at closer, e.g. increase reluctance of car and walk. Access/egress 
+which are car to bus as transit, struggle as
+bus has no station in TU. This should be looked at closer. 
+
+**Street reluctance** — OTP’s default street reluctance is set to `2`, which makes
+time spent walking on street networks more expensive than in-vehicle time. This
+value is somewhat arbitrary, but it stays within OTP’s recommended range for
+walking reluctance, which is roughly between `2` and `4`.
+
+---
+
+### 4. Leg alignment
+
+OTP itineraries often contain more legs than TU records — most commonly short
+transfer walk legs between transit services that TU does not capture. To make the
+two sequences comparable, each OTP itinerary is aligned against the TU leg sequence
+using a greedy forward pass:
+
+- Each OTP leg is matched to the current TU leg if mode, route name (for bus/S-train),
+  and boarding/alighting stations (for rail/metro/S-train) all agree.
+- If an OTP leg does not match the current TU leg, it is treated as an extra OTP leg
+  (e.g. a transfer walk) and left unmatched — the TU leg position is not advanced.
+- Due to OTP router requireing both access and egress to be bicycle if one is bicycle;
+  they are matched to OTP walk legs, and the OTP walk duration is then scaled by
+  `walk_bike_time_ratio` to approximate cycling time.
+
+After alignment, each OTP leg carries the `Delturnr` of its matched TU leg, or
+`NA` if unmatched.
+
+---
+
+### 5. Candidate filtering
+
+After alignment, candidates are filtered to remove any itinerary where:
+
+- Not all required bus/S-train route names are present.
+- Not all required transit modes are present.
+- The transit legs do not appear in the same order as in TU (verified as a
+  subsequence match on matched `Delturnr` values).
+
+---
+
+### 6. Selecting the best match — weighted RMSE
+
+The remaining candidates are ranked by a weighted rooted sum of squared error (WRSS).
+In the code this is referred to as RMSE, because taking the average
+does not change the ranking and RMSE is better known. The score compares
+each OTP itinerary against the TU record across four dimensions:
+
+| Dimension | Compared at |
+|-----------|-------------|
+| Departure time | Trip level (minutes deviation) |
+| Arrival time | Trip level (minutes deviation) |
+| Trainst duration | Per matched leg transit |
+| Street distance | Per matched leg transit |
+
+Each dimension has a configurable weight (`squared_error_weights` in `config.json`).
+Unmatched OTP legs, such as extra transfer walks, incur no penalty. The current
+weights set the street-duration and transit-distance terms to `0`, because
+respondents’ reported transit distances are considered unreliable, and because
+duration on street and transit legs is already indirectly captured by the
+departure- and arrival-time terms. The WSS is:
+
+$$
+\text{WSS} = 
+  \sqrt{ 
+    \sum_{\text{legs}} \left(
+      w_\text{dep} \cdot \Delta t_\text{dep}^2 +
+      w_\text{arr} \cdot \Delta t_\text{arr}^2 +
+      w_\text{min} \cdot \Delta \text{dur}^2 +
+      w_\text{km} \cdot \Delta \text{dist}^2
+    \right)
+  }
+$$
+
+The itinerary with the lowest RMSE is selected as the reproduced trip.
+
