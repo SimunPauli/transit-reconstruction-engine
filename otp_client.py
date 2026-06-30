@@ -165,8 +165,19 @@ def graphql_json_request(
 		variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in via_stopids]
 
 	if modes_json is not None:
-		variables["modes"].setdefault("transit", {})["transit"] = modes_json
-
+		transit_cost_map = {
+			"SUBWAY": metro_reluctance,
+			"BUS": bus_reluctance,
+			"TRAM": tram_reluctance,
+			"RAIL": rail_reluctance,
+			"S_TRAIN": s_train_reluctance,
+		}
+		modes_json_with_cost = [
+			{**m, "cost": {"reluctance": transit_cost_map[m["mode"]]}}
+			if m["mode"] in transit_cost_map else m
+			for m in modes_json
+		]
+		variables["modes"].setdefault("transit", {})["transit"] = modes_json_with_cost
 	if print_query:
 		print_for_graphiql(query, variables)
 
