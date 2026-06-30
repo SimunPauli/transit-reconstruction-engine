@@ -3,11 +3,18 @@
 
 This project reproduces public transport trips from the Danish National Travel Survey
 (**Transportvaneundersøgelsen**, TU) using a modified version of
-[OpenTripPlanner (OTP)](<!-- Add link to modified OTP repo here -->) and GTFS data.
+[OpenTripPlanner (OTP) - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+and GTFS data.
 
 For each trip in TU, the tool queries OTP for candidate itineraries and selects the
 best match using a weighted RMSE score across departure time, arrival time, leg
 duration, and leg distance.
+
+The GTFS data is updated about every 10, and is available to DTU back to 2015 (with 
+degrading quality). Each GTFS feed extents 90 days into the future and are mostly 
+indentical, therefore I've createed a code for merging feed across time 
+[GTFS temporal merger - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+
 
 The repository is public so that researchers who use the reproduced trip data can
 inspect how it was produced. Running the tool itself requires access to the
