@@ -1,4 +1,3 @@
-``` markdown
 # TU Trip Reproducer
 ### Reproducing TU Trips — using OTP and GTFS
 
@@ -27,7 +26,7 @@ This project will be extended with choice-set generation for route choice modell
 ---
 
 ## Setup
-```
+
 
 bash python -m venv venv source venv/bin/activate pip install -r requirements.txt``` 
 
@@ -39,7 +38,6 @@ The project is configured via a `config.json` file in the project root.
 `config.json` is excluded from version control.
 
 Create it based on the template below:
-```
 
 json { "request": { "otp_url": "http://localhost:8080/otp/gtfs/v1", "search_window": "PT1H", "max_itinerary_candidates": 50, "request_timeout": 30 }, "matching": { "return_trip_summary": true, "print_deviation": true }, "paths": { "data_dir": "/path/to/tu/data/", "output_dir": "/path/to/output/", "log_file": "rmse_based_matches.log", "rmse_based_matches_file": "rmse_based_matches.xlsx", "trip_matching_summaries_file": "trip_matching_summaries.xlsx", "tu_gtfs_station_file": "tu_gtfs_station_df.xlsx", "map_file": "map.html" }, "tu_files": { "session_file": "tu_session.xlsx", "tur_file": "tu_tur.xlsx", "deltur_file": "tu_deltur.xlsx", "stations_file": "stations.xlsx" }, "station_matching": { "bbox_buffer_m": 1000, "station_name_threshold": 0.6 }, "squared_error_weights": { "w_departure_min": 1.0, "w_arrival_min": 1.0, "w_street_mode_min": 1.0, "w_street_mode_km": 1.0, "w_transit_min": 1.0, "w_transit_km": 1.0 }, "walk_bike_time_ratio": 0.266 }``` 
 
@@ -129,9 +127,9 @@ The tool expects four Excel files, with at minimum the columns listed below.
 ## Running
 
 Ensure OTP is running and accessible at the configured `otp_url`, then:
-```
 
-bash python main.py``` 
+
+bash python main.py
 
 All console output is mirrored to the log file defined in `config.json`.
 
@@ -164,4 +162,3 @@ All output files are written to `paths.output_dir`.
    - The best itinerary is selected by minimising a weighted RMSE across departure
      time, arrival time, leg duration, and leg distance.
 4. **Results are exported** to Excel.
-```
