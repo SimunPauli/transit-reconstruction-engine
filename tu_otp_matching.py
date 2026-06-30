@@ -119,28 +119,6 @@ def match_tu_trip_to_otp(
 	if otp_candidates_df.empty:
 		return _return_not_found(msg_filter)
 
-	# Match otp leg with TU delturnr (leg number). This will add column to otp_candidates_df
-	# with delturnr to each leg. Missing legs from TU will get pd.NA
-	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
-		otp_candidates_df=otp_candidates_df,
-		tu_deltur_sub=tu_deltur_sub,
-		tu_gtfs_station_df=tu_gtfs_station_df,
-		bike_stage_modes=(2,8)
-	)
-
-	# 	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
-	# 	is matched.
-	otp_candidates_df, msg_filter = filter_candidates_by_requirements(
-		otp_candidates_df=otp_candidates_df,
-		tu_deltur_sub=tu_deltur_sub,
-		route_names=route_names,
-		modes_list=modes_list,
-		tur_id=i_TurId
-	)
-
-	if otp_candidates_df.empty:
-		return _return_not_found(msg_filter)
-
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
 		["iteration_id", "start_leg"]
@@ -193,7 +171,7 @@ def match_tu_trip_to_otp(
 
 	return best_trip_candidate
 
-def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.8, 0.6, 0.4)):
+def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.9, 0.7, 0.5)):
 	transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
 	tu_transit_modes = [
 		mode
@@ -259,13 +237,14 @@ def _load_add_and_filter_candidates(
 		bike_stage_modes=(2, 8)
 	)
 
-	return filter_candidates_by_requirements(
+	otp_candidates_df, msg_filter =  filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		route_names=route_names,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"]
 	)
+	return otp_candidates_df, msg_filter
 
 
 def _load_candidates_with_reluctance_retries(
