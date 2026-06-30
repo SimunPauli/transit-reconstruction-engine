@@ -355,7 +355,7 @@ Each dimension has a configurable weight (`squared_error_weights` in `config.jso
 Unmatched OTP legs, such as extra transfer walks, incur no penalty. The current
 weights set the street-duration and transit-distance terms to `0`, because
 respondents’ reported transit distances are considered unreliable, and because
-duration on street and transit legs is already indirectly captured by the
+sum of duration on street and transit legs is already indirectly captured by the
 departure- and arrival-time terms. The WSS is:
 
 $$
