@@ -35,8 +35,17 @@ This project will be extended with choice-set generation for route choice modell
 ## Setup
 
 
-bash python -m venv venv source venv/bin/activate pip install -r requirements.txt``` 
 
+
+```bash 
+
+python -m venv venv 
+
+source venv/bin/activate 
+
+pip install -r requirements.txt 
+
+```
 ---
 
 ## Configuration
@@ -93,6 +102,7 @@ Create it based on the template below:
   "walk_bike_time_ratio": 0.266
 }
 ```
+
 ### Configuration reference
 
 | Key | Description |
@@ -180,6 +190,10 @@ The tool expects four Excel files, with at minimum the columns listed below.
 
 Ensure OTP is running and accessible at the configured `otp_url`, then:
 
+> **Note:** OTP graphs can be built from multiple GTFS feeds (transit data)
+> spanning different time periods for the same region. However, due to how OTP
+> handles stops, loading multiple overlapping feeds for the same region will
+> break this program.
 
 bash python main.py
 
