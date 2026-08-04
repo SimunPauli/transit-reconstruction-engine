@@ -16,6 +16,7 @@ def main():
 	max_itinerary_candidates = config_request["max_itinerary_candidates"]
 	request_timeout = config_request["request_timeout"]
 	data_dir = config["paths"]["data_dir"]
+	YEAR = config["tu_subset"]["year"]
 
 	print(f"Search window: {search_window}")
 
@@ -30,7 +31,7 @@ def main():
 	)
 	#Small processing of TU data
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
-	tu_tur = tu_tur[(tu_tur["DiaryYear"] == 2024)]
+	tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
 	print("TU data loaded")
