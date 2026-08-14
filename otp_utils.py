@@ -1,5 +1,13 @@
 import pandas as pd
-from constant import MODE_MAP, INVALID_ROUTE_CHARS
+from constant import (
+	MODE_MAP,
+	INVALID_ROUTE_CHARS,
+	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,
+	REASON_MISSING_MODE_COLUMN,
+	REASON_NO_REQUIRED_ROUTES,
+	REASON_NO_REQUIRED_MODES,
+	REASON_NO_MATCHING_LEG_SEQUENCE,
+)
 
 def has_invalid_route_name(route_names) -> bool:
 	if not route_names:
@@ -136,8 +144,7 @@ def filter_candidates_by_requirements(
 	# Filter by required routes (for BUS/S_TRAIN)
 	if route_names:
 		if "route_short_name" not in filtered_df.columns:
-			msg = f"OTP candidates are missing route_short_name for TurId: {tur_id}"
-			return pd.DataFrame(), msg
+			return pd.DataFrame(), REASON_MISSING_ROUTE_SHORT_NAME_COLUMN
 
 		required_routes = set(map(str, route_names))
 
@@ -159,14 +166,12 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required BUS/S_TRAIN routes_names: {route_names}"
-			return pd.DataFrame(), msg
+			return pd.DataFrame(), REASON_NO_REQUIRED_ROUTES
 
 	# Filter by required transit modes
 	if modes_list:
 		if "mode" not in filtered_df.columns:
-			msg = f"OTP candidates are missing column mode"
-			return pd.DataFrame(), msg
+			return pd.DataFrame(), REASON_MISSING_MODE_COLUMN
 
 		required_modes = set(modes_list)
 
@@ -184,8 +189,7 @@ def filter_candidates_by_requirements(
 		].reset_index(drop=True)
 
 		if filtered_df.empty:
-			msg = f"No OTP trips include all required transit modes: {modes_list}"
-			return pd.DataFrame(), msg
+			return pd.DataFrame(), REASON_NO_REQUIRED_MODES
 
 	# Filter by TU transit leg order
 	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
@@ -211,8 +215,7 @@ def filter_candidates_by_requirements(
 			filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
 
 			if filtered_df.empty:
-				msg = f"No OTP trips matched all TU transit legs in correct sequence."
-				return pd.DataFrame(), msg
+				return pd.DataFrame(), REASON_NO_MATCHING_LEG_SEQUENCE
 
 	return filtered_df, ""
 

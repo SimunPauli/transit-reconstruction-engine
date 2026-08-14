@@ -65,7 +65,8 @@ Create it based on the template below:
 
   "matching": {
     "return_trip_summary": true,
-    "print_deviation": true
+    "print_deviation": true,
+    "station_anchor_wait_min": 0
   },
   "paths": {
     "data_dir": "/home/user/Reproducing/Data/TU/",
@@ -73,6 +74,7 @@ Create it based on the template below:
     "log_file": "rmse_based_matches.log",
     "rmse_based_matches_file": "rmse_based_matches.xlsx",
     "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
+    "failures_file": "trip_failures.tsv",
     "tu_gtfs_station_file": "tu_gtfs_station_df.xlsx",
     "map_file": "map.htmlz"
   },
@@ -113,11 +115,13 @@ Create it based on the template below:
 | `request.request_timeout` | HTTP timeout in seconds for OTP requests |
 | `matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
 | `matching.print_deviation` | Whether to print RMSE deviation details per trip |
+| `matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
 | `paths.data_dir` | Directory containing the TU input Excel files |
 | `paths.output_dir` | Directory where all output files are written |
 | `paths.log_file` | Log file name (relative to `output_dir`) |
 | `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
 | `paths.trip_matching_summaries_file` | Output file for per-trip match summaries |
+| `paths.failures_file` | Output file listing TurId + failure reason code for trips that weren't reconstructed (see "Failure reasons" below); contains no coordinates, station names, or other survey data |
 | `paths.tu_gtfs_station_file` | Output file for the TU–GTFS station mapping |
 | `paths.map_file` | Output file name for optional map visualisation |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
@@ -209,8 +213,36 @@ All output files are written to `paths.output_dir`.
 |------|-------------|
 | `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
 | `trip_matching_summaries_file` | Per-trip summary including RMSE score and deviation metrics |
+| `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
+
+### Failure reasons
+
+Both `trip_matching_summaries_file`'s `failure_reason` column and `failures_file` use short codes
+rather than full sentences, so failures can be grepped/counted without wading through prose (the
+full sentence, with any relevant non-personal detail such as required routes, is still printed to
+`log_file` and kept in `trip_matching_summaries_file`'s `last_print_if_not_found` column).
+
+Anything produced while trying the [station-anchored fallback](#7-station-anchored-fallback) is
+prefixed `anchored_` — this only appears when a fallback was actually attempted (i.e. an anchor
+station was found); trips with no S_TRAIN/RAIL/SUBWAY leg to anchor on just keep the full-route
+search's own reason, since a fallback was never possible.
+
+| Code | Meaning |
+|------|---------|
+| `no_valid_modes` | None of the TU trip's legs map to a usable OTP transit mode |
+| `invalid_route_name` | A required BUS/S_TRAIN route name is missing/malformed in TU |
+| `no_otp_candidates` | OTP returned zero itineraries for the full-route search |
+| `no_required_routes` | OTP itineraries were found, but none used all the required BUS/S_TRAIN routes |
+| `no_required_modes` | OTP itineraries were found, but none used all the required transit modes |
+| `no_matching_leg_sequence` | OTP itineraries were found, but none matched the TU legs in the correct order |
+| `no_direct_access_route` | Station-anchored fallback: no direct (walk/car) route found from the true origin to the anchor station |
+| `no_direct_egress_route` | Station-anchored fallback: no direct (walk/car) route found from the anchor station to the true destination |
+| `anchored_no_otp_candidates` | Station-anchored fallback: the direct access/egress leg(s) were found, but OTP returned zero transit itineraries from/to the anchor station |
+| `anchored_no_required_routes` / `anchored_no_required_modes` / `anchored_no_matching_leg_sequence` | Station-anchored fallback: transit itineraries were found from/to the anchor station, but none passed the same route/mode/sequence checks as the full-route search |
+| `no_best_match` | Candidates passed all filters, but RMSE ranking found no best trip |
+| *(exception class name, e.g. `TimeoutError`)* | An unexpected error was raised while processing the trip; see `log_file` for the message |
 
 ---
 
@@ -385,4 +417,34 @@ $$
 $$
 
 The itinerary with the lowest RMSE is selected as the reproduced trip.
+
+---
+
+### 7. Station-anchored fallback
+
+Sometimes the full-route query (steps 2–3) returns no valid itinerary at all, even
+though TU records which S-train, regional/intercity rail, or metro station the
+respondent boarded or alighted at — OTP's own street-access routing can prefer a
+different, nearby station instead of the one actually used. (Only S-train, rail, and
+metro legs have reliably populated station names in TU; bus stops aren't named and
+tram names aren't reliable enough to anchor on.)
+
+When the full-route search comes back empty and the first and/or last S-train/rail/
+metro leg's station resolves via the TU–GTFS station mapping, the tool splits the
+query instead of giving up. A side (access or egress) is only anchored this way if every TU leg
+on that side is street-mode — if getting to the anchor station itself involved another transit
+leg (e.g. a bus), that side is left alone, since a single direct walk/car leg can't stand in for
+a real transit leg without breaking the route/mode/leg-order checks in step 5:
+
+1. A street-only (walk or car) itinerary from the true origin to the known station,
+   and/or from the known station to the true destination, is queried once — OTP's
+   street-mode travel time doesn't depend on time of day, so this only needs to be
+   requested once and its duration reused for every transit candidate.
+2. A transit-only itinerary is queried from/to the known station instead of the true
+   origin/destination, using the same mode/route/via filters as the normal query.
+3. The two are stitched into a single itinerary per transit candidate, with the
+   street-only leg placed `matching.station_anchor_wait_min` minutes before/after the
+   transit leg (`0` = back-to-back, the default).
+4. The stitched itinerary is run through the same leg alignment (step 4) and
+   candidate filtering (step 5) as any other candidate.
 

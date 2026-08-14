@@ -3,13 +3,23 @@ import numpy as np
 from itertools import combinations
 from delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates
 from best_otp_candidate import find_best_match_by_rmse
-from otp_client import load_all_candidates
+from otp_client import load_all_candidates, request_direct_leg
 from otp_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 	get_via_stops,
 	filter_candidates_by_requirements
 )
+from constant import (
+	DIRECT_ACCESS_MODE_MAP,
+	REASON_NO_VALID_MODES,
+	REASON_INVALID_ROUTE_NAME,
+	REASON_NO_OTP_CANDIDATES,
+	REASON_NO_DIRECT_ACCESS_ROUTE,
+	REASON_NO_DIRECT_EGRESS_ROUTE,
+	REASON_NO_BEST_MATCH,
+)
+from station_anchor_fallback import find_known_anchor_stations, stitch_candidates
 
 
 
@@ -27,18 +37,20 @@ def match_tu_trip_to_otp(
 	print_deviation_details= True,
 	return_trip_summary= False,
 	request_timeout=60,
-	print_query=False
+	print_query=False,
+	station_anchor_wait_min=0
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
 
-	def _empty_trip_summary(last_print_if_not_found):
+	def _empty_trip_summary(last_print_if_not_found, failure_reason):
 		return {
 			"TurId": i_TurId,
 			"SessionId": tu_tur_row.get("SessionId"),
 			"trip_found": 0,
 			"trip_not_found": 1,
 			"last_print_if_not_found": last_print_if_not_found,
+			"failure_reason": failure_reason,
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
 			"arrival_deviation_min": pd.NA,
@@ -47,10 +59,10 @@ def match_tu_trip_to_otp(
 			"iteration_id": pd.NA
 		}
 
-	def _return_not_found(last_print_if_not_found):
+	def _return_not_found(last_print_if_not_found, failure_reason=None):
 		print(last_print_if_not_found)
 		if return_trip_summary:
-			return None, _empty_trip_summary(last_print_if_not_found)
+			return None, _empty_trip_summary(last_print_if_not_found, failure_reason or last_print_if_not_found)
 		return None
 
 	print("\n\n____________________________________________________________________________________________")
@@ -72,10 +84,10 @@ def match_tu_trip_to_otp(
 	print(f"route_names_ext: {route_names_ext}")
 
 	if not modes_json:
-		return _return_not_found(f"No valid public transport modes found for TurId: {i_TurId}")
+		return _return_not_found(REASON_NO_VALID_MODES)
 	print(f"modes_json: {modes_json}")
 	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and has_invalid_route_name(route_names):
-		return _return_not_found(f"Invalid route name: {route_names}")
+		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
 
 	# Get the gtfs stop_ids for stations respondent travel through
 	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
@@ -117,7 +129,32 @@ def match_tu_trip_to_otp(
 	)
 
 	if otp_candidates_df.empty:
-		return _return_not_found(msg_filter)
+		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
+		if not first_stop_id and not last_stop_id:
+			return _return_not_found(msg_filter)
+
+		otp_candidates_df, fallback_msg = _try_station_anchored_fallback(
+			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
+			tu_gtfs_station_df=tu_gtfs_station_df,
+			modes_json=modes_json,
+			route_names=route_names,
+			route_short_name_for_loading=route_short_name_for_loading,
+			modes_list=modes_list,
+			via_stopids=via_stopids,
+			walk_reluctance=walk_reluctance,
+			car_reluctance=car_reluctance,
+			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
+			otp_url=otp_url,
+			request_timeout=request_timeout,
+			print_query=print_query,
+			first_stop_id=first_stop_id,
+			last_stop_id=last_stop_id,
+			wait_min=station_anchor_wait_min
+		)
+		if otp_candidates_df.empty:
+			return _return_not_found(f"{msg_filter}; fallback={fallback_msg}", fallback_msg)
 
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
@@ -135,7 +172,7 @@ def match_tu_trip_to_otp(
 		otp_candidates_df
 	)
 	if trips is None:
-		return _return_not_found(f"No best trip found for TurId: {i_TurId}")
+		return _return_not_found(REASON_NO_BEST_MATCH)
 	# Find the best matching trip (minimum RMSE)
 	best_trip_summary = trips.loc[trips["rmse"].idxmin()].copy()
 	best_iteration = trips.loc[trips["rmse"].idxmin(), "iteration_id"]
@@ -193,6 +230,30 @@ def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.9, 0.7
 	return attempts
 
 
+def _align_and_filter_candidates(
+		otp_candidates_df,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		route_names,
+		modes_list,
+		tur_id
+):
+	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		bike_stage_modes=(2, 8)
+	)
+
+	return filter_candidates_by_requirements(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		route_names=route_names,
+		modes_list=modes_list,
+		tur_id=tur_id
+	)
+
+
 def _load_add_and_filter_candidates(
 		tu_tur_row,
 		tu_deltur_sub,
@@ -209,7 +270,14 @@ def _load_add_and_filter_candidates(
 		otp_url,
 		request_timeout,
 		print_query,
-		transit_reluctances=None
+		transit_reluctances=None,
+		skip_alignment=False,
+		origin_location_override=None,
+		destination_location_override=None,
+		depart_dt_str_override=None,
+		depart_dt_override=None,
+		access_mode_override=None,
+		egress_mode_override=None
 ):
 	otp_candidates_df = load_all_candidates(
 		tu_tur_row=tu_tur_row,
@@ -224,27 +292,29 @@ def _load_add_and_filter_candidates(
 		max_itinerary_candidates=max_itinerary_candidates,
 		otp_url=otp_url,
 		print_query=print_query,
-		request_timeout=request_timeout
+		request_timeout=request_timeout,
+		origin_location_override=origin_location_override,
+		destination_location_override=destination_location_override,
+		depart_dt_str_override=depart_dt_str_override,
+		depart_dt_override=depart_dt_override,
+		access_mode_override=access_mode_override,
+		egress_mode_override=egress_mode_override
 	)
 
 	if otp_candidates_df.empty:
-		return otp_candidates_df, "No OTP trips found"
+		return otp_candidates_df, REASON_NO_OTP_CANDIDATES
 
-	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
+	if skip_alignment:
+		return otp_candidates_df, ""
+
+	return _align_and_filter_candidates(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
-		bike_stage_modes=(2, 8)
-	)
-
-	otp_candidates_df, msg_filter =  filter_candidates_by_requirements(
-		otp_candidates_df=otp_candidates_df,
-		tu_deltur_sub=tu_deltur_sub,
 		route_names=route_names,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"]
 	)
-	return otp_candidates_df, msg_filter
 
 
 def _load_candidates_with_reluctance_retries(
@@ -262,7 +332,14 @@ def _load_candidates_with_reluctance_retries(
 		max_itinerary_candidates,
 		otp_url,
 		request_timeout,
-		print_query
+		print_query,
+		skip_alignment=False,
+		origin_location_override=None,
+		destination_location_override=None,
+		depart_dt_str_override=None,
+		depart_dt_override=None,
+		access_mode_override=None,
+		egress_mode_override=None
 ):
 	last_msg = ""
 
@@ -286,7 +363,14 @@ def _load_candidates_with_reluctance_retries(
 			otp_url=otp_url,
 			request_timeout=request_timeout,
 			print_query=print_query,
-			transit_reluctances=transit_reluctances
+			transit_reluctances=transit_reluctances,
+			skip_alignment=skip_alignment,
+			origin_location_override=origin_location_override,
+			destination_location_override=destination_location_override,
+			depart_dt_str_override=depart_dt_str_override,
+			depart_dt_override=depart_dt_override,
+			access_mode_override=access_mode_override,
+			egress_mode_override=egress_mode_override
 		)
 
 		if not otp_candidates_df.empty:
@@ -295,3 +379,127 @@ def _load_candidates_with_reluctance_retries(
 		last_msg = msg_filter
 
 	return pd.DataFrame(), last_msg
+
+
+def _try_station_anchored_fallback(
+		tu_tur_row,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		modes_json,
+		route_names,
+		route_short_name_for_loading,
+		modes_list,
+		via_stopids,
+		walk_reluctance,
+		car_reluctance,
+		search_window,
+		max_itinerary_candidates,
+		otp_url,
+		request_timeout,
+		print_query,
+		first_stop_id,
+		last_stop_id,
+		wait_min=0
+):
+	"""
+	Fallback for TU trips where the normal full-route OTP search finds nothing, but the
+	first and/or last S_TRAIN/RAIL/SUBWAY leg's station is known from tu_gtfs_station_df. OTP's
+	own street-access routing sometimes prefers a different, nearby station instead of
+	the one the respondent actually used; anchoring the query at the known station
+	avoids that. The known-station leg is queried once as a street-only (walk/car) trip
+	and stitched onto every transit candidate found from/to that station.
+
+	Callers are expected to check whether first_stop_id/last_stop_id resolved (via
+	find_known_anchor_stations) before calling this, so that trips with no anchor at all
+	don't produce a fallback-attempt message.
+	"""
+
+	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr")
+
+	access_leg_df = None
+	if first_stop_id:
+		access_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK")
+		access_leg_df = request_direct_leg(
+			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
+			stop_id=first_stop_id,
+			direct_mode=access_mode,
+			side="access",
+			depart_dt_str=tu_tur_row["depart_dt_str"],
+			otp_url=otp_url,
+			request_timeout=request_timeout,
+			print_query=print_query
+		)
+		if access_leg_df.empty:
+			return pd.DataFrame(), REASON_NO_DIRECT_ACCESS_ROUTE
+
+	egress_leg_df = None
+	if last_stop_id:
+		egress_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK")
+		egress_leg_df = request_direct_leg(
+			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
+			stop_id=last_stop_id,
+			direct_mode=egress_mode,
+			side="egress",
+			depart_dt_str=tu_tur_row["depart_dt_str"],
+			otp_url=otp_url,
+			request_timeout=request_timeout,
+			print_query=print_query
+		)
+		if egress_leg_df.empty:
+			return pd.DataFrame(), REASON_NO_DIRECT_EGRESS_ROUTE
+
+	if first_stop_id:
+		access_duration_min = int(access_leg_df["duration_min"].sum())
+		depart_dt_transit = tu_tur_row["depart_dt"] + pd.Timedelta(minutes=access_duration_min + wait_min)
+	else:
+		depart_dt_transit = tu_tur_row["depart_dt"]
+	depart_dt_str_transit = depart_dt_transit.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+	via_stopids_filtered = via_stopids
+	if via_stopids:
+		exclude = {stop_id for stop_id in (first_stop_id, last_stop_id) if stop_id}
+		via_stopids_filtered = [stop_id for stop_id in via_stopids if stop_id not in exclude] or None
+
+	raw_transit_df, _ = _load_candidates_with_reluctance_retries(
+		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		modes_json=modes_json,
+		route_names=route_names,
+		route_short_name_for_loading=route_short_name_for_loading,
+		modes_list=modes_list,
+		via_stopids=via_stopids_filtered,
+		walk_reluctance=walk_reluctance,
+		car_reluctance=car_reluctance,
+		search_window=search_window,
+		max_itinerary_candidates=max_itinerary_candidates,
+		otp_url=otp_url,
+		request_timeout=request_timeout,
+		print_query=print_query,
+		skip_alignment=True,
+		origin_location_override={"stopLocation": {"stopLocationId": first_stop_id}} if first_stop_id else None,
+		destination_location_override={"stopLocation": {"stopLocationId": last_stop_id}} if last_stop_id else None,
+		depart_dt_str_override=depart_dt_str_transit,
+		depart_dt_override=depart_dt_transit,
+		access_mode_override="WALK" if first_stop_id else None,
+		egress_mode_override="WALK" if last_stop_id else None
+	)
+
+	if raw_transit_df.empty:
+		return pd.DataFrame(), f"anchored_{REASON_NO_OTP_CANDIDATES}"
+
+	stitched_df = stitch_candidates(raw_transit_df, access_leg_df, egress_leg_df, wait_min)
+
+	filtered_df, reason = _align_and_filter_candidates(
+		otp_candidates_df=stitched_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		route_names=route_names,
+		modes_list=modes_list,
+		tur_id=tu_tur_row["TurId"]
+	)
+	if filtered_df.empty:
+		return filtered_df, f"anchored_{reason}"
+	return filtered_df, reason

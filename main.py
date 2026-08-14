@@ -6,10 +6,23 @@ from tu_gtfs_stations_match import match_tu_gtfs_stations
 from config_loader import load_config
 from constant import MODE_MAP
 
+def _write_failures_file(trip_matching_summaries_df, path):
+	"""
+	Writes TurId + failure_reason (a short code, no coordinates/station names or other
+	survey data) for every trip that wasn't reconstructed, so failure causes can be
+	reviewed or shared without exposing personal information from the survey.
+	"""
+	failures_df = trip_matching_summaries_df.loc[
+		trip_matching_summaries_df["trip_not_found"] == 1, ["TurId", "failure_reason"]
+	]
+	failures_df.to_csv(path, sep="\t", index=False)
+
+
 def main():
 	config = load_config()
 
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
+	station_anchor_wait_min = config.get("matching", {}).get("station_anchor_wait_min", 0)
 	config_request = config.get("request")
 	otp_url = config_request["otp_url"]
 	search_window = config_request["search_window"]
@@ -31,7 +44,7 @@ def main():
 	)
 	#Small processing of TU data
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
-	tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
+	tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR) & (tu_tur["DiaryMonth"] == 3)]
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
 	print("TU data loaded")
@@ -68,7 +81,8 @@ def main():
 				max_itinerary_candidates=max_itinerary_candidates,
 				tu_gtfs_station_df=tu_gtfs_station_df,
 				return_trip_summary=return_trip_summary,
-				request_timeout=request_timeout
+				request_timeout=request_timeout,
+				station_anchor_wait_min=station_anchor_wait_min
 			)
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
@@ -79,6 +93,7 @@ def main():
 					"trip_found": 0,
 					"trip_not_found": 1,
 					"last_print_if_not_found": str(exc),
+					"failure_reason": type(exc).__name__,
 					"rmse": pd.NA, "depart_deviation_min": pd.NA,
 					"arrival_deviation_min": pd.NA, "weighted_diff_duration": pd.NA,
 					"weighted_diff_distance": pd.NA, "iteration_id": pd.NA
@@ -107,7 +122,9 @@ def main():
 	if not rmse_based_matches:
 		print("No rmse-based matches found.")
 		if trip_matching_summaries:
-			pd.DataFrame(trip_matching_summaries).to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
+			trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
+			trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
+			_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
@@ -115,6 +132,7 @@ def main():
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
+		_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")

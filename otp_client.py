@@ -69,6 +69,11 @@ def graphql_json_request(
 		print_query: bool = False,
 		timeout: int = 60,
 		direct: Optional[list] = None,
+		origin_location_override: Optional[dict] = None,
+		destination_location_override: Optional[dict] = None,
+		depart_dt_str_override: Optional[str] = None,
+		access_mode_override: Optional[Any] = None,
+		egress_mode_override: Optional[Any] = None,
 ) -> requests.Response:
 	if tu_tur_row is None:
 		raise ValueError("tu_tur_row must be specified to graphql_json_request")
@@ -89,11 +94,15 @@ def graphql_json_request(
 	)
 
 	tu_access, tu_egress = _get_access_egress(tu_deltur_sub)
+	if access_mode_override is not None:
+		tu_access = access_mode_override
+	if egress_mode_override is not None:
+		tu_egress = egress_mode_override
 
 	# Build variables dict
 	variables = {
 		"origin": {
-			"location": {
+			"location": origin_location_override if origin_location_override is not None else {
 				"coordinate": {
 					"latitude": tu_tur_row["orig_lat"],
 					"longitude": tu_tur_row["orig_lon"]
@@ -101,14 +110,16 @@ def graphql_json_request(
 			}
 		},
 		"destination": {
-			"location": {
+			"location": destination_location_override if destination_location_override is not None else {
 				"coordinate": {
 					"latitude": tu_tur_row["tiladrlat"],
 					"longitude": tu_tur_row["tiladrlon"]
 				}
 			}
 		},
-		"dateTime": {"earliestDeparture": tu_tur_row["depart_dt_str"]},
+		"dateTime": {
+			"earliestDeparture": depart_dt_str_override if depart_dt_str_override is not None else tu_tur_row["depart_dt_str"]
+		},
 		"modes": {
 			"directOnly": direct_only,
 			"transitOnly": transit_only,
@@ -396,13 +407,23 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 						max_itinerary_candidates = 50,
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1",
                         request_timeout: int = 60,
-                        print_query: bool = False):
+                        print_query: bool = False,
+                        origin_location_override: dict | None = None,
+                        destination_location_override: dict | None = None,
+                        depart_dt_str_override: str | None = None,
+                        depart_dt_override: pd.Timestamp | None = None,
+                        access_mode_override=None,
+                        egress_mode_override=None):
 	"""
 	Fetch all OTP itinerary candidates within the search_window using bidirectional pagination.
 
 	Performs initial query, then iteratively fetches forward and backward itineraries until
 	reaching max_itinerary_candidates or search window boundaries. Deduplicates results before
 	returning.
+
+	The `*_override` parameters let a caller anchor the query to a GTFS stop (instead of the TU
+	trip's own coordinates/departure time/access-egress mode) for the station-anchored fallback
+	in tu_otp_matching.py. They default to None, which reproduces the original TU-trip query.
 
 	Returns:
 		DataFrame with columns: iteration_id, leg_id, start_trip, end_trip, mode,
@@ -429,13 +450,18 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		search_window=search_window,
 		url=otp_url,
 		print_query=print_query,
-		timeout=request_timeout
+		timeout=request_timeout,
+		origin_location_override=origin_location_override,
+		destination_location_override=destination_location_override,
+		depart_dt_str_override=depart_dt_str_override,
+		access_mode_override=access_mode_override,
+		egress_mode_override=egress_mode_override
 	)
 
 	otp_candidates_df = json_to_df(response)
 	response_data = response.json()
 
-	resp_depart_dt = tu_tur_row["depart_dt"]
+	resp_depart_dt = depart_dt_override if depart_dt_override is not None else tu_tur_row["depart_dt"]
 	search_delta = pd.Timedelta(search_window)
 	window_start = resp_depart_dt - search_delta
 	window_end = resp_depart_dt + search_delta
@@ -471,7 +497,12 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			search_window=search_window,
 			url=otp_url,
 			print_query=print_query,
-			timeout=request_timeout
+			timeout=request_timeout,
+			origin_location_override=origin_location_override,
+			destination_location_override=destination_location_override,
+			depart_dt_str_override=depart_dt_str_override,
+			access_mode_override=access_mode_override,
+			egress_mode_override=egress_mode_override
 		)
 
 		otp_candidates_forward_df = json_to_df(response)
@@ -520,7 +551,12 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			search_window=search_window,
 			url=otp_url,
 			print_query=print_query,
-			timeout=request_timeout
+			timeout=request_timeout,
+			origin_location_override=origin_location_override,
+			destination_location_override=destination_location_override,
+			depart_dt_str_override=depart_dt_str_override,
+			access_mode_override=access_mode_override,
+			egress_mode_override=egress_mode_override
 		)
 
 		otp_candidates_backward_df = json_to_df(response)
@@ -538,6 +574,59 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 	otp_candidates_df = _deduplicate_itineraries(otp_candidates_df)
 
 	return otp_candidates_df
+
+
+def request_direct_leg(
+		tu_tur_row: pd.Series,
+		tu_deltur_sub: pd.DataFrame,
+		stop_id: str,
+		direct_mode: str,
+		side: str,
+		depart_dt_str: str,
+		otp_url: str = "http://localhost:8080/otp/gtfs/v1",
+		request_timeout: int = 60,
+		print_query: bool = False,
+) -> pd.DataFrame:
+	"""
+	Query OTP once for a single street-only (WALK/CAR) itinerary between the TU trip's
+	true origin/destination and a known GTFS stop. Used by the station-anchored fallback
+	in tu_otp_matching.py, since street-mode travel time in OTP doesn't depend on
+	time-of-day, so this only needs to be requested once and its duration reused as a
+	fixed offset against every transit candidate.
+
+	side="access": true origin -> stop (the leg leading up to the known station).
+	side="egress": stop -> true destination (the leg leaving the known station).
+	"""
+	if side not in ("access", "egress"):
+		raise ValueError(f"side must be 'access' or 'egress', got {side!r}")
+
+	stop_location = {"stopLocation": {"stopLocationId": stop_id}}
+	origin_override = None if side == "access" else stop_location
+	destination_override = stop_location if side == "access" else None
+
+	response = graphql_json_request(
+		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=tu_deltur_sub,
+		direct_only=True,
+		transit_only=False,
+		direct=[direct_mode],
+		search_window=None,
+		url=otp_url,
+		print_query=print_query,
+		timeout=request_timeout,
+		origin_location_override=origin_override,
+		destination_location_override=destination_override,
+		depart_dt_str_override=depart_dt_str,
+	)
+
+	direct_df = json_to_df(response)
+	if direct_df.empty:
+		return direct_df
+
+	# OTP may return more than one direct itinerary (e.g. walking a bike); keep the fastest.
+	fastest_iteration = direct_df.groupby("iteration_id")["duration_min"].sum().idxmin()
+	return direct_df[direct_df["iteration_id"] == fastest_iteration].reset_index(drop=True)
+
 
 ##Get all route names for a specific mode
 #This is because RAIL, TRAM and SUBWAY do not have route names in TU
