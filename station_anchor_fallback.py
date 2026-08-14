@@ -17,6 +17,14 @@ TRANSIT_MODES = {"BUS", "S_TRAIN", "RAIL", "SUBWAY", "TRAM", "FERRY"}
 
 _TIME_COLS = ("start_trip", "end_trip", "start_leg", "end_leg")
 
+#OTP's planConnection API gives trip-level start/end as ISO8601 strings but leg-level
+#startTime/endTime as raw epoch milliseconds (see otp_parser.py) — the two groups need
+#different pd.to_datetime parsing on the way in and different serialization on the way
+#out, or downstream code (e.g. tu_otp_matching.py's waitingtime calc, which does raw
+#ms arithmetic on start_leg/end_leg) breaks on stitched itineraries.
+_ISO_TIME_COLS = ("start_trip", "end_trip")
+_MS_TIME_COLS = ("start_leg", "end_leg")
+
 
 def find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df):
 	"""
@@ -77,8 +85,10 @@ def _prep_leg_df(leg_df):
 	if leg_df is None or leg_df.empty:
 		return None
 	leg_df = leg_df.sort_values("leg_id").reset_index(drop=True).copy()
-	for col in _TIME_COLS:
+	for col in _ISO_TIME_COLS:
 		leg_df[col] = pd.to_datetime(leg_df[col], utc=True)
+	for col in _MS_TIME_COLS:
+		leg_df[col] = pd.to_datetime(leg_df[col], utc=True, unit="ms")
 	return leg_df
 
 
@@ -99,8 +109,10 @@ def stitch_candidates(transit_df, access_leg_df=None, egress_leg_df=None, wait_m
 		return transit_df
 
 	transit_df = transit_df.copy()
-	for col in _TIME_COLS:
+	for col in _ISO_TIME_COLS:
 		transit_df[col] = pd.to_datetime(transit_df[col], utc=True)
+	for col in _MS_TIME_COLS:
+		transit_df[col] = pd.to_datetime(transit_df[col], utc=True, unit="ms")
 
 	access_leg_df = _prep_leg_df(access_leg_df)
 	egress_leg_df = _prep_leg_df(egress_leg_df)
@@ -141,9 +153,14 @@ def stitch_candidates(transit_df, access_leg_df=None, egress_leg_df=None, wait_m
 		.reset_index(drop=True)
 	)
 
-	for col in _TIME_COLS:
+	for col in _ISO_TIME_COLS:
 		stitched_df[col] = (
 			stitched_df[col].dt.tz_convert(LOCAL_TIMEZONE).dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 		)
+	for col in _MS_TIME_COLS:
+		#Don't assume a specific underlying resolution (pandas 3.x promotes tz-aware
+		#datetime64 to different resolutions - e.g. us here - depending on the exact
+		#construction path), so cast to ms explicitly before pulling out the int.
+		stitched_df[col] = stitched_df[col].astype("datetime64[ms, UTC]").astype("int64")
 
 	return stitched_df
