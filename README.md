@@ -229,6 +229,11 @@ prefixed `anchored_` — this only appears when a fallback was actually attempte
 station was found); trips with no S_TRAIN/RAIL/SUBWAY leg to anchor on just keep the full-route
 search's own reason, since a fallback was never possible.
 
+For trips that *were* successfully reconstructed via the fallback, `trip_matching_summaries_file`'s
+`used_anchor_fallback` column is `True` (it's `False` for every normal full-route match). Each such
+trip also prints a `ANCHOR_FALLBACK_USED: TurId=<id>` line, so every fallback-reconstructed trip can
+be found in `log_file` with a plain text search.
+
 | Code | Meaning |
 |------|---------|
 | `no_valid_modes` | None of the TU trip's legs map to a usable OTP transit mode |
@@ -286,15 +291,41 @@ one or more GTFS stops in OTP. For each station:
    (`bbox_buffer_m`).
 2. Stops are filtered to those that serve a mode relevant to that station (S-train,
    metro, rail, or tram).
-3. Among the remaining stops, the closest one whose name meets a minimum name-similarity
-   threshold (`station_name_threshold`, scored via rapidfuzz `WRatio`) against the TU
-   station name is selected. If no stop clears the threshold, that mode is left unmatched
-   for that station rather than guessed by distance alone.
+3. Among the remaining stops, the one with the best name-similarity score (rapidfuzz
+   `WRatio`, ties broken by distance) against the TU station name — or any of its
+   known aliases (`TU_NAME_ALIASES`, for TU names that predate a later GTFS station
+   rename) — is selected, provided it clears `station_name_threshold`. If no stop
+   clears the threshold, that mode is left unmatched for that station rather than
+   guessed by distance alone.
 
 The result is a lookup table — `tu_gtfs_station_df` — mapping
 `(otp_mode, tu_station_name)` → `gtfs_station_id`. This is used later to constrain
 OTP queries and to verify that candidate itineraries pass through the correct
 stations.
+
+#### Known GTFS data quirk: mislabeled replacement-bus mode in early-2018 releases
+
+Some early-2018 DTU feed releases tag rail-replacement-bus trips with the *original*
+train's mode instead of `BUS`. Confirmed pattern in `routes.txt`: several DSB
+"Togbus" routes are tagged `route_type=2` (RAIL) in releases dated `20171219`/
+`20180215`, then the identical route reappears correctly tagged `route_type=3` (BUS)
+in a release from `20180712` onward — the mislabeling was fixed partway through 2018.
+
+Metroselskabet's metro-replacement buses go a step further: rather than using a
+separate "Togbus"-style route at all, they run substitute trips directly under the
+real M1/M2 `route_id`, with the real `SUBWAY` mode. Concretely, the GTFS stop
+`Nørreport St. (Nørre Voldgade)` — an ordinary street-level bus stop (route 350S) —
+also shows up as serving `SUBWAY`, but only because of 187 trips tied to a single
+`service_id` whose `calendar_dates.txt` entries cover exactly 2018-04-30 through
+2018-05-04 (a 5-day window, presumably a planned closure/diversion at Nørreport).
+There's no separate route name to filter on for this case — it's only identifiable
+by that anomalously short calendar span.
+
+In practice this mostly doesn't matter: the name-similarity-first tie-break in step 3
+above means the real platform stop (e.g. `Nørreport St. (Metro)`) is preferred for
+matching almost year-round. It would only bite for a TU trip whose actual travel date
+falls inside one of these short mislabeled windows, which per-mode station matching
+(built once per whole TU period, not per exact date) doesn't currently detect.
 
 ---
 
