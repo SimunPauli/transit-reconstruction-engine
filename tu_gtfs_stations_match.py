@@ -4,6 +4,12 @@ from otp_client import get_stops_by_bbox_query
 import re
 from rapidfuzz import fuzz
 import numpy as np
+from datetime import date
+
+_EPOCH = date(1970, 1, 1)
+
+def _days_since_epoch(d: date) -> int:
+	return (d - _EPOCH).days
 
 
 def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
@@ -42,6 +48,7 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
 			tu_station=row,
 			name_match_threshold=name_match_threshold,
 			bbox_buffer_m=bbox_buffer_m,
+			period=period,
 		)
 
 		for mode, stop in matches.items():
@@ -68,6 +75,32 @@ TU_MODE_TO_GTFS = {
 	"letbane":    "TRAM",
 }
 
+# TU station names that were renamed in GTFS at some point and no longer resemble
+# the current GTFS name closely enough for name_similarity to bridge on its own
+# (found by scanning all TU stations for a same-mode GTFS stop within 250m scoring
+# below name_match_threshold against the plain TU name). Each TU name maps to every
+# known former/alternate GTFS name that should also be tried during matching.
+TU_NAME_ALIASES = {
+	"København Syd": ["Ny Ellebjerg St."],
+}
+
+# Stations where a mode was added to an already-existing station later than the
+# station row's own OpenDate reflects. tu_stations only has one OpenDate/ClosedDate
+# pair per row, so it can't represent "this particular mode started later than the
+# rest of the station" - a NaN OpenDate here correctly means the STATION itself
+# (its other, older modes) predates TU, but _station_active_in_period's "NaN = open
+# since -inf" reading would otherwise also apply to the newer mode. Checked here
+# against `period` for just the (station, mode) pairs listed; every other mode at
+# these stations, and every other station, keeps using the row-level dates as before.
+# Dates cross-checked against this dataset's own correctly-dated Cityringen sibling
+# stations (which don't have this ambiguity, since for them station-open-date ==
+# metro-open-date) and Copenhagen Metro's real M3/M4 rollout history.
+MODE_OPEN_DATE_OVERRIDES = {
+	("Østerport", "SUBWAY"): date(2019, 9, 29),
+	("Nordhavn", "SUBWAY"): date(2019, 9, 29),
+	("Nørrebro", "SUBWAY"): date(2019, 9, 29),
+}
+
 def _normalise_name(name: str) -> str:
 	"""Lowercase, remove punctuation, collapse whitespace."""
 	name = name.lower()
@@ -88,6 +121,7 @@ def find_gtfs_stations_for_tu_station(
 		bbox_buffer_m: int = 400,
 		otp_url: str = "http://localhost:8080/otp/gtfs/v1",
 		name_match_threshold: float = 0.7,
+		period: tuple = None,
 ) -> dict[str, pd.Series]:
 	"""
 	Find matching GTFS station(s) for a single TU station row.
@@ -108,6 +142,12 @@ def find_gtfs_stations_for_tu_station(
 	name_match_threshold : float
 		Minimum similarity score (0–1) to accept a name match, compared against a
 		rapidfuzz WRatio score scaled to the same 0–1 range. Default 0.7.
+	period : tuple, optional
+		(period_start, period_end) in days since 1970-01-01, same convention as
+		_station_active_in_period. Used only to check MODE_OPEN_DATE_OVERRIDES
+		entries for this station; if None, overrides are not applied (every mode
+		flagged on the row is treated as active, same as before this parameter
+		existed).
 
 	Returns
 	-------
@@ -115,12 +155,27 @@ def find_gtfs_stations_for_tu_station(
 	e.g. {"S_TRAIN": <stop row>, "SUBWAY": <stop row>}
 	If both modes share one stop, the same stop appears under both keys.
 	"""
-	# 1. Active modes for this TU station
-	active_modes = [
-		gtfs_mode
-		for tu_col, gtfs_mode in TU_MODE_TO_GTFS.items()
-		if tu_station.get(tu_col, 0) == 1
-	]
+	# 1. Active modes for this TU station. Most stations are fully covered by the
+	# row-level OpenDate/ClosedDate check the caller already applied; a station
+	# listed in MODE_OPEN_DATE_OVERRIDES additionally needs that specific mode's
+	# real opening date checked against the period, since the row-level dates
+	# reflect the station's oldest mode, not this one.
+	statnavn = tu_station.get("statnavn")
+	active_modes = []
+	for tu_col, gtfs_mode in TU_MODE_TO_GTFS.items():
+		if tu_station.get(tu_col, 0) != 1:
+			continue
+		override_open = MODE_OPEN_DATE_OVERRIDES.get((statnavn, gtfs_mode))
+		if override_open is not None and period is not None:
+			_, period_end = period
+			if _days_since_epoch(override_open) > period_end:
+				print(
+					f"  Note: {gtfs_mode} at {statnavn} didn't open until "
+					f"{override_open.isoformat()} (MODE_OPEN_DATE_OVERRIDES); excluding it "
+					f"for this period despite the station row's own OpenDate"
+				)
+				continue
+		active_modes.append(gtfs_mode)
 
 	if not active_modes:
 		print(f"Warning: No active modes for {tu_station['statnavn']}")
@@ -150,6 +205,8 @@ def find_gtfs_stations_for_tu_station(
 		return {}
 
 	tu_name = str(tu_station.get("statnavn", ""))
+	tu_name_variants = [tu_name] + TU_NAME_ALIASES.get(tu_name, [])
+	tu_name_variants_norm = [_normalise_name(n) for n in tu_name_variants]
 
 	# 4. For each mode, pick the closest stop with "good" name match
 	result: dict[str, pd.Series] = {}
@@ -165,10 +222,15 @@ def find_gtfs_stations_for_tu_station(
 
 		# Score by name similarity (WRatio handles word order and the common case
 		# where the GTFS name is the TU name plus a cross-street suffix, e.g.
-		# "Forum" vs "Forum St. (Rosenørns Allé)")
+		# "Forum" vs "Forum St. (Rosenørns Allé)"). Also tries any known former/
+		# alternate GTFS name for this TU station (TU_NAME_ALIASES), since some
+		# TU names predate a later GTFS station rename and no longer resemble it.
 		if tu_name:
 			mode_stops["name_similarity"] = mode_stops["name"].apply(
-				lambda n: fuzz.WRatio(_normalise_name(tu_name), _normalise_name(n))
+				lambda n: max(
+					fuzz.WRatio(variant, _normalise_name(n))
+					for variant in tu_name_variants_norm
+				)
 			)
 			name_filtered = mode_stops[mode_stops["name_similarity"] >= name_match_threshold * 100]
 
@@ -180,9 +242,17 @@ def find_gtfs_stations_for_tu_station(
 				)
 				continue
 			mode_stops = name_filtered
-
-		# Closest stop by distance
-		best = mode_stops.loc[mode_stops["distance_degree"].idxmin()]
+			# Prefer the best name match among everything that cleared the threshold;
+			# picking by distance alone can prefer a technically-nearer but worse-named
+			# stop (e.g. a street-level stop that happens to carry a rare/anomalous
+			# trip pattern under the right mode) over the actual station platform, so
+			# distance only breaks ties between equally-good name matches.
+			best = mode_stops.sort_values(
+				["name_similarity", "distance_degree"], ascending=[False, True]
+			).iloc[0]
+		else:
+			# No TU name available to compare against -- fall back to nearest by distance.
+			best = mode_stops.loc[mode_stops["distance_degree"].idxmin()]
 		result[mode] = best
 
 	return result
