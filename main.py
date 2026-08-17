@@ -94,6 +94,7 @@ def main():
 					"trip_not_found": 1,
 					"last_print_if_not_found": str(exc),
 					"failure_reason": type(exc).__name__,
+					"used_anchor_fallback": False,
 					"rmse": pd.NA, "depart_deviation_min": pd.NA,
 					"arrival_deviation_min": pd.NA, "weighted_diff_duration": pd.NA,
 					"weighted_diff_distance": pd.NA, "iteration_id": pd.NA
