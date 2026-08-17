@@ -10,7 +10,7 @@ MODE_MAP = {
 	34: "SUBWAY",
 	37: "TRAM",
 	41: "FERRY",
-	35: "BUS",
+	35: "CAR", #Telebus, Flexbus. These are often essentially functioning as taxi.
 	# Street modes:
 	1: "WALK",
 	2: "BIKE",
