@@ -33,6 +33,7 @@ ACCESS_EGRESS_MODE_MAP = {
 	12: "CAR_DROP_OFF",
 	25: "CAR_DROP_OFF",
 	26: "CAR_DROP_OFF",
+	35: "CAR_DROP_OFF"
 }
 
 #Direct (street-only) mode used for the station-anchored fallback's access/egress leg.
@@ -47,6 +48,7 @@ DIRECT_ACCESS_MODE_MAP = {
 	12: "CAR",  # van
 	25: "CAR",  # Taxi
 	26: "CAR",  # Non-public bus
+	35: "CAR"
 }
 
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
