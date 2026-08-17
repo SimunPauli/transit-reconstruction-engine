@@ -91,7 +91,7 @@ Create it based on the template below:
   },
   "station_matching": {
     "bbox_buffer_m": 1000,
-    "station_name_threshold": 0.6
+    "station_name_threshold": 0.7
   },
   "squared_error_weights": {
     "w_departure_min": 1.0,
@@ -125,7 +125,7 @@ Create it based on the template below:
 | `paths.tu_gtfs_station_file` | Output file for the TU–GTFS station mapping |
 | `paths.map_file` | Output file name for optional map visualisation |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
-| `station_matching.station_name_threshold` | Minimum cosine similarity (0–1) for a station name match |
+| `station_matching.station_name_threshold` | Minimum name-similarity score (0–1, rapidfuzz WRatio) for a station name match; stations with no candidate above this are left unmatched for that mode rather than guessed by distance |
 | `squared_error_weights` | Weights applied to each component of the RMSE score |
 | `walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
 
@@ -286,9 +286,10 @@ one or more GTFS stops in OTP. For each station:
    (`bbox_buffer_m`).
 2. Stops are filtered to those that serve a mode relevant to that station (S-train,
    metro, rail, or tram).
-3. Among the remaining stops, the closest one whose name meets a minimum cosine
-   similarity threshold (`station_name_threshold`) against the TU station name is
-   selected. If no stop clears the threshold, the closest stop by distance is used.
+3. Among the remaining stops, the closest one whose name meets a minimum name-similarity
+   threshold (`station_name_threshold`, scored via rapidfuzz `WRatio`) against the TU
+   station name is selected. If no stop clears the threshold, that mode is left unmatched
+   for that station rather than guessed by distance alone.
 
 The result is a lookup table — `tu_gtfs_station_df` — mapping
 `(otp_mode, tu_station_name)` → `gtfs_station_id`. This is used later to constrain
