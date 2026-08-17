@@ -42,6 +42,7 @@ def match_tu_trip_to_otp(
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+	used_anchor_fallback = False
 
 	def _empty_trip_summary(last_print_if_not_found, failure_reason):
 		return {
@@ -51,6 +52,7 @@ def match_tu_trip_to_otp(
 			"trip_not_found": 1,
 			"last_print_if_not_found": last_print_if_not_found,
 			"failure_reason": failure_reason,
+			"used_anchor_fallback": used_anchor_fallback,
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
 			"arrival_deviation_min": pd.NA,
@@ -156,6 +158,9 @@ def match_tu_trip_to_otp(
 		if otp_candidates_df.empty:
 			return _return_not_found(f"{msg_filter}; fallback={fallback_msg}", fallback_msg)
 
+		used_anchor_fallback = True
+		print(f"ANCHOR_FALLBACK_USED: TurId={i_TurId}")
+
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
 		["iteration_id", "start_leg"]
@@ -197,6 +202,7 @@ def match_tu_trip_to_otp(
 			"trip_found": 1,
 			"trip_not_found": 0,
 			"last_print_if_not_found": "",
+			"used_anchor_fallback": used_anchor_fallback,
 			"rmse": round(best_trip_summary["rmse"],3),
 			"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
 			"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
@@ -208,7 +214,7 @@ def match_tu_trip_to_otp(
 
 	return best_trip_candidate
 
-def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.9, 0.7, 0.5)):
+def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.5, 0.25, 0.1)):
 	transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
 	tu_transit_modes = [
 		mode
