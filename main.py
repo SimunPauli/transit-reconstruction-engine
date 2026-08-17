@@ -62,7 +62,7 @@ def main():
 		tu_stations,
 		period=(tu_tur["DiaryDate"].min(), tu_tur["DiaryDate"].max()),
 		bbox_buffer_m=1000,
-		name_match_threshold=0.6
+		name_match_threshold=0.7
 	)
 	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
 	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=";", decimal=",")

@@ -2,14 +2,14 @@ import pandas as pd
 import utm
 from otp_client import get_stops_by_bbox_query
 import re
-from collections import Counter
+from rapidfuzz import fuzz
 import numpy as np
 
 
 def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
                            bbox_buffer_m=400,
                            period=None,
-                           name_match_threshold = 0.5):
+                           name_match_threshold = 0.7):
 	tu_stations["id"] = tu_stations.index
 	# period should be: period = (int(tu_tur["DiaryDate"].min()), int(tu_tur["DiaryDate"].max()))
 	if period is None:
@@ -82,24 +82,12 @@ def _normalise_name(name: str) -> str:
 	name = re.sub(r"\s+", " ", name).strip()
 	return name
 
-def cosine_similarity(s1, s2):
-	# Convert strings to character frequency vectors
-	vec1 = Counter(s1)
-	vec2 = Counter(s2)
-
-	# Calculating cosine similarity
-	dot_product = sum(vec1[ch] * vec2[ch] for ch in vec1)
-	magnitude1 = np.sqrt(sum(count ** 2 for count in vec1.values()))
-	magnitude2 = np.sqrt(sum(count ** 2 for count in vec2.values()))
-	res = dot_product / (magnitude1 * magnitude2)
-	return(res)
-
 def find_gtfs_stations_for_tu_station(
 		tu_station: pd.Series,
 		gtfs_df: pd.DataFrame = None,
 		bbox_buffer_m: int = 400,
 		otp_url: str = "http://localhost:8080/otp/gtfs/v1",
-		name_match_threshold: float = 0.6,
+		name_match_threshold: float = 0.7,
 ) -> dict[str, pd.Series]:
 	"""
 	Find matching GTFS station(s) for a single TU station row.
@@ -118,7 +106,8 @@ def find_gtfs_stations_for_tu_station(
 	otp_url : str
 		OTP endpoint.
 	name_match_threshold : float
-		Minimum similarity score (0–100) to accept a name match. Default 0.6.
+		Minimum similarity score (0–1) to accept a name match, compared against a
+		rapidfuzz WRatio score scaled to the same 0–1 range. Default 0.7.
 
 	Returns
 	-------
@@ -174,20 +163,23 @@ def find_gtfs_stations_for_tu_station(
 			print(f"Warning: No GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for mode: {mode}")
 			continue
 
-		# Score by name similarity (token_sort_ratio handles word order differences)
+		# Score by name similarity (WRatio handles word order and the common case
+		# where the GTFS name is the TU name plus a cross-street suffix, e.g.
+		# "Forum" vs "Forum St. (Rosenørns Allé)")
 		if tu_name:
 			mode_stops["name_similarity"] = mode_stops["name"].apply(
-				lambda n: cosine_similarity(_normalise_name(tu_name), _normalise_name(n)) * 100
+				lambda n: fuzz.WRatio(_normalise_name(tu_name), _normalise_name(n))
 			)
-			name_filtered = mode_stops[mode_stops["name_similarity"] >= name_match_threshold]
+			name_filtered = mode_stops[mode_stops["name_similarity"] >= name_match_threshold * 100]
 
-			if not name_filtered.empty:
-				mode_stops = name_filtered
-			else:
+			if name_filtered.empty:
 				print(
 					f"  Warning: no name match (threshold={name_match_threshold}) "
-					f"for '{tu_name}' in {mode} stops, using distance only"
+					f"for '{tu_name}' in {mode} stops within {bbox_buffer_m}m; skipping rather than "
+					f"guessing by distance alone"
 				)
+				continue
+			mode_stops = name_filtered
 
 		# Closest stop by distance
 		best = mode_stops.loc[mode_stops["distance_degree"].idxmin()]
