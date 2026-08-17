@@ -12,3 +12,6 @@ __pycache__/
 *.db
 *.accdb
 *.ipynb
+*.txt
+*.zip
+*.pkl
