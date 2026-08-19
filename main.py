@@ -23,6 +23,12 @@ def main():
 
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
 	station_anchor_wait_min = config.get("matching", {}).get("station_anchor_wait_min", 0)
+	transit_retry_cfg = config.get("reluctance_retries", {}).get("transit", {})
+	walk_retry_cfg = config.get("reluctance_retries", {}).get("walk", {})
+	transit_retry_enabled = transit_retry_cfg.get("enabled", True)
+	transit_reluctance_sequence = tuple(transit_retry_cfg.get("sequence", [0.5, 0.25, 0.1]))
+	walk_retry_enabled = walk_retry_cfg.get("enabled", True)
+	walk_reluctance_sequence = tuple(walk_retry_cfg.get("sequence", [3, 4, 6]))
 	config_request = config.get("request")
 	otp_url = config_request["otp_url"]
 	search_window = config_request["search_window"]
@@ -82,7 +88,11 @@ def main():
 				tu_gtfs_station_df=tu_gtfs_station_df,
 				return_trip_summary=return_trip_summary,
 				request_timeout=request_timeout,
-				station_anchor_wait_min=station_anchor_wait_min
+				station_anchor_wait_min=station_anchor_wait_min,
+				transit_retry_enabled=transit_retry_enabled,
+				transit_reluctance_sequence=transit_reluctance_sequence,
+				walk_retry_enabled=walk_retry_enabled,
+				walk_reluctance_sequence=walk_reluctance_sequence
 			)
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")

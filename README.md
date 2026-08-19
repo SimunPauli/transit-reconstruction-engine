@@ -68,6 +68,16 @@ Create it based on the template below:
     "print_deviation": true,
     "station_anchor_wait_min": 0
   },
+  "reluctance_retries": {
+    "transit": {
+      "enabled": true,
+      "sequence": [0.5, 0.25, 0.1]
+    },
+    "walk": {
+      "enabled": true,
+      "sequence": [3, 4, 6]
+    }
+  },
   "paths": {
     "data_dir": "/home/user/Reproducing/Data/TU/",
     "output_dir": "/home/user/Reproducing/Output/",
@@ -116,6 +126,10 @@ Create it based on the template below:
 | `matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
 | `matching.print_deviation` | Whether to print RMSE deviation details per trip |
 | `matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
+| `reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
+| `reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `reluctance_retries.transit.enabled` is true |
+| `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
+| `reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `reluctance_retries.walk.enabled` is true |
 | `paths.data_dir` | Directory containing the TU input Excel files |
 | `paths.output_dir` | Directory where all output files are written |
 | `paths.log_file` | Log file name (relative to `output_dir`) |
@@ -369,13 +383,27 @@ tool fetches itineraries both forward and backward in time until it has up to
 `max_itinerary_candidates` itineraries within the `search_window`, or the `search_window`
 boundary is reached. Duplicate itineraries from pagination overlap are removed.
 
-If the initial query returns no valid candidates after filtering, the tool retries
-with progressively reduced reluctance values for each transit mode
-(currently at 0.9, 0.7, and 0.5), first for individual modes and then for combinations,
-until a match is found or all attempts are exhausted. This has little effect on resualts,
-should be looked at closer, e.g. increase reluctance of car and walk. Access/egress 
-which are car to bus as transit, struggle as
-bus has no station in TU. This should be looked at closer. 
+If the initial query returns no valid candidates after filtering, the tool retries with two
+independent, configurable mechanisms (`reluctance_retries` in `config.json`), each of which
+can be toggled on/off and has a configurable value sequence:
+
+- **Walk retries** (`reluctance_retries.walk`) — increases `walk_reluctance` (default `[3, 4,
+  6]`, above the baseline of `2`), one value per attempt. This targets cases where OTP's own
+  cost model prefers walking further to reach a different, "cheaper" stop/route than the one
+  the respondent actually used — TU respondents often go to greater lengths to avoid walking
+  than OTP's default cost function assumes, so this makes OTP itself avoid extra walking more.
+- **Transit retries** (`reluctance_retries.transit`) — reduces reluctance for the trip's
+  transit mode(s) (default `[0.5, 0.25, 0.1]`, below the baseline of `1`), first for
+  individual modes and then for combinations. This targets cases where OTP's search found
+  nothing at all in the search window, by making transit relatively cheaper against other
+  options; it does not help when OTP already returned itineraries but none matched the
+  required route/mode/leg sequence, since reluctance only affects which itineraries OTP's own
+  search generates — not the requirement filtering that runs afterward.
+
+Walk retries run before transit retries. All other query parameters (route constraints, via
+stops, time window) stay fixed across every retry attempt. Access/egress which are car to
+bus as transit still struggle, since bus has no station in TU — this is unrelated to
+reluctance and should be looked at separately.
 
 **Street reluctance** — OTP’s default street reluctance is set to `2`, which makes
 time spent walking on street networks more expensive than in-vehicle time. This

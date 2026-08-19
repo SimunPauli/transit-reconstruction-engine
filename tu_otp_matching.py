@@ -18,6 +18,7 @@ from constant import (
 	REASON_NO_DIRECT_ACCESS_ROUTE,
 	REASON_NO_DIRECT_EGRESS_ROUTE,
 	REASON_NO_BEST_MATCH,
+	REASON_CAR_LEG_NOT_SATISFIED,
 )
 from station_anchor_fallback import find_known_anchor_stations, stitch_candidates
 
@@ -34,6 +35,10 @@ def match_tu_trip_to_otp(
 	tu_gtfs_station_df,
 	walk_reluctance=2,
 	car_reluctance=2,
+	transit_retry_enabled=True,
+	transit_reluctance_sequence=(0.5, 0.25, 0.1),
+	walk_retry_enabled=True,
+	walk_reluctance_sequence=(3, 4, 6),
 	print_deviation_details= True,
 	return_trip_summary= False,
 	request_timeout=60,
@@ -112,7 +117,11 @@ def match_tu_trip_to_otp(
 	else:
 		return _return_not_found(f"No valid transit modes found. TurId: {i_TurId}. Something went wrong.")
 
-	otp_candidates_df, msg_filter = _load_candidates_with_reluctance_retries(
+	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr")
+	is_car_access = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK") == "CAR"
+	is_car_egress = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK") == "CAR"
+
+	_candidate_kwargs = dict(
 		tu_tur_row=tu_tur_row,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
@@ -123,6 +132,10 @@ def match_tu_trip_to_otp(
 		via_stopids=via_stopids,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence,
 		search_window=search_window,
 		max_itinerary_candidates=max_itinerary_candidates,
 		otp_url=otp_url,
@@ -130,27 +143,65 @@ def match_tu_trip_to_otp(
 		print_query=print_query
 	)
 
+	otp_candidates_df = pd.DataFrame()
+	msg_filter = ""
+
+	if is_car_access or is_car_egress:
+		# CAR access/egress has no reliable direct request to OTP (see otp_client._get_access_egress):
+		# access bundles ["WALK", "CAR_DROP_OFF"] and OTP is free to silently return WALK instead. So
+		# CAR trips are anchored at a known rail/S-train/subway station and stitched with an
+		# unambiguous single-mode CAR direct leg (station_anchor_fallback.py) instead of relying on
+		# that bundled request.
+		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
+		anchor_usable = (
+			(first_stop_id or not is_car_access)
+			and (last_stop_id or not is_car_egress)
+			and (first_stop_id or last_stop_id)
+		)
+		if anchor_usable:
+			otp_candidates_df, msg_filter = _try_station_anchored_fallback(
+				**_candidate_kwargs,
+				first_stop_id=first_stop_id,
+				last_stop_id=last_stop_id,
+				wait_min=station_anchor_wait_min
+			)
+			if not otp_candidates_df.empty:
+				used_anchor_fallback = True
+				print(f"ANCHOR_FALLBACK_USED (car access/egress): TurId={i_TurId}")
+
+		if otp_candidates_df.empty:
+			# No usable anchor station for the required CAR side (e.g. CAR combined with a
+			# bus-only trip, which has no named stations in TU) — fall back to the normal
+			# full-route query, then verify below that the CAR side actually came back as CAR,
+			# since OTP may have silently substituted WALK.
+			otp_candidates_df, msg_filter = _load_candidates_with_reluctance_retries(**_candidate_kwargs)
+			if otp_candidates_df.empty:
+				return _return_not_found(msg_filter)
+
+			valid_iterations = otp_candidates_df.groupby("iteration_id").apply(
+				lambda g: (
+					(not is_car_access or g.loc[g["leg_id"].idxmin(), "mode"] == "CAR")
+					and (not is_car_egress or g.loc[g["leg_id"].idxmax(), "mode"] == "CAR")
+				)
+			)
+			keep_ids = valid_iterations[valid_iterations].index
+			otp_candidates_df = otp_candidates_df[otp_candidates_df["iteration_id"].isin(keep_ids)]
+			if otp_candidates_df.empty:
+				fail_msg = (
+					f"{REASON_CAR_LEG_NOT_SATISFIED}: no candidate itinerary had CAR on the "
+					f"required access/egress leg (OTP returned WALK instead). TurId={i_TurId}"
+				)
+				return _return_not_found(fail_msg, REASON_CAR_LEG_NOT_SATISFIED)
+	else:
+		otp_candidates_df, msg_filter = _load_candidates_with_reluctance_retries(**_candidate_kwargs)
+
 	if otp_candidates_df.empty:
 		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
 		if not first_stop_id and not last_stop_id:
 			return _return_not_found(msg_filter)
 
 		otp_candidates_df, fallback_msg = _try_station_anchored_fallback(
-			tu_tur_row=tu_tur_row,
-			tu_deltur_sub=tu_deltur_sub,
-			tu_gtfs_station_df=tu_gtfs_station_df,
-			modes_json=modes_json,
-			route_names=route_names,
-			route_short_name_for_loading=route_short_name_for_loading,
-			modes_list=modes_list,
-			via_stopids=via_stopids,
-			walk_reluctance=walk_reluctance,
-			car_reluctance=car_reluctance,
-			search_window=search_window,
-			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url,
-			request_timeout=request_timeout,
-			print_query=print_query,
+			**_candidate_kwargs,
 			first_stop_id=first_stop_id,
 			last_stop_id=last_stop_id,
 			wait_min=station_anchor_wait_min
@@ -214,24 +265,45 @@ def match_tu_trip_to_otp(
 
 	return best_trip_candidate
 
-def _build_transit_reluctance_attempts(modes_list, reluctance_sequence=(0.5, 0.25, 0.1)):
-	transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
-	tu_transit_modes = [
-		mode
-		for mode in dict.fromkeys(modes_list)
-		if mode in transit_modes
-	]
+def _build_reluctance_attempts(
+		modes_list,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.8, 0.75, 0.5),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(2.5, 3, 4)
+):
+	"""
+	Builds the ordered sequence of (transit_reluctances, walk_reluctance_override) attempts
+	tried after the baseline query finds no candidate. transit_reluctances lowers the cost of
+	specific transit modes, surfacing routes OTP's search ranked as too expensive to return.
+	walk_reluctance_override raises the cost of walking, countering OTP preferring a longer
+	walk to a "better" stop/route over the shorter walk to the one the respondent actually
+	used (a behavior TU respondents often don't follow). Each element of the returned list is
+	(transit_reluctances: dict | None, walk_reluctance: float | None); None means "use the
+	caller's baseline value for this attempt".
+	"""
+	attempts = [(None, None)]
 
-	attempts = [None]
+	if walk_retry_enabled:
+		for walk_reluctance in walk_reluctance_sequence:
+			attempts.append((None, walk_reluctance))
 
-	for reluctance in reluctance_sequence:
-		for mode in tu_transit_modes:
-			attempts.append({mode: reluctance})
+	if transit_retry_enabled:
+		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
+		tu_transit_modes = [
+			mode
+			for mode in dict.fromkeys(modes_list)
+			if mode in transit_modes
+		]
 
-	for reluctance in reluctance_sequence:
-		for n_modes in range(2, len(tu_transit_modes) + 1):
-			for modes in combinations(tu_transit_modes, n_modes):
-				attempts.append({mode: reluctance for mode in modes})
+		for reluctance in transit_reluctance_sequence:
+			for mode in tu_transit_modes:
+				attempts.append(({mode: reluctance}, None))
+
+		for reluctance in transit_reluctance_sequence:
+			for n_modes in range(2, len(tu_transit_modes) + 1):
+				for modes in combinations(tu_transit_modes, n_modes):
+					attempts.append(({mode: reluctance for mode in modes}, None))
 
 	return attempts
 
@@ -339,6 +411,10 @@ def _load_candidates_with_reluctance_retries(
 		otp_url,
 		request_timeout,
 		print_query,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.8, 0.75, 0.5),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(2.5, 3, 4),
 		skip_alignment=False,
 		origin_location_override=None,
 		destination_location_override=None,
@@ -349,9 +425,19 @@ def _load_candidates_with_reluctance_retries(
 ):
 	last_msg = ""
 
-	for transit_reluctances in _build_transit_reluctance_attempts(modes_list):
+	reluctance_attempts = _build_reluctance_attempts(
+		modes_list,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence
+	)
+
+	for transit_reluctances, walk_reluctance_override in reluctance_attempts:
 		if transit_reluctances:
 			print(f"Retrying with transit reluctances: {transit_reluctances}")
+		if walk_reluctance_override is not None:
+			print(f"Retrying with walk_reluctance: {walk_reluctance_override}")
 
 		otp_candidates_df, msg_filter = _load_add_and_filter_candidates(
 			tu_tur_row=tu_tur_row,
@@ -362,7 +448,7 @@ def _load_candidates_with_reluctance_retries(
 			route_short_name_for_loading=route_short_name_for_loading,
 			modes_list=modes_list,
 			via_stopids=via_stopids,
-			walk_reluctance=walk_reluctance,
+			walk_reluctance=walk_reluctance if walk_reluctance_override is None else walk_reluctance_override,
 			car_reluctance=car_reluctance,
 			search_window=search_window,
 			max_itinerary_candidates=max_itinerary_candidates,
@@ -405,6 +491,10 @@ def _try_station_anchored_fallback(
 		print_query,
 		first_stop_id,
 		last_stop_id,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.5, 0.25, 0.1),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(3, 4, 6),
 		wait_min=0
 ):
 	"""
@@ -479,6 +569,10 @@ def _try_station_anchored_fallback(
 		via_stopids=via_stopids_filtered,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence,
 		search_window=search_window,
 		max_itinerary_candidates=max_itinerary_candidates,
 		otp_url=otp_url,
