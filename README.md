@@ -85,6 +85,7 @@ Create it based on the template below:
     "rmse_based_matches_file": "rmse_based_matches.xlsx",
     "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
     "failures_file": "trip_failures.tsv",
+    "summary_stats_file": "trip_matching_summary_stats.xlsx",
     "tu_gtfs_station_file": "tu_gtfs_station_df.xlsx",
     "map_file": "map.htmlz"
   },
@@ -136,6 +137,7 @@ Create it based on the template below:
 | `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
 | `paths.trip_matching_summaries_file` | Output file for per-trip match summaries |
 | `paths.failures_file` | Output file listing TurId + failure reason code for trips that weren't reconstructed (see "Failure reasons" below); contains no coordinates, station names, or other survey data |
+| `paths.summary_stats_file` | Output file for run-level summary statistics (success rate, failure reason breakdown) |
 | `paths.tu_gtfs_station_file` | Output file for the TU–GTFS station mapping |
 | `paths.map_file` | Output file name for optional map visualisation |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
@@ -228,6 +230,7 @@ All output files are written to `paths.output_dir`.
 | `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
 | `trip_matching_summaries_file` | Per-trip summary including RMSE score and deviation metrics |
 | `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
+| `summary_stats_file` | Run-level summary: overall success rate, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. Also printed to console/`log_file` at the end of the run. |
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
 

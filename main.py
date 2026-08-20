@@ -1,3 +1,5 @@
+import sys
+from contextlib import redirect_stdout
 import pandas as pd
 import load_TU_data
 from tu_otp_matching import match_tu_trip_to_otp
@@ -5,22 +7,28 @@ from otp_client import get_all_routes_for_mode
 from tu_gtfs_stations_match import match_tu_gtfs_stations
 from config_loader import load_config
 from constant import MODE_MAP
+from export_files import _write_failures_file, _print_and_export_summary_stats
 
-def _write_failures_file(trip_matching_summaries_df, path):
-	"""
-	Writes TurId + failure_reason (a short code, no coordinates/station names or other
-	survey data) for every trip that wasn't reconstructed, so failure causes can be
-	reviewed or shared without exposing personal information from the survey.
-	"""
-	failures_df = trip_matching_summaries_df.loc[
-		trip_matching_summaries_df["trip_not_found"] == 1, ["TurId", "failure_reason"]
-	]
-	failures_df.to_csv(path, sep="\t", index=False)
+
+class _Tee:
+	"""Writes to multiple files at once, so print() can go to both the console and log_file."""
+	def __init__(self, *files): self.files = files
+	def write(self, data): [file.write(data) for file in self.files]
+	def flush(self): [file.flush() for file in self.files]
 
 
 def main():
 	config = load_config()
 
+	# Opened here (not just under `if __name__ == "__main__"`) so the log file is written
+	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
+	# this module and calls main() directly, without ever executing the __main__ guard below.
+	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
+		with redirect_stdout(_Tee(sys.stdout, log_file)):
+			_run(config)
+
+
+def _run(config):
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
 	station_anchor_wait_min = config.get("matching", {}).get("station_anchor_wait_min", 0)
 	transit_retry_cfg = config.get("reluctance_retries", {}).get("transit", {})
@@ -136,6 +144,7 @@ def main():
 			trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 			trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 			_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
+			_print_and_export_summary_stats(trip_matching_summaries, config["paths"]["summary_stats_file"])
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
@@ -144,22 +153,10 @@ def main():
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 		_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
+		_print_and_export_summary_stats(trip_matching_summaries, config["paths"]["summary_stats_file"])
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
 
 if __name__ == "__main__":
-	import sys
-	from contextlib import redirect_stdout
-
-	config = load_config()
-
-	#All prints will be written in both console and log file
-	class Tee:
-		def __init__(self, *files): self.files = files
-		def write(self, data): [file.write(data) for file in self.files]
-		def flush(self): [file.flush() for file in self.files]
-
-	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
-		with redirect_stdout(Tee(sys.stdout, log_file)):
-			main()
+	main()

@@ -13,6 +13,7 @@ def load_config(config_path="config.json"):
 	config["paths"]["rmse_based_matches_file"] = output_dir / config["paths"]["rmse_based_matches_file"]
 	config["paths"]["trip_matching_summaries_file"] = output_dir / config["paths"]["trip_matching_summaries_file"]
 	config["paths"]["failures_file"] = output_dir / config["paths"]["failures_file"]
+	config["paths"]["summary_stats_file"] = output_dir / config["paths"]["summary_stats_file"]
 	config["paths"]["tu_gtfs_station_file"] = output_dir / config["paths"]["tu_gtfs_station_file"]
 	config["paths"]["map_file"] = output_dir / config["paths"]["map_file"]
 
