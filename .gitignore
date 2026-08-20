@@ -1,6 +1,7 @@
 config.json
 .idea/
 .aiassistant/
+.claude
 venv/
 __pycache__/
 *.pyc
