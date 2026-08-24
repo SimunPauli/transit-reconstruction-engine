@@ -4,6 +4,7 @@ config.json
 .claude
 venv/
 __pycache__/
+debug_trip.ipynb
 *.pyc
 .env
 .DS_Store
