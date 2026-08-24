@@ -18,3 +18,10 @@ def load_config(config_path="config.json"):
 	config["paths"]["map_file"] = output_dir / config["paths"]["map_file"]
 
 	return config
+
+_config = None
+def get_config():
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
