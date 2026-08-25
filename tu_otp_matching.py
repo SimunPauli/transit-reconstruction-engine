@@ -84,7 +84,7 @@ def match_tu_trip_to_otp(
 	print("tu_deltur_sub:")
 	print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
 
-	route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(
+	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
 		tu_deltur_sub,
 		otp_mode_routes_cache,
 		otp_route_name_index
@@ -128,7 +128,7 @@ def match_tu_trip_to_otp(
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		modes_json=modes_json,
-		route_names=route_names,
+		route_name_groups=route_name_groups,
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids,
@@ -314,7 +314,7 @@ def _align_and_filter_candidates(
 		otp_candidates_df,
 		tu_deltur_sub,
 		tu_gtfs_station_df,
-		route_names,
+		route_name_groups,
 		modes_list,
 		tur_id
 ):
@@ -328,7 +328,7 @@ def _align_and_filter_candidates(
 	return filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
-		route_names=route_names,
+		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tur_id
 	)
@@ -339,7 +339,7 @@ def _load_add_and_filter_candidates(
 		tu_deltur_sub,
 		tu_gtfs_station_df,
 		modes_json,
-		route_names,
+		route_name_groups,
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
@@ -391,7 +391,7 @@ def _load_add_and_filter_candidates(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
-		route_names=route_names,
+		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"]
 	)
@@ -402,7 +402,7 @@ def _load_candidates_with_reluctance_retries(
 		tu_deltur_sub,
 		tu_gtfs_station_df,
 		modes_json,
-		route_names,
+		route_name_groups,
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
@@ -446,7 +446,7 @@ def _load_candidates_with_reluctance_retries(
 			tu_deltur_sub=tu_deltur_sub,
 			tu_gtfs_station_df=tu_gtfs_station_df,
 			modes_json=modes_json,
-			route_names=route_names,
+			route_name_groups=route_name_groups,
 			route_short_name_for_loading=route_short_name_for_loading,
 			modes_list=modes_list,
 			via_stopids=via_stopids,
@@ -480,7 +480,7 @@ def _try_station_anchored_fallback(
 		tu_deltur_sub,
 		tu_gtfs_station_df,
 		modes_json,
-		route_names,
+		route_name_groups,
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
@@ -565,7 +565,7 @@ def _try_station_anchored_fallback(
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		modes_json=modes_json,
-		route_names=route_names,
+		route_name_groups=route_name_groups,
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids_filtered,
@@ -598,7 +598,7 @@ def _try_station_anchored_fallback(
 		otp_candidates_df=stitched_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
-		route_names=route_names,
+		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"]
 	)

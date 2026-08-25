@@ -126,8 +126,16 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 	None skips that translation and sends TU's names as written.
 
 	Returns:
-		tuple: (route_names, modes_json)
-			   where route_names is a list of strings,
+		tuple: (route_names, route_names_ext, modes_json, modes_list, route_name_groups)
+			   where route_names is a flat, deduplicated list of strings suitable for
+			   OTP's routeShortNames "include" filter (an OR across every acceptable
+			   spelling of every required route),
+			   route_name_groups is a list of frozensets, one per distinct TU
+			   route leg, each holding that leg's acceptable spelling(s) — use this
+			   (not route_names) to check an itinerary actually contains every
+			   required route, since a single TU leg can expand to multiple
+			   alternative spellings ('114' -> {'114', '114N'}) that are alternatives
+			   for each other, not routes that must all appear together,
 			   and modes_json is a list of dicts like [{"mode": "BUS"}].
 	"""
 	# 1. Identify all valid modes for this TurId
@@ -140,13 +148,13 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 		.tolist()
 	)
 	if not modes_list:
-		return [], [], [], []
+		return [], [], [], [], []
 
 	modes_json = [{"mode": mode} for mode in modes_list]
 
 	# 2. Extract explicit routes for modes that provide them (BUS=31, S_TRAIN=32)
 	if not any(mode in ["BUS", "S_TRAIN"] for mode in modes_list):
-		return [], [], modes_json, modes_list
+		return [], [], modes_json, modes_list, []
 
 	# Resolve TU's spelling into the real GTFS names, so the routeShortNames filter
 	# carries values that exist in the graph. BUS is free-texted in TU and gets the
@@ -155,6 +163,7 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 	# so has_invalid_route_name still sees it and the trip fails the same way as before.
 	stage_mode_to_otp_mode = {31: "BUS", 32: "S_TRAIN"}
 	route_names = []
+	route_name_groups = []
 	for stage_mode, otp_mode in stage_mode_to_otp_mode.items():
 		tu_route_names = (
 			tu_deltur_sub.loc[
@@ -173,8 +182,10 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 			)
 			if resolved:
 				route_names.extend(resolved)
+				route_name_groups.append(frozenset(resolved))
 			else:
 				route_names.append(tu_route_name)
+				route_name_groups.append(frozenset({tu_route_name}))
 
 	if not has_invalid_route_name(route_names):
 		route_names = [str(route_name).strip() for route_name in route_names]
@@ -190,7 +201,7 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 	route_names = list(set(route_names))
 	route_names_ext = list(set(route_names_ext))
 
-	return route_names, route_names_ext, modes_json, modes_list
+	return route_names, route_names_ext, modes_json, modes_list, route_name_groups
 
 def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
 	if not (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
@@ -238,7 +249,7 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
 def filter_candidates_by_requirements(
 		otp_candidates_df,
 		tu_deltur_sub,
-		route_names: list = None,
+		route_name_groups: list = None,
 		modes_list: list = None,
 		tur_id: int = None
 ) -> tuple[pd.DataFrame, str]:
@@ -249,26 +260,28 @@ def filter_candidates_by_requirements(
 	Args:
 		otp_candidates_df: DataFrame with OTP candidate trips
 		tu_deltur_sub: DataFrame with TU deltur legs
-		route_names: List of required route short names (optional)
+		route_name_groups: List of frozensets, one per required TU route leg, each
+			holding that leg's acceptable spelling(s) (from resolve_route_short_names).
+			An itinerary must contain at least one name from every group — the
+			members within a group are alternatives for the same leg (e.g.
+			{'114', '114N'}), not routes that must all appear together.
 		modes_list: List of required transit modes (optional)
 		tur_id: Trip ID for logging purposes
 	"""
 	filtered_df = otp_candidates_df.copy()
 
 	# Filter by required routes (for BUS/S_TRAIN)
-	if route_names:
+	if route_name_groups:
 		if "route_short_name" not in filtered_df.columns:
 			return pd.DataFrame(), REASON_MISSING_ROUTE_SHORT_NAME_COLUMN
 
-		required_routes = set(map(str, route_names))
+		def _has_every_required_route(routes):
+			present = set(routes.dropna().astype(str))
+			return all(present & group for group in route_name_groups)
 
 		iteration_ids_with_required_routes = (
 			filtered_df.groupby("iteration_id")["route_short_name"]
-			.apply(
-				lambda routes: required_routes.issubset(
-					set(routes.dropna().astype(str))
-				)
-			)
+			.apply(_has_every_required_route)
 		)
 
 		filtered_df = filtered_df[
