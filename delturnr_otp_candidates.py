@@ -1,5 +1,6 @@
 import pandas as pd
 from constant import WALK_BIKE_TIME_RATIO
+from otp_utils import route_names_match
 
 def add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df,
@@ -36,16 +37,17 @@ def add_tu_delturnr_to_otp_candidates(
 				station_lookup[key] = set()
 			station_lookup[key].add(row["gtfs_station_id"])
 
-	def _route_matches(tu_route, otp_route):
+	def _route_matches(tu_route, otp_route, mode):
 		if tu_route is None or (isinstance(tu_route, float) and pd.isna(tu_route)):
 			return True
 		if otp_route is None or (isinstance(otp_route, float) and pd.isna(otp_route)):
 			return False
-		tu_route = str(tu_route).strip()
-		otp_route = str(otp_route).strip()
-		if not tu_route:
+		if not str(tu_route).strip():
 			return True
-		return tu_route == otp_route
+		# BUS route names are free-texted in TU, so respondents both misspace them
+		# ('102 A') and drop the trailing letter ('150' for '150S'). S_TRAIN comes
+		# from a survey dropdown, so it is compared without the letter fallback.
+		return route_names_match(tu_route, otp_route, allow_missing_letter=(mode == "BUS"))
 
 	def _station_matches(tu_station_name, otp_gtfs_id, mode):
 		"""Check if TU station matches OTP stop using GTFS mapping."""
@@ -74,7 +76,7 @@ def add_tu_delturnr_to_otp_candidates(
 
 		# For BUS/S_TRAIN, check route name
 		if otp_leg["mode"] in {"BUS", "S_TRAIN"}:
-			if not _route_matches(tu_deltur_sub_leg.get("Route"), otp_leg.get("route_short_name")):
+			if not _route_matches(tu_deltur_sub_leg.get("Route"), otp_leg.get("route_short_name"), otp_leg["mode"]):
 				return False
 		# For transit with stations, check station match using GTFS mapping
 		elif otp_leg["mode"] in {"SUBWAY", "RAIL", "S_TRAIN"}:

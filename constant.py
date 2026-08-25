@@ -1,5 +1,5 @@
-from config_loader import load_config
-config = load_config()
+from config_loader import get_config
+config = get_config()
 
 MODE_MAP = {
 	# TU: OTP

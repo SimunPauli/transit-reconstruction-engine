@@ -29,6 +29,7 @@ def match_tu_trip_to_otp(
 	tu_tur_row,
 	tu_deltur,
 	otp_mode_routes_cache,
+	otp_route_name_index,
 	otp_url,
 	search_window,
 	max_itinerary_candidates,
@@ -85,21 +86,22 @@ def match_tu_trip_to_otp(
 
 	route_names, route_names_ext, modes_json, modes_list = resolve_route_short_names(
 		tu_deltur_sub,
-		otp_mode_routes_cache
+		otp_mode_routes_cache,
+		otp_route_name_index
 	)
-	print(f"route_short_name: {','.join(route_names)}")
-	print(f"route_names_ext: {','.join(route_names_ext)}")
+	print(f"route_short_name: {', '.join(route_names)}")
+	print(f"route_names_ext: {', '.join(route_names_ext)}")
 
 	if not modes_json:
 		return _return_not_found(REASON_NO_VALID_MODES)
-	print(f"modes_json: {','.join(modes_json)}")
+	print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
 	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and has_invalid_route_name(route_names):
 		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
 
 	# Get the gtfs stop_ids for stations respondent travel through
 	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
 		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
-		print(f"via_stopids: {','.join(via_stopids)}")
+		print(f"via_stopids: {', '.join(via_stopids)}")
 	else:
 		via_stopids = None
 

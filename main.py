@@ -4,8 +4,9 @@ import pandas as pd
 import load_TU_data
 from tu_otp_matching import match_tu_trip_to_otp
 from otp_client import get_all_routes_for_mode
+from otp_utils import build_route_name_index
 from tu_gtfs_stations_match import match_tu_gtfs_stations
-from config_loader import load_config
+from config_loader import get_config
 from constant import MODE_MAP
 from export_files import _write_failures_file, _print_and_export_summary_stats
 
@@ -18,7 +19,7 @@ class _Tee:
 
 
 def main():
-	config = load_config()
+	config = get_config()
 
 	# Opened here (not just under `if __name__ == "__main__"`) so the log file is written
 	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
@@ -71,6 +72,15 @@ def _run(config):
 	# those that do not, all routes will be used.
 	otp_mode_routes_cache = {mode: get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
 
+	# BUS and S_TRAIN do carry a route name in TU, but respondents free-text the bus
+	# ones and spell them inconsistently ('102 A' for '102A') or drop the trailing
+	# letter ('150' for '150S'). Index the real GTFS names so TU's spelling can be
+	# translated into one OTP will actually match.
+	otp_route_name_index = {
+		mode: build_route_name_index(get_all_routes_for_mode(mode))
+		for mode in ["BUS", "S_TRAIN"]
+	}
+
 	#Map TU and GTFS stations
 	tu_gtfs_station_df = match_tu_gtfs_stations(
 		tu_stations,
@@ -90,6 +100,7 @@ def _run(config):
 				tu_tur_row=tu_tur_row,
 				tu_deltur=tu_deltur,
 				otp_mode_routes_cache=otp_mode_routes_cache,
+				otp_route_name_index=otp_route_name_index,
 				otp_url=otp_url,
 				search_window=search_window,
 				max_itinerary_candidates=max_itinerary_candidates,
