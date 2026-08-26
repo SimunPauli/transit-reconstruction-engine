@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from itertools import combinations
-from delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates
+from delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from best_otp_candidate import find_best_match_by_rmse
 from otp_client import load_all_candidates, request_direct_leg
 from otp_utils import (
@@ -19,6 +19,7 @@ from constant import (
 	REASON_NO_DIRECT_EGRESS_ROUTE,
 	REASON_NO_BEST_MATCH,
 	REASON_CAR_LEG_NOT_SATISFIED,
+	REASON_NO_MATCHING_LEG_SEQUENCE,
 )
 from station_anchor_fallback import find_known_anchor_stations, stitch_candidates
 
@@ -318,20 +319,33 @@ def _align_and_filter_candidates(
 		modes_list,
 		tur_id
 ):
+	alignment_diagnostics = []
 	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
-		bike_stage_modes=(2, 8)
+		bike_stage_modes=(2, 8),
+		diagnostics=alignment_diagnostics
 	)
 
-	return filter_candidates_by_requirements(
+	filtered_df, reason = filter_candidates_by_requirements(
 		otp_candidates_df=otp_candidates_df,
 		tu_deltur_sub=tu_deltur_sub,
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tur_id
 	)
+
+	# no_matching_leg_sequence means the route and mode filters both passed, i.e. OTP
+	# returned itineraries with the modes and routes TU recorded and alignment still
+	# rejected every one of them. On its own that reason cannot distinguish a bad
+	# station mapping from a genuinely absent leg, so spell out where alignment stopped.
+	if reason == REASON_NO_MATCHING_LEG_SEQUENCE:
+		summary = summarize_alignment_diagnostics(alignment_diagnostics)
+		if summary:
+			print(summary)
+
+	return filtered_df, reason
 
 
 def _load_add_and_filter_candidates(
