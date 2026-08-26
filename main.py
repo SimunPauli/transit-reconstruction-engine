@@ -89,7 +89,7 @@ def _run(config):
 		name_match_threshold=0.7
 	)
 	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
-	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=";", decimal=",")
+	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=",", decimal=".")
 
 	rmse_based_matches = []
 	trip_matching_summaries = []
