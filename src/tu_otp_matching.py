@@ -10,7 +10,7 @@ from .otp_utils import (
 	get_via_stops,
 	filter_candidates_by_requirements,
 )
-from tu_utils import add_tu_deltur_depart_times
+from .tu_utils import add_tu_deltur_depart_times
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,
