@@ -8,8 +8,9 @@ from .otp_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 	get_via_stops,
-	filter_candidates_by_requirements
+	filter_candidates_by_requirements,
 )
+from tu_utils import add_tu_deltur_depart_times
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,
@@ -46,6 +47,7 @@ def match_tu_trip_to_otp(
 ):
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
 	used_anchor_fallback = False
 
 	def _empty_trip_summary(last_print_if_not_found, failure_reason):
@@ -77,8 +79,8 @@ def match_tu_trip_to_otp(
 	print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}")
 	print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
 	# Print for debugging
-	tu_deltur_sub_print_col = ["StageMode", "StageLength", "StageWaitMin", "StageDurationMin", "Route", "FromStation",
-							   "ToStation"]
+	tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
+	                           "StageDurationMin", "Route", "FromStation", "ToStation"]
 	print("tu_deltur_sub:")
 	print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
 
@@ -221,6 +223,12 @@ def match_tu_trip_to_otp(
 			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
 	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
 
+	otp_candidates_df["otp_leg_depart_time"] = (
+		pd.to_datetime(otp_candidates_df["start_leg"], unit="ms", utc=True)
+		.dt.tz_convert("Europe/Copenhagen")
+		.dt.strftime("%H:%M")
+	)
+
 	#find root sum squared of weighted differences
 	trips = find_best_match_by_rmse(
 		tu_tur_row,
@@ -245,6 +253,9 @@ def match_tu_trip_to_otp(
 	# Filter otp_candidates_df to get only the best trip
 	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
 	best_trip_candidate["TurId"] = i_TurId
+	best_trip_candidate["tu_deltur_depart_time"] = best_trip_candidate["tu_Delturnr"].map(
+		tu_deltur_sub.set_index("Delturnr")["tu_deltur_depart_time"]
+	)
 
 	if return_trip_summary:
 		trip_summary = {

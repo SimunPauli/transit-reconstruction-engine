@@ -141,7 +141,7 @@ def _run(config):
 			print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
 			continue
 
-		rmse_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to"]
+		rmse_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "tu_deltur_depart_time", "otp_leg_depart_time"]
 		print("rmse_based_match:")
 		print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
 
