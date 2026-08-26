@@ -82,11 +82,11 @@ Create it based on the template below:
     "data_dir": "/home/user/Reproducing/Data/TU/",
     "output_dir": "/home/user/Reproducing/Output/",
     "log_file": "rmse_based_matches.log",
-    "rmse_based_matches_file": "rmse_based_matches.xlsx",
+    "rmse_based_matches_file": "rmse_based_matches.csv",
     "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
     "failures_file": "trip_failures.tsv",
     "summary_stats_file": "trip_matching_summary_stats.xlsx",
-    "tu_gtfs_station_file": "tu_gtfs_station_df.xlsx",
+    "tu_gtfs_station_file": "tu_gtfs_station_df.csv",
     "map_file": "map.htmlz"
   },
 
