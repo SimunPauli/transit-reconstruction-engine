@@ -5,8 +5,8 @@ import textwrap
 import pandas as pd
 import numpy as np
 from typing import Optional, Any
-from otp_parser import json_to_df
-from constant import ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
+from .otp_parser import json_to_df
+from .constant import ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
 
 def get_response(url, query, variables, timeout=60):
 	try:

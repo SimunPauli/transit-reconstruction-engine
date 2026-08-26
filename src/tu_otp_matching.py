@@ -1,16 +1,16 @@
 import pandas as pd
 import numpy as np
 from itertools import combinations
-from delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
-from best_otp_candidate import find_best_match_by_rmse
-from otp_client import load_all_candidates, request_direct_leg
-from otp_utils import (
+from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
+from .best_otp_candidate import find_best_match_by_rmse
+from .otp_client import load_all_candidates, request_direct_leg
+from .otp_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 	get_via_stops,
 	filter_candidates_by_requirements
 )
-from constant import (
+from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,
 	REASON_INVALID_ROUTE_NAME,
@@ -21,10 +21,7 @@ from constant import (
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
 )
-from station_anchor_fallback import find_known_anchor_stations, stitch_candidates
-
-
-
+from .station_anchor_fallback import find_known_anchor_stations, stitch_candidates
 
 def match_tu_trip_to_otp(
 	tu_tur_row,

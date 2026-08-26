@@ -1,6 +1,6 @@
 import pandas as pd
 import utm
-from otp_client import get_stops_by_bbox_query
+from .otp_client import get_stops_by_bbox_query
 import re
 from rapidfuzz import fuzz
 import numpy as np

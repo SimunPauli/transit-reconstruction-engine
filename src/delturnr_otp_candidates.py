@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import Counter
-from constant import WALK_BIKE_TIME_RATIO
-from otp_utils import route_names_match
+from .constant import WALK_BIKE_TIME_RATIO
+from .otp_utils import route_names_match
 
 def add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df,
@@ -24,7 +24,7 @@ def add_tu_delturnr_to_otp_candidates(
 	which OTP legs came close. Pass summarize_alignment_diagnostics() the same list to
 	turn it into something printable.
 	"""
-	from tu_gtfs_stations_match import _normalise_name
+	from .tu_gtfs_stations_match import _normalise_name
 
 	tu_deltur_sub = (
 		tu_deltur_sub

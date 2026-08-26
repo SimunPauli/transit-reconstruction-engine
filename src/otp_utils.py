@@ -1,5 +1,5 @@
 import pandas as pd
-from constant import (
+from .constant import (
 	MODE_MAP,
 	INVALID_ROUTE_CHARS,
 	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,

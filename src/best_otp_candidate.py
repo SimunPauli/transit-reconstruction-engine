@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config_loader import get_config
+from .config_loader import get_config
 
 def find_best_match_by_rmse(
 		tu_tur_row,

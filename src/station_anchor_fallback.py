@@ -1,6 +1,6 @@
 import pandas as pd
-from constant import LOCAL_TIMEZONE
-from tu_gtfs_stations_match import _normalise_name
+from .constant import LOCAL_TIMEZONE
+from .tu_gtfs_stations_match import _normalise_name
 
 #Only S_TRAIN, RAIL, and SUBWAY reliably have station names populated in TU (bus has
 #no named stops; tram station names aren't reliably populated), so anchor-station
