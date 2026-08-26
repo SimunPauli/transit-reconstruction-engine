@@ -101,6 +101,32 @@ MODE_OPEN_DATE_OVERRIDES = {
 	("Nørrebro", "SUBWAY"): date(2019, 9, 29),
 }
 
+# Rejseplanen encodes a stop's mode in the stop name itself wherever one station is
+# split into several physically separate stops: the metro platforms of an interchange
+# are their own stop named "X St. (Metro)", and a rail-replacement bus calls at a
+# street-level stop named "X St. (togbus)" / "X Station (Bus / ...)". _normalise_name
+# has to strip those markers for the TU name to be comparable to the GTFS name at all,
+# but the marker is the single strongest piece of mode evidence in the feed: it is what
+# distinguishes the metro platform from the S-tog platform when both are called
+# "Nørreport St." and both therefore score identically on name similarity.
+#
+# Checked against the merged feeds: in 2020 all 39 "(Metro)"-marked stops are served by
+# a Metroselskabet route and no metro-served stop with a station-like name is unmarked;
+# in 2018, 160 of the 184 bus-marked stops are served by a route OTP types as rail-like
+# (rail-replacement services keep the parent line's route_type), which is exactly the
+# case where mode alone cannot tell a station apart from the bus stop outside it.
+_MODE_MARKER_PATTERNS = [
+	("SUBWAY", re.compile(r"\(\s*metro\b", re.IGNORECASE)),
+	("BUS", re.compile(r"\(\s*(?:tog)?bus\b|/\s*bus\b|\bbus\s*$", re.IGNORECASE)),
+]
+
+def _name_mode_marker(name: str) -> str | None:
+	"""The mode a GTFS stop name explicitly claims, or None if it claims nothing."""
+	for mode, pattern in _MODE_MARKER_PATTERNS:
+		if pattern.search(name):
+			return mode
+	return None
+
 def _normalise_name(name: str) -> str:
 	"""Lowercase, remove punctuation, collapse whitespace."""
 	name = name.lower()
@@ -219,6 +245,28 @@ def find_gtfs_stations_for_tu_station(
 		if mode_stops.empty:
 			print(f"Warning: No GTFS stops found for {tu_station['statnavn']} in {bbox_buffer_m}m radius for mode: {mode}")
 			continue
+
+		# Let the stop name's own mode marker decide before name similarity or distance
+		# get a say. A stop that claims this mode wins outright; a stop that claims a
+		# different one is set aside unless nothing else is left. This is what keeps
+		# (SUBWAY, "Nørreport") on "Nørreport St. (Metro)" instead of the identically-
+		# normalised S-tog stop next door, and keeps rail modes off the "(togbus)" stop
+		# outside a station - both of which the mode flags alone cannot rule out, since
+		# a mis-typed or rail-replacement route makes the wrong stop advertise the mode.
+		markers = mode_stops["name"].apply(_name_mode_marker)
+		claims_this_mode = (markers == mode)
+		claims_other_mode = markers.notna() & (markers != mode)
+		if claims_this_mode.any():
+			mode_stops = mode_stops[claims_this_mode].copy()
+		elif (~claims_other_mode).any():
+			dropped = mode_stops[claims_other_mode]
+			if not dropped.empty:
+				print(
+					f"  Note: ignoring {len(dropped)} stop(s) whose name claims another mode "
+					f"when matching {mode} for '{tu_station['statnavn']}': "
+					f"{', '.join(dropped['name'].astype(str))}"
+				)
+			mode_stops = mode_stops[~claims_other_mode].copy()
 
 		# Score by name similarity (WRatio handles word order and the common case
 		# where the GTFS name is the TU name plus a cross-street suffix, e.g.
