@@ -99,6 +99,8 @@ MODE_OPEN_DATE_OVERRIDES = {
 	("Østerport", "SUBWAY"): date(2019, 9, 29),
 	("Nordhavn", "SUBWAY"): date(2019, 9, 29),
 	("Nørrebro", "SUBWAY"): date(2019, 9, 29),
+	("København H", "SUBWAY"): date(2019, 9, 29),
+	("København Syd", "SUBWAY"): date(2024, 6, 22),
 }
 
 # Rejseplanen encodes a stop's mode in the stop name itself wherever one station is
