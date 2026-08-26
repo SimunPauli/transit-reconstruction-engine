@@ -9,7 +9,7 @@ def _write_failures_file(trip_matching_summaries_df, path):
 	failures_df = trip_matching_summaries_df.loc[
 		trip_matching_summaries_df["trip_not_found"] == 1, ["TurId", "failure_reason"]
 	]
-	failures_df.to_csv(path, sep="\t", index=False)
+	failures_df.to_csv(path, sep=",", decimal = ".", index=False)
 
 
 def _build_summary_stats(trip_matching_summaries_df):
