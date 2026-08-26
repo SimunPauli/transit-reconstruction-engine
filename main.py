@@ -159,7 +159,7 @@ def _run(config):
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
-	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], index=False)
+	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], sep = ",", decimal = ".", index=False)
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
