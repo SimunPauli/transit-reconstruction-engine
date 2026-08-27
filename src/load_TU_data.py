@@ -89,9 +89,9 @@ def load_tu(data_dir,
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 
 	public_driver_TurId = tu_deltur[
-		(tu_deltur["StageMode"].isin(transit_code_tu)) & (tu_deltur["StageDrivPass"]!=1)
+		(tu_deltur["StageMode"].isin(transit_code_tu)) & (tu_deltur["StageDrivPass"]==1) #is driver
 	]["TurId"] #remove drive of public transport (busdriver, train driver..)
-	tu_deltur = tu_deltur[~tu_deltur["TurId"].isin(public_driver_TurId)]
+	tu_deltur = tu_deltur[~tu_deltur["TurId"].isin(public_driver_TurId)] #exclude driver
 	tu_tur = tu_tur[~tu_tur["TurId"].isin(public_driver_TurId)]
 	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])]
 
