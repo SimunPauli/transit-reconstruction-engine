@@ -52,15 +52,14 @@ def _run(config):
 	print("Loading TU data...")
 	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu(
 		data_dir=str(data_dir),
+		YEAR = YEAR,
 		session_file=config["tu_files"]["session_file"],
 		tur_file=config["tu_files"]["tur_file"],
 		deltur_file=config["tu_files"]["deltur_file"],
-		stations_file=config["tu_files"]["stations_file"]
+		stations_file=config["tu_files"]["stations_file"],
+		transit_code_tu = [31, 32, 33, 34, 37],
 	)
-	#Small processing of TU data
-	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin([31, 32, 33, 34, 37])] #Not ferry
-	tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
-	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
+
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
 	print("TU data loaded")
 

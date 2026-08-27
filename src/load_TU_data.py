@@ -3,10 +3,12 @@ import utm
 from pathlib import Path
 
 def load_tu(data_dir,
+            YEAR,
             session_file,
             tur_file,
             deltur_file,
-            stations_file):
+            stations_file,
+            transit_code_tu = [31, 32, 33, 34, 37]):
 
 	data_dir = Path(data_dir)
 
@@ -78,6 +80,21 @@ def load_tu(data_dir,
 
 	tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 	tu_tur.sort_values(by="DiaryDate")
+
+	#processing of TU data
+	if YEAR is not None:
+		tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
+
+	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)] #Not ferry
+	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
+
+	public_driver_TurId = tu_deltur[
+		(tu_deltur["StageMode"].isin(transit_code_tu)) & (tu_deltur["stagedrivpass"]!=1)
+	]["TurId"] #remove drive of public transport (busdriver, train driver..)
+	tu_deltur = tu_deltur[~tu_deltur["TurId"].isin(public_driver_TurId)]
+	tu_tur = tu_tur[~tu_tur["TurId"].isin(public_driver_TurId)]
+	tu_session = tu_session[tu_session["TurId"].isin(tu_tur["TurId"])]
+
 	return [tu_session, tu_tur, tu_deltur, tu_stations]
 
 def _build_local_datetime(df, date_col, hour_col, minute_col, timezone="Europe/Copenhagen"):
