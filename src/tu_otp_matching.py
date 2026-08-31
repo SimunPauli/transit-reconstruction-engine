@@ -89,8 +89,8 @@ def match_tu_trip_to_otp(
 		otp_mode_routes_cache,
 		otp_route_name_index
 	)
-	print(f"route_short_name: {', '.join(route_names)}")
-	print(f"route_names_ext: {', '.join(route_names_ext)}")
+	print(f"route_short_name: {', '.join(str(r) for r in route_names)}")
+	print(f"route_names_ext: {', '.join(str(r) for r in route_names_ext)}")
 
 	if not modes_json:
 		return _return_not_found(REASON_NO_VALID_MODES)
