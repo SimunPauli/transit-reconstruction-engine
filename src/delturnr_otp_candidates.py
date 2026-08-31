@@ -8,7 +8,8 @@ def add_tu_delturnr_to_otp_candidates(
 		tu_deltur_sub,
 		tu_gtfs_station_df,
 		bike_stage_modes=(2,8),
-		diagnostics=None
+		diagnostics=None,
+		ignore_route_name=False
 ):
 	"""
 	Add a tu_Delturnr column to OTP legs by aligning each OTP itinerary with the TU leg sequence.
@@ -23,6 +24,10 @@ def add_tu_delturnr_to_otp_candidates(
 	to consume the whole TU leg sequence, saying which TU leg alignment stalled on and
 	which OTP legs came close. Pass summarize_alignment_diagnostics() the same list to
 	turn it into something printable.
+
+	ignore_route_name skips the BUS/S_TRAIN route-name comparison below, so a leg is matched
+	on mode (and, for SUBWAY/RAIL, station) alone - used by the route-name-ignored retry in
+	tu_otp_matching.py.
 	"""
 	from .tu_gtfs_stations_match import _normalise_name
 
@@ -117,7 +122,7 @@ def add_tu_delturnr_to_otp_candidates(
 			return "mode", f"OTP leg is {otp_leg['mode']}, TU leg is {tu_mode}"
 
 		# For BUS/S_TRAIN, check route name
-		if otp_leg["mode"] in {"BUS", "S_TRAIN"}:
+		if otp_leg["mode"] in {"BUS", "S_TRAIN"} and not ignore_route_name:
 			if not _route_matches(tu_deltur_sub_leg.get("Route"), otp_leg.get("route_short_name"), otp_leg["mode"]):
 				return "route", (
 					f"{otp_leg['mode']} route {otp_leg.get('route_short_name')!r} "

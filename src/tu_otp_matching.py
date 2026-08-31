@@ -21,10 +21,11 @@ from .constant import (
 	REASON_NO_BEST_MATCH,
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
+	ROUTE_RELATED_FAILURE_REASONS,
 )
 from .station_anchor_fallback import find_known_anchor_stations, stitch_candidates
 
-def match_tu_trip_to_otp(
+def _match_once(
 	tu_tur_row,
 	tu_deltur,
 	otp_mode_routes_cache,
@@ -40,11 +41,17 @@ def match_tu_trip_to_otp(
 	walk_retry_enabled=True,
 	walk_reluctance_sequence=(3, 4, 6),
 	print_deviation_details= True,
-	return_trip_summary= False,
 	request_timeout=60,
 	print_query=False,
-	station_anchor_wait_min=0
+	station_anchor_wait_min=0,
+	ignore_route_name=False
 ):
+	"""
+	Runs the full trip-matching search once, either enforcing the TU-recorded BUS/S_TRAIN
+	route name (ignore_route_name=False) or ignoring it entirely (ignore_route_name=True, used
+	by match_tu_trip_to_otp's route-name-ignored retry). Always returns (result_df_or_None,
+	trip_summary_dict) - callers that don't want the summary strip it themselves.
+	"""
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
 	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
@@ -69,9 +76,7 @@ def match_tu_trip_to_otp(
 
 	def _return_not_found(last_print_if_not_found, failure_reason=None):
 		print(last_print_if_not_found)
-		if return_trip_summary:
-			return None, _empty_trip_summary(last_print_if_not_found, failure_reason or last_print_if_not_found)
-		return None
+		return None, _empty_trip_summary(last_print_if_not_found, failure_reason or last_print_if_not_found)
 
 	print("\n\n____________________________________________________________________________________________")
 	print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
@@ -95,7 +100,11 @@ def match_tu_trip_to_otp(
 	if not modes_json:
 		return _return_not_found(REASON_NO_VALID_MODES)
 	print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
-	if any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) and has_invalid_route_name(route_names):
+	if (
+		not ignore_route_name
+		and any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
+		and has_invalid_route_name(route_names)
+	):
 		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
 
 	# Get the gtfs stop_ids for stations respondent travel through
@@ -119,6 +128,16 @@ def match_tu_trip_to_otp(
 	else:
 		return _return_not_found(f"No valid transit modes found. TurId: {i_TurId}. Something went wrong.")
 
+	if ignore_route_name:
+		# Drop OTP's own routeShortNames include-filter entirely (a no-op for
+		# RAIL/SUBWAY/TRAM/FERRY, which already query with "all routes for the mode") and skip
+		# the required-routes check below (route_name_groups=[] is falsy, so
+		# filter_candidates_by_requirements's guard already skips it).
+		route_short_name_for_loading = None
+		route_name_groups_for_search = []
+	else:
+		route_name_groups_for_search = route_name_groups
+
 	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr")
 	is_car_access = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK") == "CAR"
 	is_car_egress = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK") == "CAR"
@@ -128,7 +147,7 @@ def match_tu_trip_to_otp(
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		modes_json=modes_json,
-		route_name_groups=route_name_groups,
+		route_name_groups=route_name_groups_for_search,
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids,
@@ -142,7 +161,8 @@ def match_tu_trip_to_otp(
 		max_itinerary_candidates=max_itinerary_candidates,
 		otp_url=otp_url,
 		request_timeout=request_timeout,
-		print_query=print_query
+		print_query=print_query,
+		ignore_route_name=ignore_route_name
 	)
 
 	otp_candidates_df = pd.DataFrame()
@@ -257,24 +277,94 @@ def match_tu_trip_to_otp(
 		tu_deltur_sub.set_index("Delturnr")["tu_deltur_depart_time"]
 	)
 
-	if return_trip_summary:
-		trip_summary = {
-			"TurId": i_TurId,
-			"SessionId": tu_tur_row.get("SessionId"),
-			"trip_found": 1,
-			"trip_not_found": 0,
-			"last_print_if_not_found": "",
-			"used_anchor_fallback": used_anchor_fallback,
-			"rmse": round(best_trip_summary["rmse"],3),
-			"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
-			"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
-			"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
-			"weighted_diff_distance": round(np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),3),
-			"iteration_id": best_iteration
-		}
-		return best_trip_candidate, trip_summary
+	trip_summary = {
+		"TurId": i_TurId,
+		"SessionId": tu_tur_row.get("SessionId"),
+		"trip_found": 1,
+		"trip_not_found": 0,
+		"last_print_if_not_found": "",
+		"used_anchor_fallback": used_anchor_fallback,
+		"rmse": round(best_trip_summary["rmse"],3),
+		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
+		"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
+		"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
+		"weighted_diff_distance": round(np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),3),
+		"iteration_id": best_iteration
+	}
+	return best_trip_candidate, trip_summary
 
-	return best_trip_candidate
+
+def match_tu_trip_to_otp(
+	tu_tur_row,
+	tu_deltur,
+	otp_mode_routes_cache,
+	otp_route_name_index,
+	otp_url,
+	search_window,
+	max_itinerary_candidates,
+	tu_gtfs_station_df,
+	walk_reluctance=2,
+	car_reluctance=2,
+	transit_retry_enabled=True,
+	transit_reluctance_sequence=(0.5, 0.25, 0.1),
+	walk_retry_enabled=True,
+	walk_reluctance_sequence=(3, 4, 6),
+	print_deviation_details=True,
+	return_trip_summary=False,
+	request_timeout=60,
+	print_query=False,
+	station_anchor_wait_min=0
+):
+	"""
+	Matches one TU trip to the best OTP itinerary. Runs _match_once enforcing the TU-recorded
+	BUS/S_TRAIN route name; if that fails for a route-related reason (invalid route name, or
+	the route restriction narrowing the search down to nothing - see
+	ROUTE_RELATED_FAILURE_REASONS) and the trip actually has a BUS/S_TRAIN leg, retries once
+	more with the route name ignored (matching by mode + leg order instead). A trip only found
+	this way is still reported as found, flagged via trip_summary["route_name_ignored"].
+	"""
+	i_TurId = tu_tur_row["TurId"]
+	_match_kwargs = dict(
+		tu_tur_row=tu_tur_row,
+		tu_deltur=tu_deltur,
+		otp_mode_routes_cache=otp_mode_routes_cache,
+		otp_route_name_index=otp_route_name_index,
+		otp_url=otp_url,
+		search_window=search_window,
+		max_itinerary_candidates=max_itinerary_candidates,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		walk_reluctance=walk_reluctance,
+		car_reluctance=car_reluctance,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence,
+		print_deviation_details=print_deviation_details,
+		request_timeout=request_timeout,
+		print_query=print_query,
+		station_anchor_wait_min=station_anchor_wait_min
+	)
+
+	result_df, trip_summary = _match_once(ignore_route_name=False, **_match_kwargs)
+	route_name_ignored = False
+
+	if result_df is None:
+		tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+		is_bus_s_train = tu_deltur_sub["StageMode"].isin([31, 32]).any()
+		if is_bus_s_train and trip_summary["failure_reason"] in ROUTE_RELATED_FAILURE_REASONS:
+			print(f"ROUTE_NAME_IGNORED_RETRY: TurId={i_TurId}")
+			retry_df, retry_summary = _match_once(ignore_route_name=True, **_match_kwargs)
+			if retry_df is not None:
+				print(f"ROUTE_NAME_IGNORED_MATCH_USED: TurId={i_TurId}")
+				result_df, trip_summary = retry_df, retry_summary
+				route_name_ignored = True
+
+	trip_summary["route_name_ignored"] = route_name_ignored
+
+	if return_trip_summary:
+		return result_df, trip_summary
+	return result_df
+
 
 def _build_reluctance_attempts(
 		modes_list,
@@ -325,7 +415,8 @@ def _align_and_filter_candidates(
 		tu_gtfs_station_df,
 		route_name_groups,
 		modes_list,
-		tur_id
+		tur_id,
+		ignore_route_name=False
 ):
 	alignment_diagnostics = []
 	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
@@ -333,7 +424,8 @@ def _align_and_filter_candidates(
 		tu_deltur_sub=tu_deltur_sub,
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		bike_stage_modes=(2, 8),
-		diagnostics=alignment_diagnostics
+		diagnostics=alignment_diagnostics,
+		ignore_route_name=ignore_route_name
 	)
 
 	filtered_df, reason = filter_candidates_by_requirements(
@@ -379,7 +471,8 @@ def _load_add_and_filter_candidates(
 		depart_dt_str_override=None,
 		depart_dt_override=None,
 		access_mode_override=None,
-		egress_mode_override=None
+		egress_mode_override=None,
+		ignore_route_name=False
 ):
 	otp_candidates_df = load_all_candidates(
 		tu_tur_row=tu_tur_row,
@@ -415,7 +508,8 @@ def _load_add_and_filter_candidates(
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
-		tur_id=tu_tur_row["TurId"]
+		tur_id=tu_tur_row["TurId"],
+		ignore_route_name=ignore_route_name
 	)
 
 
@@ -445,7 +539,8 @@ def _load_candidates_with_reluctance_retries(
 		depart_dt_str_override=None,
 		depart_dt_override=None,
 		access_mode_override=None,
-		egress_mode_override=None
+		egress_mode_override=None,
+		ignore_route_name=False
 ):
 	last_msg = ""
 
@@ -486,7 +581,8 @@ def _load_candidates_with_reluctance_retries(
 			depart_dt_str_override=depart_dt_str_override,
 			depart_dt_override=depart_dt_override,
 			access_mode_override=access_mode_override,
-			egress_mode_override=egress_mode_override
+			egress_mode_override=egress_mode_override,
+			ignore_route_name=ignore_route_name
 		)
 
 		if not otp_candidates_df.empty:
@@ -519,7 +615,8 @@ def _try_station_anchored_fallback(
 		transit_reluctance_sequence=(0.5, 0.25, 0.1),
 		walk_retry_enabled=True,
 		walk_reluctance_sequence=(3, 4, 6),
-		wait_min=0
+		wait_min=0,
+		ignore_route_name=False
 ):
 	"""
 	Fallback for TU trips where the normal full-route OTP search finds nothing, but the
@@ -608,7 +705,8 @@ def _try_station_anchored_fallback(
 		depart_dt_str_override=depart_dt_str_transit,
 		depart_dt_override=depart_dt_transit,
 		access_mode_override="WALK" if first_stop_id else None,
-		egress_mode_override="WALK" if last_stop_id else None
+		egress_mode_override="WALK" if last_stop_id else None,
+		ignore_route_name=ignore_route_name
 	)
 
 	if raw_transit_df.empty:
@@ -622,7 +720,8 @@ def _try_station_anchored_fallback(
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
-		tur_id=tu_tur_row["TurId"]
+		tur_id=tu_tur_row["TurId"],
+		ignore_route_name=ignore_route_name
 	)
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"

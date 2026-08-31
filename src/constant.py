@@ -73,3 +73,16 @@ REASON_NO_DIRECT_ACCESS_ROUTE = "no_direct_access_route"
 REASON_NO_DIRECT_EGRESS_ROUTE = "no_direct_egress_route"
 REASON_NO_BEST_MATCH = "no_best_match"
 REASON_CAR_LEG_NOT_SATISFIED = "car_leg_not_satisfied"
+
+#Failure reasons that stem from the BUS/S_TRAIN route-name requirement itself (an invalid TU
+#route name, or the route restriction narrowing the OTP query/filter down to nothing) - these
+#are the cases worth retrying with the route name ignored. Other reasons (bad leg sequence, car
+#leg not satisfied, etc.) aren't route-caused, so retrying without a route restriction would just
+#repeat the same query and fail again.
+ROUTE_RELATED_FAILURE_REASONS = {
+	REASON_INVALID_ROUTE_NAME,
+	REASON_NO_REQUIRED_ROUTES,
+	REASON_NO_OTP_CANDIDATES,
+	f"anchored_{REASON_NO_REQUIRED_ROUTES}",
+	f"anchored_{REASON_NO_OTP_CANDIDATES}",
+}
