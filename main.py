@@ -8,7 +8,7 @@ from src.otp_utils import build_route_name_index
 from src.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.config_loader import get_config
 from src.constant import MODE_MAP
-from src.export_files import _write_failures_file, _print_and_export_summary_stats
+from src.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
 
 
 class _Tee:
@@ -158,6 +158,7 @@ def _run(config):
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
+	all_rmse_based_matches = _reorder_rmse_columns(all_rmse_based_matches)
 	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], sep = ",", decimal = ".", index=False)
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)

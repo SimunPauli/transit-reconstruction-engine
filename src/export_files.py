@@ -1,5 +1,39 @@
 import pandas as pd
 
+RMSE_MATCH_COLUMN_ORDER = [
+	"TurId",
+	"leg_id",
+	"iteration_id",
+	"tu_Delturnr",
+	"start_trip",
+	"end_trip",
+	"start_leg",
+	"end_leg",
+	"tu_deltur_depart_time",
+	"otp_leg_depart_time",
+	"waitingtime",
+	"duration_min",
+	"mode",
+	"route_short_name",
+	"route_gtfs_id",
+	"trip_short_name",
+	"from",
+	"to",
+	"from_gtfs_id",
+	"to_gtfs_id",
+	"distance_km",
+	"is_bike_placeholder",
+	"generalized_cost",
+	"system_notice_tag",
+	"system_notice_text",
+	"leg_geometry",
+]
+
+
+def _reorder_rmse_columns(df):
+	return df[RMSE_MATCH_COLUMN_ORDER]
+
+
 def _write_failures_file(trip_matching_summaries_df, path):
 	"""
 	Writes TurId + failure_reason (a short code, no coordinates/station names or other
