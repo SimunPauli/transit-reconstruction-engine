@@ -44,13 +44,19 @@ def _match_once(
 	request_timeout=60,
 	print_query=False,
 	station_anchor_wait_min=0,
-	ignore_route_name=False
+	ignore_route_name=False,
+	print_trip_header=True
 ):
 	"""
 	Runs the full trip-matching search once, either enforcing the TU-recorded BUS/S_TRAIN
 	route name (ignore_route_name=False) or ignoring it entirely (ignore_route_name=True, used
 	by match_tu_trip_to_otp's route-name-ignored retry). Always returns (result_df_or_None,
 	trip_summary_dict) - callers that don't want the summary strip it themselves.
+
+	print_trip_header controls the per-trip banner (the "____" divider, TurId/coordinates,
+	tu_deltur_sub table, route_short_name/route_names_ext/modes_json/via_stopids) - none of
+	which differs between the two calls the retry makes, so the retry passes False to avoid
+	printing an identical block that reads as a new trip starting.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -78,28 +84,31 @@ def _match_once(
 		print(last_print_if_not_found)
 		return None, _empty_trip_summary(last_print_if_not_found, failure_reason or last_print_if_not_found)
 
-	print("\n\n____________________________________________________________________________________________")
-	print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
-	print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}")
-	print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}")
-	print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
-	# Print for debugging
-	tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
-	                           "StageDurationMin", "Route", "FromStation", "ToStation"]
-	print("tu_deltur_sub:")
-	print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
+	if print_trip_header:
+		print("\n\n____________________________________________________________________________________________")
+		print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
+		print(f"Tur coordinates origin (lat lon) :     {tu_tur_row['orig_lat']} {tu_tur_row['orig_lon']}")
+		print(f"Tur coordinates destination (lat lon): {tu_tur_row['tiladrlat']} {tu_tur_row['tiladrlon']}")
+		print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
+		# Print for debugging
+		tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
+		                           "StageDurationMin", "Route", "FromStation", "ToStation"]
+		print("tu_deltur_sub:")
+		print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
 
 	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
 		tu_deltur_sub,
 		otp_mode_routes_cache,
 		otp_route_name_index
 	)
-	print(f"route_short_name: {', '.join(str(r) for r in route_names)}")
-	print(f"route_names_ext: {', '.join(str(r) for r in route_names_ext)}")
+	if print_trip_header:
+		print(f"route_short_name: {', '.join(str(r) for r in route_names)}")
+		print(f"route_names_ext: {', '.join(str(r) for r in route_names_ext)}")
 
 	if not modes_json:
 		return _return_not_found(REASON_NO_VALID_MODES)
-	print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
+	if print_trip_header:
+		print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
 	if (
 		not ignore_route_name
 		and any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
@@ -110,7 +119,8 @@ def _match_once(
 	# Get the gtfs stop_ids for stations respondent travel through
 	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
 		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
-		print(f"via_stopids: {', '.join(via_stopids)}")
+		if print_trip_header:
+			print(f"via_stopids: {', '.join(via_stopids)}")
 	else:
 		via_stopids = None
 
@@ -353,7 +363,7 @@ def match_tu_trip_to_otp(
 		is_bus_s_train = tu_deltur_sub["StageMode"].isin([31, 32]).any()
 		if is_bus_s_train and trip_summary["failure_reason"] in ROUTE_RELATED_FAILURE_REASONS:
 			print(f"ROUTE_NAME_IGNORED_RETRY: TurId={i_TurId}")
-			retry_df, retry_summary = _match_once(ignore_route_name=True, **_match_kwargs)
+			retry_df, retry_summary = _match_once(ignore_route_name=True, print_trip_header=False, **_match_kwargs)
 			if retry_df is not None:
 				print(f"ROUTE_NAME_IGNORED_MATCH_USED: TurId={i_TurId}")
 				result_df, trip_summary = retry_df, retry_summary
