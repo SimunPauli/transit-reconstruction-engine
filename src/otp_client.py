@@ -361,7 +361,7 @@ def _deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
 	# Get the first occurrence of each trip (by start_trip and end_trip)
 	trip_keys = (
 		otp_candidates_df
-		.groupby("iteration_id")[["start_trip", "end_trip"]]
+		.groupby("iteration_id")[["start_trip", "end_trip", "route_gtfs_id"]]
 		.first()
 		.reset_index()
 	)
