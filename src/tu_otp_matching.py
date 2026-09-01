@@ -178,6 +178,10 @@ def _match_once(
 	otp_candidates_df = pd.DataFrame()
 	msg_filter = ""
 
+	def _log_stage(stage, status, detail=""):
+		suffix = f" ({detail})" if detail else ""
+		print(f"[TurId={i_TurId}] {stage}: {status}{suffix}")
+
 	if is_car_access or is_car_egress:
 		# CAR access/egress has no reliable direct request to OTP (see otp_client._get_access_egress):
 		# access bundles ["WALK", "CAR_DROP_OFF"] and OTP is free to silently return WALK instead. So
@@ -191,6 +195,10 @@ def _match_once(
 			and (first_stop_id or last_stop_id)
 		)
 		if anchor_usable:
+			_log_stage(
+				"STATION_ANCHOR_FALLBACK (car access/egress)", "START",
+				f"first_stop_id={first_stop_id} last_stop_id={last_stop_id}"
+			)
 			otp_candidates_df, msg_filter = _try_station_anchored_fallback(
 				**_candidate_kwargs,
 				first_stop_id=first_stop_id,
@@ -199,15 +207,24 @@ def _match_once(
 			)
 			if not otp_candidates_df.empty:
 				used_anchor_fallback = True
-				print(f"ANCHOR_FALLBACK_USED (car access/egress): TurId={i_TurId}")
+				_log_stage("STATION_ANCHOR_FALLBACK (car access/egress)", "SUCCEEDED")
+			else:
+				_log_stage("STATION_ANCHOR_FALLBACK (car access/egress)", "FAILED", msg_filter)
+		else:
+			_log_stage(
+				"STATION_ANCHOR_FALLBACK (car access/egress)", "SKIPPED",
+				"no usable anchor station for the required CAR side"
+			)
 
 		if otp_candidates_df.empty:
 			# No usable anchor station for the required CAR side (e.g. CAR combined with a
 			# bus-only trip, which has no named stations in TU) — fall back to the normal
 			# full-route query, then verify below that the CAR side actually came back as CAR,
 			# since OTP may have silently substituted WALK.
+			_log_stage("FULL_ROUTE_QUERY (car access/egress fallback)", "START")
 			otp_candidates_df, msg_filter = _load_candidates_with_reluctance_retries(**_candidate_kwargs)
 			if otp_candidates_df.empty:
+				_log_stage("FULL_ROUTE_QUERY (car access/egress fallback)", "FAILED", msg_filter)
 				return _return_not_found(msg_filter)
 
 			valid_iterations = otp_candidates_df.groupby("iteration_id").apply(
@@ -223,15 +240,24 @@ def _match_once(
 					f"{REASON_CAR_LEG_NOT_SATISFIED}: no candidate itinerary had CAR on the "
 					f"required access/egress leg (OTP returned WALK instead). TurId={i_TurId}"
 				)
+				_log_stage(
+					"FULL_ROUTE_QUERY (car access/egress fallback)", "FAILED",
+					"OTP returned WALK instead of CAR on the required leg"
+				)
 				return _return_not_found(fail_msg, REASON_CAR_LEG_NOT_SATISFIED)
+			_log_stage("FULL_ROUTE_QUERY (car access/egress fallback)", "SUCCEEDED")
 	else:
+		_log_stage("FULL_ROUTE_QUERY", "START")
 		otp_candidates_df, msg_filter = _load_candidates_with_reluctance_retries(**_candidate_kwargs)
+		_log_stage("FULL_ROUTE_QUERY", "SUCCEEDED" if not otp_candidates_df.empty else "FAILED", msg_filter)
 
 	if otp_candidates_df.empty:
 		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
 		if not first_stop_id and not last_stop_id:
+			_log_stage("STATION_ANCHOR_FALLBACK", "SKIPPED", "no usable anchor station")
 			return _return_not_found(msg_filter)
 
+		_log_stage("STATION_ANCHOR_FALLBACK", "START", f"first_stop_id={first_stop_id} last_stop_id={last_stop_id}")
 		otp_candidates_df, fallback_msg = _try_station_anchored_fallback(
 			**_candidate_kwargs,
 			first_stop_id=first_stop_id,
@@ -239,10 +265,11 @@ def _match_once(
 			wait_min=station_anchor_wait_min
 		)
 		if otp_candidates_df.empty:
+			_log_stage("STATION_ANCHOR_FALLBACK", "FAILED", fallback_msg)
 			return _return_not_found(f"{msg_filter}; fallback={fallback_msg}", fallback_msg)
 
 		used_anchor_fallback = True
-		print(f"ANCHOR_FALLBACK_USED: TurId={i_TurId}")
+		_log_stage("STATION_ANCHOR_FALLBACK", "SUCCEEDED")
 
 	# calculate waiting time
 	otp_candidates_df = otp_candidates_df.sort_values(
