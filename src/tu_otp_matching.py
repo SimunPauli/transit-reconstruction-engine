@@ -34,6 +34,7 @@ def _match_once(
 	search_window,
 	max_itinerary_candidates,
 	tu_gtfs_station_df,
+	anchor_station_lookup,
 	walk_reluctance=2,
 	car_reluctance=2,
 	transit_retry_enabled=True,
@@ -52,11 +53,6 @@ def _match_once(
 	route name (ignore_route_name=False) or ignoring it entirely (ignore_route_name=True, used
 	by match_tu_trip_to_otp's route-name-ignored retry). Always returns (result_df_or_None,
 	trip_summary_dict) - callers that don't want the summary strip it themselves.
-
-	print_trip_header controls the per-trip banner (the "____" divider, TurId/coordinates,
-	tu_deltur_sub table, route_short_name/route_names_ext/modes_json/via_stopids) - none of
-	which differs between the two calls the retry makes, so the retry passes False to avoid
-	printing an identical block that reads as a new trip starting.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -117,7 +113,7 @@ def _match_once(
 		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
 
 	# Get the gtfs stop_ids for stations respondent travel through
-	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
+	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any(): #Station only stated for RAIL, S_TRAIN and SUBWAY
 		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
 		if print_trip_header:
 			print(f"via_stopids: {', '.join(via_stopids)}")
@@ -125,7 +121,7 @@ def _match_once(
 		via_stopids = None
 
 	# 2. Fetch all candidates (handles pagination & concat internally)
-	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
+	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) #only BUS and S_TRAIN have stated route names
 	is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
 	if not is_bus_s_train and not is_rail_tram_subway_ferry:
 		raise ValueError("No valid transit modes found. TurId: ", i_TurId, ".")
@@ -139,10 +135,7 @@ def _match_once(
 		return _return_not_found(f"No valid transit modes found. TurId: {i_TurId}. Something went wrong.")
 
 	if ignore_route_name:
-		# Drop OTP's own routeShortNames include-filter entirely (a no-op for
-		# RAIL/SUBWAY/TRAM/FERRY, which already query with "all routes for the mode") and skip
-		# the required-routes check below (route_name_groups=[] is falsy, so
-		# filter_candidates_by_requirements's guard already skips it).
+		# Drop OTP's own routeShortNames include-filter entirely
 		route_short_name_for_loading = None
 		route_name_groups_for_search = []
 	else:
@@ -188,7 +181,7 @@ def _match_once(
 		# CAR trips are anchored at a known rail/S-train/subway station and stitched with an
 		# unambiguous single-mode CAR direct leg (station_anchor_fallback.py) instead of relying on
 		# that bundled request.
-		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
+		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, anchor_station_lookup)
 		anchor_usable = (
 			(first_stop_id or not is_car_access)
 			and (last_stop_id or not is_car_egress)
@@ -252,7 +245,7 @@ def _match_once(
 		_log_stage("FULL_ROUTE_QUERY", "SUCCEEDED" if not otp_candidates_df.empty else "FAILED", msg_filter)
 
 	if otp_candidates_df.empty:
-		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df)
+		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, anchor_station_lookup)
 		if not first_stop_id and not last_stop_id:
 			_log_stage("STATION_ANCHOR_FALLBACK", "SKIPPED", "no usable anchor station")
 			return _return_not_found(msg_filter)
@@ -340,6 +333,7 @@ def match_tu_trip_to_otp(
 	search_window,
 	max_itinerary_candidates,
 	tu_gtfs_station_df,
+	anchor_station_lookup,
 	walk_reluctance=2,
 	car_reluctance=2,
 	transit_retry_enabled=True,
@@ -370,6 +364,7 @@ def match_tu_trip_to_otp(
 		search_window=search_window,
 		max_itinerary_candidates=max_itinerary_candidates,
 		tu_gtfs_station_df=tu_gtfs_station_df,
+		anchor_station_lookup=anchor_station_lookup,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,
 		transit_retry_enabled=transit_retry_enabled,

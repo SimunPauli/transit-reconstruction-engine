@@ -6,6 +6,7 @@ from src.tu_otp_matching import match_tu_trip_to_otp
 from src.otp_client import get_all_routes_for_mode
 from src.otp_utils import build_route_name_index
 from src.tu_gtfs_stations_match import match_tu_gtfs_stations
+from src.station_anchor_fallback import build_anchor_station_lookup
 from src.config_loader import get_config
 from src.constant import MODE_MAP
 from src.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
@@ -89,6 +90,7 @@ def _run(config):
 	)
 	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
 	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=",", decimal=".")
+	anchor_station_lookup = build_anchor_station_lookup(tu_gtfs_station_df)
 
 	rmse_based_matches = []
 	trip_matching_summaries = []
@@ -104,6 +106,7 @@ def _run(config):
 				search_window=search_window,
 				max_itinerary_candidates=max_itinerary_candidates,
 				tu_gtfs_station_df=tu_gtfs_station_df,
+				anchor_station_lookup=anchor_station_lookup,
 				return_trip_summary=return_trip_summary,
 				request_timeout=request_timeout,
 				station_anchor_wait_min=station_anchor_wait_min,

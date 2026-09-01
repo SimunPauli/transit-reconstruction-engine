@@ -26,30 +26,35 @@ _ISO_TIME_COLS = ("start_trip", "end_trip")
 _MS_TIME_COLS = ("start_leg", "end_leg")
 
 
-def find_known_anchor_stations(tu_deltur_sub, tu_gtfs_station_df):
+def build_anchor_station_lookup(tu_gtfs_station_df):
 	"""
-	Resolve the first and/or last S_TRAIN/RAIL/SUBWAY TU leg's boarding/alighting
-	station to a GTFS stop ID, for use as a query anchor when the normal full-route
-	OTP search finds nothing.
-
-	A side is only resolved if every TU leg before it (for the access/first side) or after it
-	(for the egress/last side) is street-mode — otherwise the fallback's direct access/egress
-	leg would have to stand in for a real bus/rail/etc. leg it can't reproduce, and that leg's
-	route/mode/Delturnr could never satisfy the requirements checked downstream. See
-	TRANSIT_MODES.
-
-	Returns (first_stop_id, last_stop_id); either may be None if the corresponding side isn't
-	anchorable (no rail-type leg, another transit leg in the way, or the station doesn't
-	resolve via tu_gtfs_station_df).
+	Builds the (otp_mode, normalised TU station name) -> gtfs_station_id lookup used by
+	find_known_anchor_stations. Callers that invoke find_known_anchor_stations once per TU
+	trip (tu_otp_matching.py) should build this once from the run's tu_gtfs_station_df and
+	reuse it, rather than rebuilding it on every trip.
 	"""
 	if tu_gtfs_station_df is None or tu_gtfs_station_df.empty:
-		return None, None
+		ValueError(f"tu_gtfs_station does not exist")
 
 	station_lookup = {}
 	for _, row in tu_gtfs_station_df.iterrows():
 		key = (row["otp_mode"], _normalise_name(str(row["tu_station_name"])))
 		station_lookup.setdefault(key, row["gtfs_station_id"])
+	return station_lookup
 
+
+def find_known_anchor_stations(tu_deltur_sub, station_lookup):
+	"""
+	Resolve the first and/or last S_TRAIN/RAIL/SUBWAY TU leg's boarding/alighting
+	station to a GTFS stop ID, for use as a query anchor when the normal full-route
+	OTP search finds nothing.
+
+	station_lookup is the dict built once by build_anchor_station_lookup.
+
+	Returns (first_stop_id, last_stop_id); either may be None if the corresponding side isn't
+	anchorable (no rail-type leg, another transit leg in the way, or the station doesn't
+	resolve via station_lookup).
+	"""
 	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr")
 	anchor_legs = tu_deltur_sorted.loc[tu_deltur_sorted["otp_mode"].isin(ANCHOR_MODES)]
 	if anchor_legs.empty:
