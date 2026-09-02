@@ -129,7 +129,7 @@ def add_tu_delturnr_to_otp_candidates(
 					f"does not match TU route {tu_deltur_sub_leg.get('Route')!r}"
 				)
 		# For transit with stations, check station match using GTFS mapping
-		elif otp_leg["mode"] in {"SUBWAY", "RAIL", "S_TRAIN"}:
+		if otp_leg["mode"] in {"SUBWAY", "RAIL", "S_TRAIN"}:
 			for tu_col, id_col, name_col, end in (
 				("FromStation", "from_gtfs_id", "from", "boarding"),
 				("ToStation", "to_gtfs_id", "to", "alighting"),
