@@ -169,3 +169,167 @@ def stitch_candidates(transit_df, access_leg_df=None, egress_leg_df=None, wait_m
 		stitched_df[col] = stitched_df[col].astype("datetime64[ms, UTC]").astype("int64")
 
 	return stitched_df
+
+
+def compute_anchor_split_segments(tu_deltur_sub, station_lookup):
+	"""
+	Splits the Delturnr-sorted TU leg sequence into an ordered list of segments at every
+	resolvable ANCHOR_MODES (S_TRAIN/RAIL/SUBWAY) station boundary - not just the trip's
+	outer first/last leg like find_known_anchor_stations, and without requiring the other
+	side to be transit-free. Used by the post-failure fallback in tu_otp_matching.py when the
+	normal full-route query finds nothing, so each segment gets its own OTP query and
+	leg-sequence verification instead of giving up whenever a known station has a transit leg
+	(e.g. a bus with no named stop) on either side of it.
+
+	Each ANCHOR_MODES leg contributes up to two independent boundaries: its FromStation (a
+	cut immediately before the leg, if it resolves via station_lookup) and its ToStation (a
+	cut immediately after the leg, if it resolves). A leg with both endpoints resolvable
+	therefore becomes its own atomic single-leg segment, bounded on both sides - no
+	special-casing needed.
+
+	Returns an ordered list of segment dicts:
+		{"legs": DataFrame, "origin_stop_id": str | None, "destination_stop_id": str | None,
+		 "kind": "direct" | "transit"}
+	origin_stop_id/destination_stop_id is None when that end is the TU trip's own true
+	origin/destination coordinate (only possible for the first/last segment). kind is
+	"direct" iff no leg in the segment has an otp_mode in TRANSIT_MODES - since every
+	boundary sits directly next to an ANCHOR_MODES (hence TRANSIT_MODES) leg, a "direct"
+	segment is always flanked by "transit" segments (or the trip's own edge), never another
+	"direct" segment.
+
+	Returns None if no boundary resolves at all - equivalent to find_known_anchor_stations
+	returning (None, None), i.e. nothing to split/anchor on for this trip.
+	"""
+	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr").reset_index(drop=True)
+	n = len(tu_deltur_sorted)
+
+	def _resolve(mode, station_name):
+		if station_name is None or (isinstance(station_name, float) and pd.isna(station_name)):
+			return None
+		return station_lookup.get((mode, _normalise_name(str(station_name))))
+
+	#position -> stop_id. Boundary position p means the cut sits between leg p-1 and leg p
+	#(0 <= p <= n); positions 0/n coinciding with a boundary just means the very first/last
+	#leg's own known-station endpoint anchors that end, same as find_known_anchor_stations
+	#already allows today.
+	boundaries = {}
+
+	def _set_boundary(position, stop_id, source):
+		existing = boundaries.get(position)
+		if existing is None:
+			boundaries[position] = stop_id
+		elif existing != stop_id:
+			print(
+				f"STATION_ANCHOR_SPLIT: boundary tie at position {position} - keeping "
+				f"stop {existing}, ignoring {source}'s stop {stop_id}"
+			)
+
+	for i in range(n):
+		leg = tu_deltur_sorted.iloc[i]
+		if leg["otp_mode"] not in ANCHOR_MODES:
+			continue
+		from_stop_id = _resolve(leg["otp_mode"], leg.get("FromStation"))
+		if from_stop_id:
+			_set_boundary(i, from_stop_id, f"Delturnr {leg['Delturnr']} FromStation")
+		to_stop_id = _resolve(leg["otp_mode"], leg.get("ToStation"))
+		if to_stop_id:
+			_set_boundary(i + 1, to_stop_id, f"Delturnr {leg['Delturnr']} ToStation")
+
+	if not boundaries:
+		return None
+
+	positions = sorted({0, n, *boundaries.keys()})
+	segments = []
+	for start, end in zip(positions[:-1], positions[1:]):
+		legs = tu_deltur_sorted.iloc[start:end]
+		kind = "transit" if legs["otp_mode"].isin(TRANSIT_MODES).any() else "direct"
+		segments.append({
+			"legs": legs,
+			"origin_stop_id": boundaries.get(start),
+			"destination_stop_id": boundaries.get(end),
+			"kind": kind,
+		})
+	return segments
+
+
+def stitch_segment_chains(chains, direct_leg_cache, wait_min=0):
+	"""
+	Combine every surviving chain built by tu_otp_matching._try_split_station_anchored_fallback
+	into one stitched itinerary DataFrame, assigning each chain a fresh, contiguous
+	iteration_id. Generalizes stitch_candidates (which hardcodes exactly 1 access leg + 1
+	transit_df + 1 egress leg) to an arbitrary ordered list of segment parts, mixing "direct"
+	and "transit" kinds.
+
+	Each chain is {"parts": [(kind, segment_index, leg_df_or_None), ...], ...} in left-to-right
+	segment order, where kind is "transit" (leg_df holds that segment's own OTP itinerary,
+	already absolute-correct - it was queried seeded at its actual predicted departure time,
+	see _try_split_station_anchored_fallback) or "direct" (leg_df is None; the segment's
+	single cached itinerary is looked up in direct_leg_cache by segment_index instead, since
+	street-mode travel time doesn't depend on time of day and was only queried once).
+
+	"transit" parts are used as-is (after the same ISO/ms -> tz-aware parsing stitch_candidates
+	already applies via _prep_leg_df). "direct" parts are time-shifted to butt up against
+	their neighboring part, wait_min apart - generalizing stitch_candidates' fixed
+	access/egress shifting to an arbitrary position within an N-part chain: a direct part
+	after the chain's first transit part is shifted to start wait_min after the previous
+	(already-resolved) part ends; a direct part before it is shifted to end wait_min before
+	the next (already-resolved) part starts.
+	"""
+	if not chains:
+		return pd.DataFrame()
+
+	wait_delta = pd.Timedelta(minutes=wait_min)
+	prepped_direct_cache = {
+		idx: _prep_leg_df(df.sort_values("leg_id").reset_index(drop=True))
+		for idx, df in direct_leg_cache.items()
+	}
+
+	stitched_chains = []
+	for iteration_id, chain in enumerate(chains):
+		parts = chain["parts"]
+		resolved = [None] * len(parts)
+
+		first_transit_i = next(i for i, (kind, _, _) in enumerate(parts) if kind == "transit")
+		_, _, first_leg_df = parts[first_transit_i]
+		resolved[first_transit_i] = _prep_leg_df(first_leg_df.sort_values("leg_id").reset_index(drop=True))
+
+		#Forward pass: every part after the first transit part (further transit parts are
+		#already absolute-correct; direct parts are shifted against the previous part).
+		for i in range(first_transit_i + 1, len(parts)):
+			kind, seg_idx, leg_df = parts[i]
+			if kind == "transit":
+				resolved[i] = _prep_leg_df(leg_df.sort_values("leg_id").reset_index(drop=True))
+				continue
+			cached = prepped_direct_cache[seg_idx].copy()
+			shift = resolved[i - 1]["end_leg"].max() + wait_delta - cached["start_leg"].iloc[0]
+			for col in _TIME_COLS:
+				cached[col] = cached[col] + shift
+			resolved[i] = cached
+
+		#Backward pass: any leading direct part(s) before the first transit part, shifted
+		#against the next (already-resolved) part instead.
+		for i in range(first_transit_i - 1, -1, -1):
+			_, seg_idx, _ = parts[i]
+			cached = prepped_direct_cache[seg_idx].copy()
+			shift = resolved[i + 1]["start_leg"].min() - wait_delta - cached["end_leg"].iloc[-1]
+			for col in _TIME_COLS:
+				cached[col] = cached[col] + shift
+			resolved[i] = cached
+
+		stitched = pd.concat(resolved, ignore_index=True)
+		stitched["leg_id"] = range(len(stitched))
+		stitched["start_trip"] = stitched["start_leg"].min()
+		stitched["end_trip"] = stitched["end_leg"].max()
+		stitched["iteration_id"] = iteration_id
+		stitched_chains.append(stitched)
+
+	stitched_df = pd.concat(stitched_chains, ignore_index=True)
+
+	for col in _ISO_TIME_COLS:
+		stitched_df[col] = (
+			stitched_df[col].dt.tz_convert(LOCAL_TIMEZONE).dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+		)
+	for col in _MS_TIME_COLS:
+		stitched_df[col] = stitched_df[col].astype("datetime64[ms, UTC]").astype("int64")
+
+	return stitched_df
