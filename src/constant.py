@@ -71,6 +71,8 @@ REASON_NO_REQUIRED_MODES = "no_required_modes"
 REASON_NO_MATCHING_LEG_SEQUENCE = "no_matching_leg_sequence"
 REASON_NO_DIRECT_ACCESS_ROUTE = "no_direct_access_route"
 REASON_NO_DIRECT_EGRESS_ROUTE = "no_direct_egress_route"
+REASON_NO_DIRECT_INTERIOR_ROUTE = "no_direct_interior_route"
+REASON_NO_CONNECTING_SEGMENT = "no_connecting_segment"
 REASON_NO_BEST_MATCH = "no_best_match"
 REASON_CAR_LEG_NOT_SATISFIED = "car_leg_not_satisfied"
 

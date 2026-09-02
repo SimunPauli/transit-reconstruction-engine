@@ -49,18 +49,22 @@ def _write_failures_file(trip_matching_summaries_df, path):
 def _build_summary_stats(trip_matching_summaries_df):
 	"""
 	Builds run-level summary tables from the per-trip matching summaries: an overview
-	(counts and success rate) and a breakdown of failure_reason frequency among the trips
-	not found.
+	(counts and success rates for each of the three outcomes - found with the TU-recorded
+	routes, found only by ignoring them, not found) and a breakdown of failure_reason
+	frequency among the trips not found.
 	"""
 	total = len(trip_matching_summaries_df)
 	found = int(trip_matching_summaries_df["trip_found"].sum())
-	not_found = total - found
+	wrong_route = int(trip_matching_summaries_df["trip_wrong_route"].sum())
+	not_found = int(trip_matching_summaries_df["trip_not_found"].sum())
 
 	overview_df = pd.DataFrame([{
 		"total_trips": total,
 		"trips_found": found,
+		"trips_wrong_route": wrong_route,
 		"trips_not_found": not_found,
-		"success_rate_pct": round(100 * found / total, 1) if total else 0.0
+		"success_rate_pct": round(100 * found / total, 1) if total else 0.0,
+		"success_rate_incl_wrong_route_pct": round(100 * (found + wrong_route) / total, 1) if total else 0.0
 	}])
 
 	failures_df = trip_matching_summaries_df.loc[trip_matching_summaries_df["trip_not_found"] == 1]

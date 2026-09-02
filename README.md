@@ -228,9 +228,9 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 | File | Description |
 |------|-------------|
 | `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
-| `trip_matching_summaries_file` | Per-trip summary including RMSE score and deviation metrics |
+| `trip_matching_summaries_file` | Per-trip summary including the trip's outcome (see "Trip outcomes" below), RMSE score and deviation metrics |
 | `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
-| `summary_stats_file` | Run-level summary: overall success rate, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. Also printed to console/`log_file` at the end of the run. |
+| `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. Also printed to console/`log_file` at the end of the run. |
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
 
@@ -443,6 +443,10 @@ After alignment, candidates are filtered to remove any itinerary where:
 - Not all required transit modes are present.
 - The transit legs do not appear in the same order as in TU (verified as a
   subsequence match on matched `Delturnr` values).
+
+If a trip with a bus/S-train leg ends up with no candidates for a route-related reason, the
+whole search is retried once with the route-name filter dropped; a match found that way is
+recorded as `trip_wrong_route` rather than `trip_found` (see [Trip outcomes](#trip-outcomes)).
 
 ---
 

@@ -18,6 +18,8 @@ from .constant import (
 	REASON_NO_OTP_CANDIDATES,
 	REASON_NO_DIRECT_ACCESS_ROUTE,
 	REASON_NO_DIRECT_EGRESS_ROUTE,
+	REASON_NO_DIRECT_INTERIOR_ROUTE,
+	REASON_NO_CONNECTING_SEGMENT,
 	REASON_NO_BEST_MATCH,
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
@@ -64,6 +66,7 @@ def _match_once(
 			"TurId": i_TurId,
 			"SessionId": tu_tur_row.get("SessionId"),
 			"trip_found": 0,
+			"trip_wrong_route": 0,
 			"trip_not_found": 1,
 			"last_print_if_not_found": last_print_if_not_found,
 			"failure_reason": failure_reason,
@@ -310,7 +313,8 @@ def _match_once(
 	trip_summary = {
 		"TurId": i_TurId,
 		"SessionId": tu_tur_row.get("SessionId"),
-		"trip_found": 1,
+		"trip_found": 0 if ignore_route_name else 1,
+		"trip_wrong_route": 1 if ignore_route_name else 0,
 		"trip_not_found": 0,
 		"last_print_if_not_found": "",
 		"used_anchor_fallback": used_anchor_fallback,
@@ -352,7 +356,9 @@ def match_tu_trip_to_otp(
 	the route restriction narrowing the search down to nothing - see
 	ROUTE_RELATED_FAILURE_REASONS) and the trip actually has a BUS/S_TRAIN leg, retries once
 	more with the route name ignored (matching by mode + leg order instead). A trip only found
-	this way is still reported as found, flagged via trip_summary["route_name_ignored"].
+	this way is reported as its own outcome - trip_summary["trip_wrong_route"] == 1 rather than
+	trip_summary["trip_found"] == 1 - since its transit legs aren't guaranteed to run the routes
+	TU recorded.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	_match_kwargs = dict(
@@ -378,7 +384,6 @@ def match_tu_trip_to_otp(
 	)
 
 	result_df, trip_summary = _match_once(ignore_route_name=False, **_match_kwargs)
-	route_name_ignored = False
 
 	if result_df is None:
 		tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -389,9 +394,6 @@ def match_tu_trip_to_otp(
 			if retry_df is not None:
 				print(f"ROUTE_NAME_IGNORED_MATCH_USED: TurId={i_TurId}")
 				result_df, trip_summary = retry_df, retry_summary
-				route_name_ignored = True
-
-	trip_summary["route_name_ignored"] = route_name_ignored
 
 	if return_trip_summary:
 		return result_df, trip_summary
