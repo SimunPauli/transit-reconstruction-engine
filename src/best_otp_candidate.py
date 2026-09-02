@@ -52,17 +52,23 @@ def find_best_match_by_rmse(
 	transit_mask     = ~legs["mode"].isin(street_modes) & matched_mask
 
 	# Weighted squared differences — 0 for unmatched legs (no penalty for extra OTP legs)
-	legs["weighted_sq_diff_duration"] = 0.0
-	legs["weighted_sq_diff_distance"] = 0.0
+	legs["weighted_sq_deviation_duration"] = 0.0
+	legs["weighted_sq_deviation_distance"] = 0.0
 
 	for mask, w_min, w_km in [
 		(street_mode_mask, w_street_mode_min, w_street_mode_km),
 		(transit_mask,     w_transit_min,     w_transit_km),
 	]:
-		legs.loc[mask, "weighted_sq_diff_duration"] = (
+		legs.loc[mask, "deviation_duration_min"] = (
+			(legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"])
+		)
+		legs.loc[mask, "weighted_sq_deviation_duration"] = (
 			w_min * ((legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"]) ** 2)
 		)
-		legs.loc[mask, "weighted_sq_diff_distance"] = (
+		legs.loc[mask, "deviation_distance_km"] = (
+				(legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"])
+		)
+		legs.loc[mask, "weighted_sq_deviation_distance"] = (
 			w_km * ((legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"]) ** 2)
 		)
 
@@ -70,8 +76,10 @@ def find_best_match_by_rmse(
 	trips = legs.groupby("iteration_id").agg(
 		start_trip = ("start_trip", "first"),
 		end_trip = ("end_trip", "first"),
-		weighted_sq_diff_duration = ("weighted_sq_diff_duration", "sum"),
-		weighted_sq_diff_distance = ("weighted_sq_diff_distance", "sum"),
+		deviation_duration_min = ("deviation_duration_min", "sum"), #this to report the difference and not to be used in rmse
+		weighted_sq_deviation_duration = ("weighted_sq_deviation_duration", "sum"),
+		deviation_distance_km = ("deviation_distance_km", "sum"), #this to report the difference and not to be used in rmse
+		weighted_sq_deviation_distance = ("weighted_sq_deviation_distance", "sum"),
 		system_notice_tag = ("system_notice_tag", "first"),
 	).reset_index()
 
@@ -79,14 +87,14 @@ def find_best_match_by_rmse(
 	trips["depart_deviation_min"]  = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
 	trips["arrival_deviation_min"] = (trips["end_trip"]   - expected_arrival).dt.total_seconds() / 60
 
-	trips["weighted_sq_diff_depart"]  = w_departure_min * (trips["depart_deviation_min"] ** 2)
-	trips["weighted_sq_diff_arrival"] = w_arrival_min   * (trips["arrival_deviation_min"] ** 2)
+	trips["weighted_sq_deviation_depart"]  = w_departure_min * (trips["depart_deviation_min"] ** 2)
+	trips["weighted_sq_deviation_arrival"] = w_arrival_min   * (trips["arrival_deviation_min"] ** 2)
 
 	trips["sum_weighted_sq_diff"] = (
-		trips["weighted_sq_diff_depart"]    +
-		trips["weighted_sq_diff_arrival"]   +
-		trips["weighted_sq_diff_duration"]  +
-		trips["weighted_sq_diff_distance"]
+		trips["weighted_sq_deviation_depart"]    +
+		trips["weighted_sq_deviation_arrival"]   +
+		trips["weighted_sq_deviation_duration"]  +
+		trips["weighted_sq_deviation_distance"]
 	)
 
 	# root for interpretability. Doesn't affect the ranking across trips.

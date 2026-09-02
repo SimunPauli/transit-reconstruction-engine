@@ -128,8 +128,8 @@ def _run(config):
 					"failure_reason": type(exc).__name__,
 					"used_anchor_fallback": False,
 					"rmse": pd.NA, "depart_deviation_min": pd.NA,
-					"arrival_deviation_min": pd.NA, "weighted_diff_duration": pd.NA,
-					"weighted_diff_distance": pd.NA, "iteration_id": pd.NA
+					"arrival_deviation_min": pd.NA, "deviation_duration_min": pd.NA,
+					"deviation_distance_km": pd.NA, "iteration_id": pd.NA
 				})
 			continue
 

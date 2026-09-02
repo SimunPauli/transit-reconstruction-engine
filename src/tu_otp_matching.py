@@ -74,8 +74,8 @@ def _match_once(
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
 			"arrival_deviation_min": pd.NA,
-			"weighted_diff_duration": pd.NA,
-			"weighted_diff_distance": pd.NA,
+			"deviation_duration_min": pd.NA,
+			"deviation_distance_km": pd.NA,
 			"iteration_id": pd.NA
 		}
 
@@ -298,11 +298,10 @@ def _match_once(
 		print(f"Best matching trip: iteration_id = {best_iteration}")
 		print(f"RMSE details (top 10):")
 		trips_display = trips.copy()
-		trips_display["weighted_diff_duration"] = np.sqrt(trips_display["weighted_sq_diff_duration"])
-		trips_display["weighted_diff_distance"] = np.sqrt(trips_display["weighted_sq_diff_distance"])
 		detail_cols = ["iteration_id", "depart_deviation_min", "arrival_deviation_min",
-		               "weighted_diff_duration", "weighted_diff_distance", "rmse"]
+		               "deviation_duration_min", "deviation_distance_km", "rmse"]
 		print(trips_display[detail_cols].sort_values("rmse").head(10).to_string(index=False))
+
 	# Filter otp_candidates_df to get only the best trip
 	best_trip_candidate = otp_candidates_df[otp_candidates_df["iteration_id"] == best_iteration].copy()
 	best_trip_candidate["TurId"] = i_TurId
@@ -319,10 +318,10 @@ def _match_once(
 		"last_print_if_not_found": "",
 		"used_anchor_fallback": used_anchor_fallback,
 		"rmse": round(best_trip_summary["rmse"],3),
-		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"]),
-		"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"]),
-		"weighted_diff_duration": round(np.sqrt(best_trip_summary["weighted_sq_diff_duration"]),1),
-		"weighted_diff_distance": round(np.sqrt(best_trip_summary["weighted_sq_diff_distance"]),3),
+		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"],0),
+		"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"],0),
+		"deviation_duration_min": round(np.sqrt(best_trip_summary["deviation_duration_min"]),0),
+		"deviation_distance_km": round(np.sqrt(best_trip_summary["deviation_distance_km"]),2),
 		"iteration_id": best_iteration
 	}
 	return best_trip_candidate, trip_summary
