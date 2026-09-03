@@ -13,6 +13,7 @@ from .otp_utils import (
 from .tu_utils import add_tu_deltur_depart_times
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
+	LOCAL_TIMEZONE,
 	REASON_NO_VALID_MODES,
 	REASON_INVALID_ROUTE_NAME,
 	REASON_NO_OTP_CANDIDATES,
@@ -25,7 +26,67 @@ from .constant import (
 	REASON_NO_MATCHING_LEG_SEQUENCE,
 	ROUTE_RELATED_FAILURE_REASONS,
 )
-from .station_anchor_fallback import find_known_anchor_stations, stitch_candidates
+from .station_anchor_fallback import (
+	find_known_anchor_stations,
+	stitch_candidates,
+	compute_anchor_split_segments,
+	stitch_segment_chains,
+)
+
+
+def _resolve_segment_search_params(
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		otp_mode_routes_cache,
+		otp_route_name_index,
+		exclude_via_stopids=None,
+		ignore_route_name=False,
+):
+	"""
+	Derives one OTP search's route/mode/via-stop parameters from a tu_deltur_sub - shared by
+	_match_once (the whole trip) and _load_and_align_segment_candidates (one anchor-split
+	segment), so this resolution logic lives in exactly one place.
+
+	exclude_via_stopids drops the given stop IDs from the resolved via_stopids - used by
+	segment queries to exclude their own origin/destination boundary stops, which are already
+	the query's origin/destination override rather than a via constraint.
+
+	Returns (modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
+	route_short_name_for_loading, route_name_groups_for_search, via_stopids).
+	"""
+	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
+		tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index
+	)
+
+	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) #only BUS and S_TRAIN have stated route names
+	is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
+
+	if ignore_route_name:
+		# Drop OTP's own routeShortNames include-filter entirely
+		route_short_name_for_loading = None
+		route_name_groups_for_search = []
+	elif is_bus_s_train and is_rail_tram_subway_ferry:
+		route_short_name_for_loading = route_names_ext
+		route_name_groups_for_search = route_name_groups
+	elif is_bus_s_train:
+		route_short_name_for_loading = route_names
+		route_name_groups_for_search = route_name_groups
+	else:
+		route_short_name_for_loading = None
+		route_name_groups_for_search = route_name_groups
+
+	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any(): #Station only stated for RAIL, S_TRAIN and SUBWAY
+		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
+	else:
+		via_stopids = None
+	if via_stopids and exclude_via_stopids:
+		via_stopids = [stop_id for stop_id in via_stopids if stop_id not in exclude_via_stopids] or None
+
+	return (
+		modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
+		route_short_name_for_loading, route_name_groups_for_search, via_stopids,
+	)
+
 
 def _match_once(
 	tu_tur_row,
@@ -95,10 +156,9 @@ def _match_once(
 		print("tu_deltur_sub:")
 		print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
 
-	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
-		tu_deltur_sub,
-		otp_mode_routes_cache,
-		otp_route_name_index
+	modes_json, modes_list, is_bus_s_train, route_names, route_names_ext, route_short_name_for_loading, route_name_groups_for_search, via_stopids = _resolve_segment_search_params(
+		tu_deltur_sub, tu_gtfs_station_df, otp_mode_routes_cache, otp_route_name_index,
+		ignore_route_name=ignore_route_name,
 	)
 	if print_trip_header:
 		print(f"route_short_name: {', '.join(str(r) for r in route_names)}")
@@ -110,39 +170,19 @@ def _match_once(
 		print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
 	if (
 		not ignore_route_name
-		and any(mode in ["BUS", "S_TRAIN"] for mode in modes_list)
+		and is_bus_s_train
 		and has_invalid_route_name(route_names)
 	):
 		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
+	if print_trip_header and via_stopids:
+		print(f"via_stopids: {', '.join(via_stopids)}")
 
-	# Get the gtfs stop_ids for stations respondent travel through
-	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any(): #Station only stated for RAIL, S_TRAIN and SUBWAY
-		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
-		if print_trip_header:
-			print(f"via_stopids: {', '.join(via_stopids)}")
-	else:
-		via_stopids = None
-
-	# 2. Fetch all candidates (handles pagination & concat internally)
-	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) #only BUS and S_TRAIN have stated route names
+	# is_bus_s_train/is_rail_tram_subway_ferry are the two TRANSIT_MODES categories with
+	# different route-name handling (see _resolve_segment_search_params); every TU trip must
+	# contain at least one, so this is a defensive check against malformed input data.
 	is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
 	if not is_bus_s_train and not is_rail_tram_subway_ferry:
 		raise ValueError("No valid transit modes found. TurId: ", i_TurId, ".")
-	if is_bus_s_train and is_rail_tram_subway_ferry:
-		route_short_name_for_loading = route_names_ext
-	elif is_bus_s_train:
-		route_short_name_for_loading = route_names
-	elif is_rail_tram_subway_ferry:
-		route_short_name_for_loading = None
-	else:
-		return _return_not_found(f"No valid transit modes found. TurId: {i_TurId}. Something went wrong.")
-
-	if ignore_route_name:
-		# Drop OTP's own routeShortNames include-filter entirely
-		route_short_name_for_loading = None
-		route_name_groups_for_search = []
-	else:
-		route_name_groups_for_search = route_name_groups
 
 	tu_deltur_sorted = tu_deltur_sub.sort_values("Delturnr")
 	is_car_access = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK") == "CAR"
@@ -248,17 +288,40 @@ def _match_once(
 		_log_stage("FULL_ROUTE_QUERY", "SUCCEEDED" if not otp_candidates_df.empty else "FAILED", msg_filter)
 
 	if otp_candidates_df.empty:
-		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, anchor_station_lookup)
-		if not first_stop_id and not last_stop_id:
+		anchor_segments = compute_anchor_split_segments(tu_deltur_sub, anchor_station_lookup)
+		if not anchor_segments:
 			_log_stage("STATION_ANCHOR_FALLBACK", "SKIPPED", "no usable anchor station")
 			return _return_not_found(msg_filter)
 
-		_log_stage("STATION_ANCHOR_FALLBACK", "START", f"first_stop_id={first_stop_id} last_stop_id={last_stop_id}")
-		otp_candidates_df, fallback_msg = _try_station_anchored_fallback(
-			**_candidate_kwargs,
-			first_stop_id=first_stop_id,
-			last_stop_id=last_stop_id,
-			wait_min=station_anchor_wait_min
+		_log_stage(
+			"STATION_ANCHOR_FALLBACK", "START",
+			f"{len(anchor_segments)} segment(s): " + " | ".join(
+				f"{seg['kind']}[{seg['origin_stop_id'] or 'origin'} -> {seg['destination_stop_id'] or 'dest'}]"
+				for seg in anchor_segments
+			)
+		)
+		otp_candidates_df, fallback_msg = _try_split_station_anchored_fallback(
+			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
+			tu_gtfs_station_df=tu_gtfs_station_df,
+			otp_mode_routes_cache=otp_mode_routes_cache,
+			otp_route_name_index=otp_route_name_index,
+			route_name_groups=route_name_groups_for_search,
+			modes_list=modes_list,
+			anchor_segments=anchor_segments,
+			walk_reluctance=walk_reluctance,
+			car_reluctance=car_reluctance,
+			transit_retry_enabled=transit_retry_enabled,
+			transit_reluctance_sequence=transit_reluctance_sequence,
+			walk_retry_enabled=walk_retry_enabled,
+			walk_reluctance_sequence=walk_reluctance_sequence,
+			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
+			otp_url=otp_url,
+			request_timeout=request_timeout,
+			print_query=print_query,
+			wait_min=station_anchor_wait_min,
+			ignore_route_name=ignore_route_name
 		)
 		if otp_candidates_df.empty:
 			_log_stage("STATION_ANCHOR_FALLBACK", "FAILED", fallback_msg)
@@ -672,13 +735,12 @@ def _try_station_anchored_fallback(
 		access_leg_df = request_direct_leg(
 			tu_tur_row=tu_tur_row,
 			tu_deltur_sub=tu_deltur_sub,
-			stop_id=first_stop_id,
 			direct_mode=access_mode,
-			side="access",
 			depart_dt_str=tu_tur_row["depart_dt_str"],
 			otp_url=otp_url,
 			request_timeout=request_timeout,
-			print_query=print_query
+			print_query=print_query,
+			destination_stop_id=first_stop_id
 		)
 		if access_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_ACCESS_ROUTE
@@ -689,13 +751,12 @@ def _try_station_anchored_fallback(
 		egress_leg_df = request_direct_leg(
 			tu_tur_row=tu_tur_row,
 			tu_deltur_sub=tu_deltur_sub,
-			stop_id=last_stop_id,
 			direct_mode=egress_mode,
-			side="egress",
 			depart_dt_str=tu_tur_row["depart_dt_str"],
 			otp_url=otp_url,
 			request_timeout=request_timeout,
-			print_query=print_query
+			print_query=print_query,
+			origin_stop_id=last_stop_id
 		)
 		if egress_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_EGRESS_ROUTE
@@ -759,3 +820,265 @@ def _try_station_anchored_fallback(
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"
 	return filtered_df, reason
+
+
+def _query_direct_segment(tu_tur_row, segment, otp_url, request_timeout, print_query):
+	"""
+	Query a "direct" (pure WALK/CAR, no transit leg) anchor-split segment once, using the TU
+	trip's own depart time as a placeholder - street-mode travel time in OTP doesn't depend
+	on time of day, so only the duration is reused (see stitch_segment_chains, which computes
+	the segment's actual placement in each stitched itinerary relative to its transit
+	neighbor).
+	"""
+	legs = segment["legs"].sort_values("Delturnr")
+	direct_mode = DIRECT_ACCESS_MODE_MAP.get(int(legs["StageMode"].iloc[0]), "WALK")
+	return request_direct_leg(
+		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=legs,
+		direct_mode=direct_mode,
+		depart_dt_str=tu_tur_row["depart_dt_str"],
+		otp_url=otp_url,
+		request_timeout=request_timeout,
+		print_query=print_query,
+		origin_stop_id=segment["origin_stop_id"],
+		destination_stop_id=segment["destination_stop_id"],
+	)
+
+
+def _load_and_align_segment_candidates(
+		tu_tur_row,
+		segment_legs,
+		tu_gtfs_station_df,
+		otp_mode_routes_cache,
+		otp_route_name_index,
+		origin_stop_id,
+		destination_stop_id,
+		depart_dt,
+		walk_reluctance,
+		car_reluctance,
+		transit_retry_enabled,
+		transit_reluctance_sequence,
+		walk_retry_enabled,
+		walk_reluctance_sequence,
+		search_window,
+		max_itinerary_candidates,
+		otp_url,
+		request_timeout,
+		print_query,
+		ignore_route_name=False,
+):
+	"""
+	Runs one anchor-split "transit" segment's own OTP search plus leg alignment, mirroring
+	what _match_once does for the whole trip (route names/modes, via-stops, reluctance
+	retries, alignment/filtering) but scoped to segment_legs only. Used by
+	_try_split_station_anchored_fallback for every segment containing at least one transit
+	leg - a segment that's pure WALK/CAR end-to-end uses _query_direct_segment instead.
+	"""
+	exclude_via_stopids = {stop_id for stop_id in (origin_stop_id, destination_stop_id) if stop_id}
+	modes_json, modes_list, is_bus_s_train, route_names, route_names_ext, route_short_name_for_loading, route_name_groups_for_search, via_stopids = _resolve_segment_search_params(
+		segment_legs, tu_gtfs_station_df, otp_mode_routes_cache, otp_route_name_index,
+		exclude_via_stopids=exclude_via_stopids,
+		ignore_route_name=ignore_route_name,
+	)
+	if not modes_json:
+		return pd.DataFrame(), REASON_NO_VALID_MODES
+
+	depart_dt_str = depart_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+	raw_df, msg = _load_candidates_with_reluctance_retries(
+		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=segment_legs,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		modes_json=modes_json,
+		route_name_groups=route_name_groups_for_search,
+		route_short_name_for_loading=route_short_name_for_loading,
+		modes_list=modes_list,
+		via_stopids=via_stopids,
+		walk_reluctance=walk_reluctance,
+		car_reluctance=car_reluctance,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence,
+		search_window=search_window,
+		max_itinerary_candidates=max_itinerary_candidates,
+		otp_url=otp_url,
+		request_timeout=request_timeout,
+		print_query=print_query,
+		skip_alignment=True,
+		origin_location_override={"stopLocation": {"stopLocationId": origin_stop_id}} if origin_stop_id else None,
+		destination_location_override={"stopLocation": {"stopLocationId": destination_stop_id}} if destination_stop_id else None,
+		depart_dt_str_override=depart_dt_str,
+		depart_dt_override=depart_dt,
+		access_mode_override="WALK" if origin_stop_id else None,
+		egress_mode_override="WALK" if destination_stop_id else None,
+		ignore_route_name=ignore_route_name,
+	)
+	if raw_df.empty:
+		return pd.DataFrame(), msg or REASON_NO_OTP_CANDIDATES
+
+	filtered_df, reason = _align_and_filter_candidates(
+		otp_candidates_df=raw_df,
+		tu_deltur_sub=segment_legs,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		route_name_groups=route_name_groups_for_search,
+		modes_list=modes_list,
+		tur_id=tu_tur_row["TurId"],
+		ignore_route_name=ignore_route_name,
+	)
+	if filtered_df.empty:
+		return filtered_df, reason
+
+	#Return the surviving itineraries' RAW legs, not the aligned ones: alignment rewrites a
+	#TU bike leg matched to an OTP WALK leg (mode -> "BICYCLE", duration_min scaled by
+	#WALK_BIKE_TIME_RATIO - see add_tu_delturnr_to_otp_candidates), so aligning the stitched
+	#trip a second time in _try_split_station_anchored_fallback would no longer recognise
+	#those legs and the whole itinerary would fail the leg-sequence check. Segment alignment
+	#is only used to decide which itineraries survive; the stitched trip is then aligned
+	#exactly once, like the single-query path. filter_candidates_by_requirements only ever
+	#drops whole iteration_ids, never individual legs, so this loses nothing.
+	surviving_ids = filtered_df["iteration_id"].unique()
+	return raw_df[raw_df["iteration_id"].isin(surviving_ids)].reset_index(drop=True), ""
+
+
+def _try_split_station_anchored_fallback(
+		tu_tur_row,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		otp_mode_routes_cache,
+		otp_route_name_index,
+		route_name_groups,
+		modes_list,
+		anchor_segments,
+		walk_reluctance,
+		car_reluctance,
+		search_window,
+		max_itinerary_candidates,
+		otp_url,
+		request_timeout,
+		print_query,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.5, 0.25, 0.1),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(3, 4, 6),
+		wait_min=0,
+		ignore_route_name=False,
+):
+	"""
+	Generalized station-anchored fallback: splits the TU trip at every resolvable
+	S_TRAIN/RAIL/SUBWAY station (anchor_segments, from compute_anchor_split_segments) rather
+	than only the trip's outer first/last leg, queries each segment independently, and
+	stitches every surviving end-to-end chain back into one candidate itinerary.
+
+	Segments are resolved strictly left to right. A "direct" segment is queried once (its
+	travel time doesn't depend on time of day) and cached in direct_leg_cache. A "transit"
+	segment is queried once per currently surviving chain, seeded at that chain's running
+	depart_dt (the TU trip's own depart time, advanced past every earlier segment's duration/
+	arrival); every surviving OTP itinerary for that segment spawns its own continuation
+	chain - no collapsing to "best of segment N", since the true best whole-trip match isn't
+	necessarily the one built from each segment's individually-best candidate.
+	"""
+	tur_id = tu_tur_row["TurId"]
+	wait_delta = pd.Timedelta(minutes=wait_min)
+
+	def _log(stage, status, detail=""):
+		suffix = f" ({detail})" if detail else ""
+		print(f"[TurId={tur_id}] SPLIT_ANCHOR_FALLBACK/{stage}: {status}{suffix}")
+
+	direct_leg_cache = {}
+	for idx, seg in enumerate(anchor_segments):
+		if seg["kind"] != "direct":
+			continue
+		leg_df = _query_direct_segment(tu_tur_row, seg, otp_url, request_timeout, print_query)
+		if leg_df.empty:
+			if idx == 0:
+				reason = REASON_NO_DIRECT_ACCESS_ROUTE
+			elif idx == len(anchor_segments) - 1:
+				reason = REASON_NO_DIRECT_EGRESS_ROUTE
+			else:
+				reason = REASON_NO_DIRECT_INTERIOR_ROUTE
+			_log(f"segment {idx} (direct)", "FAILED", reason)
+			return pd.DataFrame(), f"anchored_{reason}"
+		direct_leg_cache[idx] = leg_df
+		_log(f"segment {idx} (direct)", "SUCCEEDED", f"duration_min={int(leg_df['duration_min'].sum())}")
+
+	chains = [{"depart_dt": tu_tur_row["depart_dt"], "parts": []}]
+	last_reason = REASON_NO_OTP_CANDIDATES
+
+	for idx, seg in enumerate(anchor_segments):
+		if seg["kind"] == "direct":
+			duration_min = int(direct_leg_cache[idx]["duration_min"].sum())
+			for chain in chains:
+				chain["depart_dt"] = chain["depart_dt"] + pd.Timedelta(minutes=duration_min) + wait_delta
+				chain["parts"].append(("direct", idx, None))
+			continue
+
+		new_chains = []
+		for chain in chains:
+			#load_all_candidates paginates backward as well as forward, so it returns
+			#itineraries departing up to search_window *before* the requested time. Before this
+			#chain's first transit segment that's fine (a leading direct segment is re-timed
+			#against it in stitch_segment_chains, exactly like the single-anchor fallback does),
+			#but once a transit segment is fixed in time, a later segment departing before
+			#chain["depart_dt"] would mean leaving the boundary station before the previous
+			#segment arrived there.
+			has_fixed_predecessor = any(kind == "transit" for kind, _, _ in chain["parts"])
+			segment_df, reason = _load_and_align_segment_candidates(
+				tu_tur_row=tu_tur_row,
+				segment_legs=seg["legs"],
+				tu_gtfs_station_df=tu_gtfs_station_df,
+				otp_mode_routes_cache=otp_mode_routes_cache,
+				otp_route_name_index=otp_route_name_index,
+				origin_stop_id=seg["origin_stop_id"],
+				destination_stop_id=seg["destination_stop_id"],
+				depart_dt=chain["depart_dt"],
+				walk_reluctance=walk_reluctance,
+				car_reluctance=car_reluctance,
+				transit_retry_enabled=transit_retry_enabled,
+				transit_reluctance_sequence=transit_reluctance_sequence,
+				walk_retry_enabled=walk_retry_enabled,
+				walk_reluctance_sequence=walk_reluctance_sequence,
+				search_window=search_window,
+				max_itinerary_candidates=max_itinerary_candidates,
+				otp_url=otp_url,
+				request_timeout=request_timeout,
+				print_query=print_query,
+				ignore_route_name=ignore_route_name,
+			)
+			if segment_df.empty:
+				last_reason = reason
+				continue
+			for _, group in segment_df.groupby("iteration_id"):
+				if has_fixed_predecessor:
+					departure = pd.to_datetime(group["start_leg"].min(), unit="ms", utc=True)
+					if departure < chain["depart_dt"]:
+						last_reason = REASON_NO_CONNECTING_SEGMENT
+						continue
+				arrival = pd.to_datetime(group["end_leg"].max(), unit="ms", utc=True).tz_convert(LOCAL_TIMEZONE)
+				new_chains.append({
+					"depart_dt": arrival + wait_delta,
+					"parts": chain["parts"] + [("transit", idx, group)],
+				})
+
+		_log(
+			f"segment {idx} (transit)", "SUCCEEDED" if new_chains else "FAILED",
+			f"{len(new_chains)} surviving chain(s) from {len(chains)} seed(s)" if new_chains else last_reason
+		)
+		chains = new_chains
+		if not chains:
+			return pd.DataFrame(), f"anchored_{last_reason}"
+
+	stitched_df = stitch_segment_chains(chains, direct_leg_cache, wait_min)
+
+	filtered_df, reason = _align_and_filter_candidates(
+		otp_candidates_df=stitched_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		route_name_groups=route_name_groups,
+		modes_list=modes_list,
+		tur_id=tur_id,
+		ignore_route_name=ignore_route_name,
+	)
+	if filtered_df.empty:
+		return filtered_df, f"anchored_{reason}"
+	return filtered_df, ""

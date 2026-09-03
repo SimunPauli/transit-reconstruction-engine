@@ -234,6 +234,25 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
 
+### Trip outcomes
+
+Every TU trip ends in exactly one of three mutually exclusive outcomes, recorded as three 0/1
+columns in `trip_matching_summaries_file` and counted in `summary_stats_file`'s overview sheet:
+
+| Column | Meaning |
+|---|---|
+| `trip_found` | Matched, with every route name TU recorded for its bus/S-train legs present in the itinerary |
+| `trip_wrong_route` | Matched only after the route-name filter was dropped — the itinerary uses the right modes in the right order, but not necessarily the routes TU recorded |
+| `trip_not_found` | No itinerary matched; see `failure_reason` |
+
+`trip_wrong_route` comes from the retry described in [candidate filtering](#5-candidate-filtering):
+when a trip with a bus/S-train leg fails for a route-related reason (`invalid_route_name`,
+`no_required_routes`, `no_otp_candidates`, or their `anchored_` variants), the search is run once
+more with route names ignored and matching falls back to mode + leg order. Such a trip is still
+written to `rmse_based_matches_file` — it's kept separate rather than dropped, because its route
+assignment is the part that's unverified, not the trip itself. `summary_stats_file` reports
+`success_rate_pct` (`trip_found` only) alongside `success_rate_incl_wrong_route_pct` (both).
+
 ### Failure reasons
 
 Both `trip_matching_summaries_file`'s `failure_reason` column and `failures_file` use short codes

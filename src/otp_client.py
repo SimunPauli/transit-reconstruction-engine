@@ -579,30 +579,28 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 def request_direct_leg(
 		tu_tur_row: pd.Series,
 		tu_deltur_sub: pd.DataFrame,
-		stop_id: str,
 		direct_mode: str,
-		side: str,
 		depart_dt_str: str,
 		otp_url: str = "http://localhost:8080/otp/gtfs/v1",
 		request_timeout: int = 60,
 		print_query: bool = False,
+		origin_stop_id: str = None,
+		destination_stop_id: str = None,
 ) -> pd.DataFrame:
 	"""
-	Query OTP once for a single street-only (WALK/CAR) itinerary between the TU trip's
-	true origin/destination and a known GTFS stop. Used by the station-anchored fallback
-	in tu_otp_matching.py, since street-mode travel time in OTP doesn't depend on
-	time-of-day, so this only needs to be requested once and its duration reused as a
-	fixed offset against every transit candidate.
+	Query OTP once for a single street-only (WALK/CAR) itinerary. Used by the
+	station-anchored fallback in tu_otp_matching.py, since street-mode travel time in OTP
+	doesn't depend on time-of-day, so this only needs to be requested once and its
+	duration reused as a fixed offset against every transit candidate.
 
-	side="access": true origin -> stop (the leg leading up to the known station).
-	side="egress": stop -> true destination (the leg leaving the known station).
+	origin_stop_id/destination_stop_id, when given, anchor that end at a known GTFS stop
+	instead of the TU trip's true origin/destination coordinate: pass only
+	destination_stop_id for the access leg (true origin -> known station), only
+	origin_stop_id for the egress leg (known station -> true destination), or both for an
+	interior direct segment bounded by two known stations.
 	"""
-	if side not in ("access", "egress"):
-		raise ValueError(f"side must be 'access' or 'egress', got {side!r}")
-
-	stop_location = {"stopLocation": {"stopLocationId": stop_id}}
-	origin_override = None if side == "access" else stop_location
-	destination_override = stop_location if side == "access" else None
+	origin_override = {"stopLocation": {"stopLocationId": origin_stop_id}} if origin_stop_id else None
+	destination_override = {"stopLocation": {"stopLocationId": destination_stop_id}} if destination_stop_id else None
 
 	response = graphql_json_request(
 		tu_tur_row=tu_tur_row,
