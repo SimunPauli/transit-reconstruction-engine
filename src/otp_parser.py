@@ -166,6 +166,8 @@ def _collapse_interlined_legs(df):
 			previous["leg_geometry"] = list(previous["leg_geometry"]) + list(row["leg_geometry"])
 			previous["interlined_route_short_names"].append(row["route_short_name"])
 			previous["interlined_trip_short_names"].append(row["trip_short_name"])
+
+			print(f"OTP iteration_id={row["iteration_id"]} original leg_id={row["leg_id"]} collapsed with leg={previous['leg_id']}")
 			continue
 
 		row["interlined_route_short_names"] = []
