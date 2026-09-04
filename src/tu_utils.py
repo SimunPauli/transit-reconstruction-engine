@@ -4,7 +4,6 @@ from .constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM
 def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM):
 	"""
 	Merges a short WALK leg (e.g. walking to/from a parked car) into an adjacent CAR-family
-	leg. Must run before anything dererges a short WALK leg (e.g. walking to/from a parked car) into an adjacent CAR-family
 	leg. Must run before anything derives access/egress mode from tu_deltur_sub's outer legs
 	(is_car_access/is_car_egress and friends), so a short WALK doesn't hide an adjacent CAR
 	leg from them.
