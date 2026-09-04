@@ -123,7 +123,16 @@ def add_tu_delturnr_to_otp_candidates(
 
 		# For BUS/S_TRAIN, check route name
 		if otp_leg["mode"] in {"BUS", "S_TRAIN"} and not ignore_route_name:
-			if not _route_matches(tu_deltur_sub_leg.get("Route"), otp_leg.get("route_short_name"), otp_leg["mode"]):
+			# A collapsed interlined leg matches on the boarding route or the continuing one:
+			# the respondent stayed in the vehicle and may report either line.
+			interlined = otp_leg.get("interlined_route_short_names")
+			if not isinstance(interlined, (list, tuple)):   # NaN when frames are concatenated
+				interlined = []
+			otp_routes = [otp_leg.get("route_short_name"), *interlined]
+			if not any(
+				_route_matches(tu_deltur_sub_leg.get("Route"), otp_route, otp_leg["mode"])
+				for otp_route in otp_routes
+			):
 				return "route", (
 					f"{otp_leg['mode']} route {otp_leg.get('route_short_name')!r} "
 					f"does not match TU route {tu_deltur_sub_leg.get('Route')!r}"

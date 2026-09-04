@@ -66,6 +66,7 @@ def json_to_df(response):
 		"end_leg",
 
 		"mode",
+		"interline_with_previous",
 		"route_short_name",
 		"route_gtfs_id",
 		"distance_km",
@@ -105,6 +106,7 @@ def json_to_df(response):
 				"end_leg": leg["endTime"],
 
 				"mode": leg["mode"],
+				"interline_with_previous": bool(leg.get("interlineWithPreviousLeg")),
 				"route_short_name": route.get("shortName"),
 				"route_gtfs_id": route.get("gtfsId"),
 				"distance_km": round(leg["distance"]/1000,3),
@@ -121,4 +123,56 @@ def json_to_df(response):
 				"system_notice_text": system_notice_text
 			})
 	df = pd.DataFrame(rows, columns=columns)
-	return df
+	return _collapse_interlined_legs(df)
+
+
+def _collapse_interlined_legs(df):
+	"""Fold each stay-seated continuation into the leg it continues.
+
+	OTP reports an interlined transfer (GTFS block_id) as two legs, but the traveller
+	never left the vehicle and TU records it as one leg. Merging them here keeps the
+	station checks in delturnr_otp_candidates.py comparing TU's boarding and alighting
+	stops against the whole ride instead of half of it, and stops the second half from
+	being scored as an unmatched extra leg.
+
+	The merged leg keeps the boarding leg's route and trip; the continuation's are kept
+	in interlined_route_short_names (so the route filter still recognises either line)
+	and interlined_trip_short_names (the continuation's train number, for the export).
+	"""
+	if "interline_with_previous" not in df.columns:
+		return df
+
+	if df.empty or not df["interline_with_previous"].any():
+		for column in ("interlined_route_short_names", "interlined_trip_short_names"):
+			df[column] = [[] for _ in range(len(df))]
+		return df
+
+	rows = []
+	for row in df.sort_values(["iteration_id", "leg_id"]).to_dict("records"):
+		merges_into_previous = (
+			rows
+			and row["interline_with_previous"]
+			and rows[-1]["iteration_id"] == row["iteration_id"]
+		)
+		if merges_into_previous:
+			previous = rows[-1]
+			previous["end_leg"] = row["end_leg"]
+			previous["to"] = row["to"]
+			previous["to_gtfs_id"] = row["to_gtfs_id"]
+			previous["duration_min"] += row["duration_min"]
+			previous["distance_km"] = round(previous["distance_km"] + row["distance_km"], 3)
+			if previous["generalized_cost"] is not None and row["generalized_cost"] is not None:
+				previous["generalized_cost"] += row["generalized_cost"]
+			previous["leg_geometry"] = list(previous["leg_geometry"]) + list(row["leg_geometry"])
+			previous["interlined_route_short_names"].append(row["route_short_name"])
+			previous["interlined_trip_short_names"].append(row["trip_short_name"])
+			continue
+
+		row["interlined_route_short_names"] = []
+		row["interlined_trip_short_names"] = []
+		rows.append(row)
+
+	return pd.DataFrame(
+		rows,
+		columns=list(df.columns) + ["interlined_route_short_names", "interlined_trip_short_names"],
+	)

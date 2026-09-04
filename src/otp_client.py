@@ -286,6 +286,7 @@ def build_graphql_query(
             systemNotices { tag text }
             legs {
               mode startTime endTime distance duration
+              interlineWithPreviousLeg
               from { name stop { gtfsId id parentStation { gtfsId id name } } }
               to { name stop { gtfsId id parentStation { id name } } }
               route { shortName gtfsId}

@@ -275,12 +275,22 @@ def filter_candidates_by_requirements(
 		if "route_short_name" not in filtered_df.columns:
 			return pd.DataFrame(), REASON_MISSING_ROUTE_SHORT_NAME_COLUMN
 
-		def _has_every_required_route(routes):
-			present = set(routes.dropna().astype(str))
+		# A collapsed interlined leg carries the boarding route in route_short_name and
+		# the continuation's route alongside it, so TU recording either line still matches.
+		def _has_every_required_route(legs):
+			present = set(legs["route_short_name"].dropna().astype(str))
+			if "interlined_route_short_names" in legs.columns:
+				for names in legs["interlined_route_short_names"]:
+					if isinstance(names, (list, tuple)):   # NaN when frames are concatenated
+						present.update(str(name) for name in names)
 			return all(present & group for group in route_name_groups)
 
+		route_cols = ["route_short_name"]
+		if "interlined_route_short_names" in filtered_df.columns:
+			route_cols.append("interlined_route_short_names")
+
 		iteration_ids_with_required_routes = (
-			filtered_df.groupby("iteration_id")["route_short_name"]
+			filtered_df.groupby("iteration_id")[route_cols]
 			.apply(_has_every_required_route)
 		)
 
@@ -327,7 +337,7 @@ def filter_candidates_by_requirements(
 			.loc[
 				tu_deltur_sub["otp_mode"].notna()
 				& tu_deltur_sub["otp_mode"].isin(transit_modes)
-			]			.sort_values("Delturnr")["Delturnr"]
+			].sort_values("Delturnr")["Delturnr"]
 			.tolist()
 		)
 
