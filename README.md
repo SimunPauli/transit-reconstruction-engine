@@ -66,7 +66,8 @@ Create it based on the template below:
   "matching": {
     "return_trip_summary": true,
     "print_deviation": true,
-    "station_anchor_wait_min": 0
+    "station_anchor_wait_min": 0,
+    "walk_car_absorb_max_km": 0.5
   },
   "reluctance_retries": {
     "transit": {
@@ -127,6 +128,7 @@ Create it based on the template below:
 | `matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
 | `matching.print_deviation` | Whether to print RMSE deviation details per trip |
 | `matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
+| `matching.walk_car_absorb_max_km` | A WALK leg shorter than this (km), adjacent to a CAR-family leg (e.g. walking to/from a parked car), is merged into that CAR leg before matching, so the CAR leg is correctly detected as the trip's access/egress mode instead of being hidden behind the short walk |
 | `reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
 | `reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `reluctance_retries.transit.enabled` is true |
 | `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |

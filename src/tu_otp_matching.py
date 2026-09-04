@@ -10,7 +10,7 @@ from .otp_utils import (
 	get_via_stops,
 	filter_candidates_by_requirements,
 )
-from .tu_utils import add_tu_deltur_depart_times
+from .tu_utils import add_tu_deltur_depart_times, absorb_short_walk_into_car
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	LOCAL_TIMEZONE,
@@ -119,6 +119,7 @@ def _match_once(
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+	tu_deltur_sub = absorb_short_walk_into_car(tu_deltur_sub)
 	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
 	used_anchor_fallback = False
 
