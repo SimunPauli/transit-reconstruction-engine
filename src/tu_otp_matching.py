@@ -383,8 +383,8 @@ def _match_once(
 		"rmse": round(best_trip_summary["rmse"],3),
 		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"],0),
 		"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"],0),
-		"deviation_duration_min": round(np.sqrt(best_trip_summary["deviation_duration_min"]),0),
-		"deviation_distance_km": round(np.sqrt(best_trip_summary["deviation_distance_km"]),2),
+		"deviation_duration_min": round(best_trip_summary["deviation_duration_min"],0),
+		"deviation_distance_km": round(best_trip_summary["deviation_distance_km"],2),
 		"iteration_id": best_iteration
 	}
 	return best_trip_candidate, trip_summary
