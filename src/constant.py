@@ -46,6 +46,7 @@ DIRECT_ACCESS_MODE_MAP = {
 	8: "WALK",  #E-scooter
 	11: "CAR",
 	12: "CAR",  # van
+	14: "CAR",  # Motercycle
 	25: "CAR",  # Taxi
 	26: "CAR",  # Non-public bus
 	35: "CAR"
