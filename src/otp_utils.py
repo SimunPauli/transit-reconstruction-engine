@@ -2,6 +2,7 @@ import pandas as pd
 from .constant import (
 	MODE_MAP,
 	INVALID_ROUTE_CHARS,
+	STREET_MODES,
 	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,
 	REASON_MISSING_MODE_COLUMN,
 	REASON_NO_REQUIRED_ROUTES,
@@ -328,7 +329,7 @@ def filter_candidates_by_requirements(
 		if filtered_df.empty:
 			return pd.DataFrame(), REASON_NO_REQUIRED_MODES
 
-	# Filter by TU transit leg order
+	# Filter by TU transit leg order, and reject itineraries with unmatched non-street legs
 	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
 		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
 
@@ -341,26 +342,30 @@ def filter_candidates_by_requirements(
 			.tolist()
 		)
 
-		if tu_transit_delturnrs:
-			valid_ids = (
-				otp_candidates_df
-				.groupby("iteration_id")
-				.filter(lambda g: _tu_transit_legs_matched_in_order(g, tu_transit_delturnrs))
-				["iteration_id"]
-				.unique()
-			)
-			filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
+		valid_ids = (
+			otp_candidates_df
+			.groupby("iteration_id")
+			.filter(lambda g: _tu_transit_legs_matched_in_order(g, tu_transit_delturnrs))
+			["iteration_id"]
+			.unique()
+		)
+		filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
 
-			if filtered_df.empty:
-				return pd.DataFrame(), REASON_NO_MATCHING_LEG_SEQUENCE
+		if filtered_df.empty:
+			return pd.DataFrame(), REASON_NO_MATCHING_LEG_SEQUENCE
 
 	return filtered_df, ""
 
 def _tu_transit_legs_matched_in_order(otp_candidates_sub, tu_transit_delturnrs):
     """
     Check that all TU transit Delturnrs appear in this OTP iteration's
-    matched Delturnrs, in order (as a subsequence).
+    matched Delturnrs, in order (as a subsequence), and that every
+    unmatched OTP leg is a street mode.
     """
+    unmatched = otp_candidates_sub["tu_Delturnr"].isna()
+    if (~otp_candidates_sub.loc[unmatched, "mode"].isin(STREET_MODES)).any():
+        return False
+
     matched = (
         otp_candidates_sub.loc[otp_candidates_sub["tu_Delturnr"].notna(), "tu_Delturnr"]
         .tolist()

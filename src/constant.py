@@ -52,6 +52,14 @@ DIRECT_ACCESS_MODE_MAP = {
 	35: "CAR"
 }
 
+#Non-transit OTP leg modes, e.g. an unmatched transfer walk is fine but an unmatched
+#SUBWAY/BUS/RAIL/S_TRAIN/TRAM leg is not. BICYCLE is the bike-placeholder rename (see
+#delturnr_otp_candidates.py); the rest are OTP's direct/access-egress street modes.
+STREET_MODES = {
+	"WALK", "BICYCLE", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
+	"CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE", "SCOOTER_RENTAL"
+}
+
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 

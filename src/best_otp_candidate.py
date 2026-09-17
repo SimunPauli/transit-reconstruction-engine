@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from .config_loader import get_config
+from .constant import STREET_MODES
 
 def find_best_match_by_rmse(
 		tu_tur_row,
@@ -42,14 +43,9 @@ def find_best_match_by_rmse(
 	legs["tu_duration_min"] = legs["tu_Delturnr"].map(tu_leg_duration)
 	legs["tu_distance_km"]  = legs["tu_Delturnr"].map(tu_leg_dist)
 
-	street_modes = {
-		"WALK", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
-		"CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE", "SCOOTER_RENTAL"
-	}
-
 	matched_mask     = legs["tu_Delturnr"].notna()
-	street_mode_mask = legs["mode"].isin(street_modes) & matched_mask
-	transit_mask     = ~legs["mode"].isin(street_modes) & matched_mask
+	street_mode_mask = legs["mode"].isin(STREET_MODES) & matched_mask
+	transit_mask     = ~legs["mode"].isin(STREET_MODES) & matched_mask
 
 	# Weighted squared differences — 0 for unmatched legs (no penalty for extra OTP legs)
 	legs["weighted_sq_deviation_duration"] = 0.0
