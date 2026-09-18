@@ -85,7 +85,7 @@ def load_tu(data_dir,
 	if YEAR is not None:
 		tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
 
-	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)] #Not ferry
+	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)].copy() #Not ferry
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 
 	public_driver_TurId = tu_deltur[
