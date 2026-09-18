@@ -74,6 +74,7 @@ def graphql_json_request(
 		depart_dt_str_override: Optional[str] = None,
 		access_mode_override: Optional[Any] = None,
 		egress_mode_override: Optional[Any] = None,
+		debug_profile: str = "LIST_ALL",
 ) -> requests.Response:
 	if tu_tur_row is None:
 		raise ValueError("tu_tur_row must be specified to graphql_json_request")
@@ -134,7 +135,7 @@ def graphql_json_request(
 				"access": tu_access, "egress": tu_egress
 			},
 		},
-		"itineraryFilter": {"itineraryFilterDebugProfile": "LIST_ALL"},
+		"itineraryFilter": {"itineraryFilterDebugProfile": debug_profile},
 		"preferences": {
 			"transit": {
 				"alight": {
@@ -414,7 +415,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
                         depart_dt_str_override: str | None = None,
                         depart_dt_override: pd.Timestamp | None = None,
                         access_mode_override=None,
-                        egress_mode_override=None):
+                        egress_mode_override=None,
+                        debug_profile: str = "LIST_ALL"):
 	"""
 	Fetch all OTP itinerary candidates within the search_window using bidirectional pagination.
 
@@ -456,7 +458,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 		destination_location_override=destination_location_override,
 		depart_dt_str_override=depart_dt_str_override,
 		access_mode_override=access_mode_override,
-		egress_mode_override=egress_mode_override
+		egress_mode_override=egress_mode_override,
+		debug_profile=debug_profile
 	)
 
 	otp_candidates_df = json_to_df(response)
@@ -503,7 +506,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			destination_location_override=destination_location_override,
 			depart_dt_str_override=depart_dt_str_override,
 			access_mode_override=access_mode_override,
-			egress_mode_override=egress_mode_override
+			egress_mode_override=egress_mode_override,
+			debug_profile=debug_profile
 		)
 
 		otp_candidates_forward_df = json_to_df(response)
@@ -557,7 +561,8 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 			destination_location_override=destination_location_override,
 			depart_dt_str_override=depart_dt_str_override,
 			access_mode_override=access_mode_override,
-			egress_mode_override=egress_mode_override
+			egress_mode_override=egress_mode_override,
+			debug_profile=debug_profile
 		)
 
 		otp_candidates_backward_df = json_to_df(response)

@@ -109,7 +109,8 @@ def _match_once(
 	print_query=False,
 	station_anchor_wait_min=0,
 	ignore_route_name=False,
-	print_trip_header=True
+	print_trip_header=True,
+	debug_profile="LIST_ALL"
 ):
 	"""
 	Runs the full trip-matching search once, either enforcing the TU-recorded BUS/S_TRAIN
@@ -209,7 +210,8 @@ def _match_once(
 		otp_url=otp_url,
 		request_timeout=request_timeout,
 		print_query=print_query,
-		ignore_route_name=ignore_route_name
+		ignore_route_name=ignore_route_name,
+		debug_profile=debug_profile,
 	)
 
 	otp_candidates_df = pd.DataFrame()
@@ -322,7 +324,7 @@ def _match_once(
 			request_timeout=request_timeout,
 			print_query=print_query,
 			wait_min=station_anchor_wait_min,
-			ignore_route_name=ignore_route_name
+			ignore_route_name=ignore_route_name,
 		)
 		if otp_candidates_df.empty:
 			_log_stage("STATION_ANCHOR_FALLBACK", "FAILED", fallback_msg)
@@ -569,7 +571,8 @@ def _load_add_and_filter_candidates(
 		depart_dt_override=None,
 		access_mode_override=None,
 		egress_mode_override=None,
-		ignore_route_name=False
+		ignore_route_name=False,
+		debug_profile="LIST_ALL",
 ):
 	otp_candidates_df = load_all_candidates(
 		tu_tur_row=tu_tur_row,
@@ -590,7 +593,8 @@ def _load_add_and_filter_candidates(
 		depart_dt_str_override=depart_dt_str_override,
 		depart_dt_override=depart_dt_override,
 		access_mode_override=access_mode_override,
-		egress_mode_override=egress_mode_override
+		egress_mode_override=egress_mode_override,
+		debug_profile=debug_profile,
 	)
 
 	if otp_candidates_df.empty:
@@ -637,7 +641,8 @@ def _load_candidates_with_reluctance_retries(
 		depart_dt_override=None,
 		access_mode_override=None,
 		egress_mode_override=None,
-		ignore_route_name=False
+		ignore_route_name=False,
+		debug_profile="LIST_ALL"
 ):
 	last_msg = ""
 
@@ -679,7 +684,8 @@ def _load_candidates_with_reluctance_retries(
 			depart_dt_override=depart_dt_override,
 			access_mode_override=access_mode_override,
 			egress_mode_override=egress_mode_override,
-			ignore_route_name=ignore_route_name
+			ignore_route_name=ignore_route_name,
+			debug_profile=debug_profile,
 		)
 
 		if not otp_candidates_df.empty:
@@ -713,7 +719,8 @@ def _try_station_anchored_fallback(
 		walk_retry_enabled=True,
 		walk_reluctance_sequence=(3, 4, 6),
 		wait_min=0,
-		ignore_route_name=False
+		ignore_route_name=False,
+		debug_profile="LIST_ALL"
 ):
 	"""
 	Fallback for TU trips where the normal full-route OTP search finds nothing, but the
@@ -801,7 +808,8 @@ def _try_station_anchored_fallback(
 		depart_dt_override=depart_dt_transit,
 		access_mode_override="WALK" if first_stop_id else None,
 		egress_mode_override="WALK" if last_stop_id else None,
-		ignore_route_name=ignore_route_name
+		ignore_route_name=ignore_route_name,
+		debug_profile=debug_profile
 	)
 
 	if raw_transit_df.empty:
@@ -867,6 +875,7 @@ def _load_and_align_segment_candidates(
 		request_timeout,
 		print_query,
 		ignore_route_name=False,
+		debug_profile="LIST_ALL",
 ):
 	"""
 	Runs one anchor-split "transit" segment's own OTP search plus leg alignment, mirroring
@@ -914,6 +923,7 @@ def _load_and_align_segment_candidates(
 		access_mode_override="WALK" if origin_stop_id else None,
 		egress_mode_override="WALK" if destination_stop_id else None,
 		ignore_route_name=ignore_route_name,
+		debug_profile=debug_profile,
 	)
 	if raw_df.empty:
 		return pd.DataFrame(), msg or REASON_NO_OTP_CANDIDATES
@@ -958,9 +968,9 @@ def _try_split_station_anchored_fallback(
 		otp_url,
 		request_timeout,
 		print_query,
-		transit_retry_enabled=True,
+		transit_retry_enabled=False,
 		transit_reluctance_sequence=(0.5, 0.25, 0.1),
-		walk_retry_enabled=True,
+		walk_retry_enabled=False,
 		walk_reluctance_sequence=(3, 4, 6),
 		wait_min=0,
 		ignore_route_name=False,
@@ -1045,6 +1055,7 @@ def _try_split_station_anchored_fallback(
 				request_timeout=request_timeout,
 				print_query=print_query,
 				ignore_route_name=ignore_route_name,
+				debug_profile = "OFF"
 			)
 			if segment_df.empty:
 				last_reason = reason
