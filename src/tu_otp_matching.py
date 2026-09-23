@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import numpy as np
 from itertools import combinations
@@ -21,6 +22,8 @@ from .constant import (
 	REASON_NO_DIRECT_EGRESS_ROUTE,
 	REASON_NO_DIRECT_INTERIOR_ROUTE,
 	REASON_NO_CONNECTING_SEGMENT,
+	REASON_ANCHOR_TIMEOUT,
+	ANCHOR_TIMEOUT_MIN,
 	REASON_NO_BEST_MATCH,
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
@@ -991,6 +994,7 @@ def _try_split_station_anchored_fallback(
 	"""
 	tur_id = tu_tur_row["TurId"]
 	wait_delta = pd.Timedelta(minutes=wait_min)
+	deadline = time.monotonic() + ANCHOR_TIMEOUT_MIN * 60 if ANCHOR_TIMEOUT_MIN else None
 
 	def _log(stage, status, detail=""):
 		suffix = f" ({detail})" if detail else ""
@@ -1026,6 +1030,10 @@ def _try_split_station_anchored_fallback(
 
 		new_chains = []
 		for chain in chains:
+			#Per seed, not per segment - one segment can hold hundreds of seeds.
+			if deadline and time.monotonic() > deadline:
+				_log(f"segment {idx} (transit)", "ABORTED", REASON_ANCHOR_TIMEOUT)
+				return pd.DataFrame(), f"anchored_{REASON_ANCHOR_TIMEOUT}"
 			#load_all_candidates paginates backward as well as forward, so it returns
 			#itineraries departing up to search_window *before* the requested time. Before this
 			#chain's first transit segment that's fine (a leading direct segment is re-timed

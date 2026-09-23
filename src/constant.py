@@ -71,6 +71,10 @@ WALK_STAGE_MODES = {1, 7}
 CAR_STAGE_MODES = {11, 12, 14, 25, 26, 35}
 WALK_CAR_ABSORB_MAX_KM = config["matching"]["walk_car_absorb_max_km"]
 
+#Wall-clock limit for one trip's station-anchored fallback (0 = unlimited). Its query count
+#grows multiplicatively with the number of anchored transit legs, so nothing else bounds it.
+ANCHOR_TIMEOUT_MIN = config["matching"].get("anchor_timeout_min", 0)
+
 #Short failure-reason codes for match_tu_trip_to_otp's "last_print_if_not_found"/"failure_reason"
 #trip-summary fields and the failures-only output file. Kept as single tokens (no embedded TurId,
 #coordinates, or other survey data) so they stay short and safe to write to that file.
@@ -88,6 +92,7 @@ REASON_NO_DIRECT_ACCESS_ROUTE = "no_direct_access_route"
 REASON_NO_DIRECT_EGRESS_ROUTE = "no_direct_egress_route"
 REASON_NO_DIRECT_INTERIOR_ROUTE = "no_direct_interior_route"
 REASON_NO_CONNECTING_SEGMENT = "no_connecting_segment"
+REASON_ANCHOR_TIMEOUT = "anchor_timeout"
 REASON_NO_BEST_MATCH = "no_best_match"
 REASON_CAR_LEG_NOT_SATISFIED = "car_leg_not_satisfied"
 
