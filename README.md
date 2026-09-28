@@ -10,9 +10,9 @@ For each trip in TU, the tool queries OTP for candidate itineraries and selects 
 best match using a weighted RMSE score across departure time, arrival time, leg
 duration, and leg distance.
 
-The GTFS data is updated about every 10, and is available to DTU back to 2015 (with 
-degrading quality). Each GTFS feed extents 90 days into the future and are mostly 
-indentical, therefore I've createed a code for merging feed across time 
+The GTFS data is updated about every 10 days, and is available to DTU back to 2015 (with 
+degrading quality). Each GTFS feed extends 90 days into the future and are mostly 
+identical, therefore I've createed a code for merging feed across time 
 [GTFS temporal merger - currently private repo -](<!-- Add link to modified OTP repo here -->) 
 
 
@@ -447,7 +447,7 @@ using a greedy forward pass:
   and boarding/alighting stations (for rail/metro/S-train) all agree.
 - If an OTP leg does not match the current TU leg, it is treated as an extra OTP leg
   (e.g. a transfer walk) and left unmatched — the TU leg position is not advanced.
-- Due to OTP router requireing both access and egress to be bicycle if one is bicycle;
+- Due to OTP router requiring both access and egress to be bicycle if one is bicycle;
   they are matched to OTP walk legs, and the OTP walk duration is then scaled by
   `walk_bike_time_ratio` to approximate cycling time.
 
@@ -482,7 +482,7 @@ each OTP itinerary against the TU record across four dimensions:
 |-----------|-------------|
 | Departure time | Trip level (minutes deviation) |
 | Arrival time | Trip level (minutes deviation) |
-| Trainst duration | Per matched leg transit |
+| Transit duration | Per matched leg transit |
 | Street distance | Per matched leg transit |
 
 Each dimension has a configurable weight (`squared_error_weights` in `config.json`).
