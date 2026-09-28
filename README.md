@@ -1,9 +1,11 @@
-# TU Trip Reproducer
+# TU Transit Reconstruction Engine
+
+
 ### Reproducing TU Trips — using OTP and GTFS
 
 This project reproduces public transport trips from the Danish National Travel Survey
 (**Transportvaneundersøgelsen**, TU) using a modified version of
-[OpenTripPlanner (OTP) - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+[OpenTripPlanner (OTP)](https://github.com/SimunPauli/OTP-for-reproducing-TU-trips) 
 and GTFS data.
 
 For each trip in TU, the tool queries OTP for candidate itineraries and selects the
@@ -13,7 +15,7 @@ duration, and leg distance.
 The GTFS data is updated about every 10 days, and is available to DTU back to 2015 (with 
 degrading quality). Each GTFS feed extends 90 days into the future and are mostly 
 identical, therefore I've createed a code for merging feed across time 
-[GTFS temporal merger - currently private repo -](<!-- Add link to modified OTP repo here -->) 
+[GTFS temporal merger](https://github.com/SimunPauli/gtfs_merger).
 
 
 The repository is public so that researchers who use the reproduced trip data can
