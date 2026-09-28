@@ -16,7 +16,7 @@ def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM
 		for i, row in enumerate(rows):
 			length = row.get("StageLength")
 			#If StageMode is walk (or wheelchair) check if CAR is in nabor deltur
-			if int(row["StageMode"]) not in WALK_STAGE_MODES or pd.isna(length) or length >= max_walk_km:
+			if int(row["StageMode"]) not in WALK_STAGE_MODES or pd.isna(length) or length > max_walk_km:
 				continue
 
 			if i > 0 and int(rows[i - 1]["StageMode"]) in CAR_STAGE_MODES:
