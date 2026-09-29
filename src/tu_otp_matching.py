@@ -28,6 +28,9 @@ from .constant import (
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
 	ROUTE_RELATED_FAILURE_REASONS,
+	ROUTE_MATCH_EXACT,
+	ROUTE_MATCH_IGNORED,
+	ROUTE_MATCH_LEVELS,
 )
 from .station_anchor_fallback import (
 	find_known_anchor_stations,
@@ -43,7 +46,7 @@ def _resolve_segment_search_params(
 		otp_mode_routes_cache,
 		otp_route_name_index,
 		exclude_via_stopids=None,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 ):
 	"""
 	Derives one OTP search's route/mode/via-stop parameters from a tu_deltur_sub - shared by
@@ -58,13 +61,13 @@ def _resolve_segment_search_params(
 	route_short_name_for_loading, route_name_groups_for_search, via_stopids).
 	"""
 	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
-		tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index
+		tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index, route_match=route_match
 	)
 
 	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) #only BUS and S_TRAIN have stated route names
 	is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
 
-	if ignore_route_name:
+	if route_match == ROUTE_MATCH_IGNORED:
 		# Drop OTP's own routeShortNames include-filter entirely
 		route_short_name_for_loading = None
 		route_name_groups_for_search = []
@@ -111,15 +114,15 @@ def _match_once(
 	request_timeout=60,
 	print_query=False,
 	station_anchor_wait_min=0,
-	ignore_route_name=False,
+	route_match=ROUTE_MATCH_EXACT,
 	print_trip_header=True,
 	debug_profile="LIST_ALL"
 ):
 	"""
-	Runs the full trip-matching search once, either enforcing the TU-recorded BUS/S_TRAIN
-	route name (ignore_route_name=False) or ignoring it entirely (ignore_route_name=True, used
-	by match_tu_trip_to_otp's route-name-ignored retry). Always returns (result_df_or_None,
-	trip_summary_dict) - callers that don't want the summary strip it themselves.
+	Runs the full trip-matching search once, enforcing the TU-recorded BUS/S_TRAIN route name
+	at the given route_match level (a ROUTE_MATCH_* constant; match_tu_trip_to_otp steps
+	through them). Always returns (result_df_or_None, trip_summary_dict) - callers that
+	don't want the summary strip it themselves.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
@@ -134,6 +137,7 @@ def _match_once(
 			"trip_found": 0,
 			"trip_wrong_route": 0,
 			"trip_not_found": 1,
+			"route_match": pd.NA,
 			"last_print_if_not_found": last_print_if_not_found,
 			"failure_reason": failure_reason,
 			"used_anchor_fallback": used_anchor_fallback,
@@ -163,7 +167,7 @@ def _match_once(
 
 	modes_json, modes_list, is_bus_s_train, route_names, route_names_ext, route_short_name_for_loading, route_name_groups_for_search, via_stopids = _resolve_segment_search_params(
 		tu_deltur_sub, tu_gtfs_station_df, otp_mode_routes_cache, otp_route_name_index,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 	)
 	if print_trip_header:
 		print(f"route_short_name: {', '.join(str(r) for r in route_names)}")
@@ -174,7 +178,7 @@ def _match_once(
 	if print_trip_header:
 		print(f"modes_json: {', '.join(m['mode'] for m in modes_json)}")
 	if (
-		not ignore_route_name
+		route_match != ROUTE_MATCH_IGNORED
 		and is_bus_s_train
 		and has_invalid_route_name(route_names)
 	):
@@ -213,7 +217,7 @@ def _match_once(
 		otp_url=otp_url,
 		request_timeout=request_timeout,
 		print_query=print_query,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 		debug_profile=debug_profile,
 	)
 
@@ -327,7 +331,7 @@ def _match_once(
 			request_timeout=request_timeout,
 			print_query=print_query,
 			wait_min=station_anchor_wait_min,
-			ignore_route_name=ignore_route_name,
+			route_match=route_match,
 		)
 		if otp_candidates_df.empty:
 			_log_stage("STATION_ANCHOR_FALLBACK", "FAILED", fallback_msg)
@@ -381,9 +385,10 @@ def _match_once(
 	trip_summary = {
 		"TurId": i_TurId,
 		"SessionId": tu_tur_row.get("SessionId"),
-		"trip_found": 0 if ignore_route_name else 1,
-		"trip_wrong_route": 1 if ignore_route_name else 0,
+		"trip_found": 0 if route_match == ROUTE_MATCH_IGNORED else 1,
+		"trip_wrong_route": 1 if route_match == ROUTE_MATCH_IGNORED else 0,
 		"trip_not_found": 0,
+		"route_match": route_match if is_bus_s_train else pd.NA,
 		"last_print_if_not_found": "",
 		"used_anchor_fallback": used_anchor_fallback,
 		"rmse": round(best_trip_summary["rmse"],3),
@@ -420,13 +425,15 @@ def match_tu_trip_to_otp(
 ):
 	"""
 	Matches one TU trip to the best OTP itinerary. Runs _match_once enforcing the TU-recorded
-	BUS/S_TRAIN route name; if that fails for a route-related reason (invalid route name, or
-	the route restriction narrowing the search down to nothing - see
-	ROUTE_RELATED_FAILURE_REASONS) and the trip actually has a BUS/S_TRAIN leg, retries once
-	more with the route name ignored (matching by mode + leg order instead). A trip only found
-	this way is reported as its own outcome - trip_summary["trip_wrong_route"] == 1 rather than
-	trip_summary["trip_found"] == 1 - since its transit legs aren't guaranteed to run the routes
-	TU recorded.
+	BUS/S_TRAIN route name as written; if that fails for a route-related reason (invalid route
+	name, or the route restriction narrowing the search down to nothing - see
+	ROUTE_RELATED_FAILURE_REASONS) and the trip actually has a BUS/S_TRAIN leg, retries at each
+	looser ROUTE_MATCH_LEVELS level in turn (missing letter, one digit moved by 1, route name
+	ignored) until one matches. A level whose route set is no wider than the previous one's is
+	skipped, since it would repeat the same query. trip_summary["route_match"] records the level
+	used. A trip only found with the route ignored is reported as its own outcome -
+	trip_summary["trip_wrong_route"] == 1 rather than trip_summary["trip_found"] == 1 - since its
+	transit legs aren't guaranteed to run the routes TU recorded.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	_match_kwargs = dict(
@@ -451,17 +458,30 @@ def match_tu_trip_to_otp(
 		station_anchor_wait_min=station_anchor_wait_min
 	)
 
-	result_df, trip_summary = _match_once(ignore_route_name=False, **_match_kwargs)
+	result_df, trip_summary = _match_once(route_match=ROUTE_MATCH_EXACT, **_match_kwargs)
 
 	if result_df is None:
 		tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
 		is_bus_s_train = tu_deltur_sub["StageMode"].isin([31, 32]).any()
 		if is_bus_s_train and trip_summary["failure_reason"] in ROUTE_RELATED_FAILURE_REASONS:
-			print(f"ROUTE_NAME_IGNORED_RETRY: TurId={i_TurId}")
-			retry_df, retry_summary = _match_once(ignore_route_name=True, print_trip_header=False, **_match_kwargs)
-			if retry_df is not None:
-				print(f"ROUTE_NAME_IGNORED_MATCH_USED: TurId={i_TurId}")
-				result_df, trip_summary = retry_df, retry_summary
+			previous_groups = resolve_route_short_names(
+				tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index, route_match=ROUTE_MATCH_EXACT
+			)[4]
+			for route_match in ROUTE_MATCH_LEVELS[1:]:
+				if route_match != ROUTE_MATCH_IGNORED:
+					groups = resolve_route_short_names(
+						tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index, route_match=route_match
+					)[4]
+					if groups == previous_groups:
+						print(f"ROUTE_MATCH_RETRY_SKIPPED ({route_match}, no new routes): TurId={i_TurId}")
+						continue
+					previous_groups = groups
+				print(f"ROUTE_MATCH_RETRY ({route_match}): TurId={i_TurId}")
+				retry_df, retry_summary = _match_once(route_match=route_match, print_trip_header=False, **_match_kwargs)
+				if retry_df is not None:
+					print(f"ROUTE_MATCH_USED ({route_match}): TurId={i_TurId}")
+					result_df, trip_summary = retry_df, retry_summary
+					break
 
 	if return_trip_summary:
 		return result_df, trip_summary
@@ -518,7 +538,7 @@ def _align_and_filter_candidates(
 		route_name_groups,
 		modes_list,
 		tur_id,
-		ignore_route_name=False
+		route_match=ROUTE_MATCH_EXACT
 ):
 	alignment_diagnostics = []
 	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
@@ -527,7 +547,7 @@ def _align_and_filter_candidates(
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		bike_stage_modes=(2, 8),
 		diagnostics=alignment_diagnostics,
-		ignore_route_name=ignore_route_name
+		route_match=route_match
 	)
 
 	filtered_df, reason = filter_candidates_by_requirements(
@@ -574,7 +594,7 @@ def _load_add_and_filter_candidates(
 		depart_dt_override=None,
 		access_mode_override=None,
 		egress_mode_override=None,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
 ):
 	otp_candidates_df = load_all_candidates(
@@ -613,7 +633,7 @@ def _load_add_and_filter_candidates(
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
-		ignore_route_name=ignore_route_name
+		route_match=route_match
 	)
 
 
@@ -644,7 +664,7 @@ def _load_candidates_with_reluctance_retries(
 		depart_dt_override=None,
 		access_mode_override=None,
 		egress_mode_override=None,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL"
 ):
 	last_msg = ""
@@ -687,7 +707,7 @@ def _load_candidates_with_reluctance_retries(
 			depart_dt_override=depart_dt_override,
 			access_mode_override=access_mode_override,
 			egress_mode_override=egress_mode_override,
-			ignore_route_name=ignore_route_name,
+			route_match=route_match,
 			debug_profile=debug_profile,
 		)
 
@@ -722,7 +742,7 @@ def _try_station_anchored_fallback(
 		walk_retry_enabled=True,
 		walk_reluctance_sequence=(3, 4, 6),
 		wait_min=0,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL"
 ):
 	"""
@@ -811,7 +831,7 @@ def _try_station_anchored_fallback(
 		depart_dt_override=depart_dt_transit,
 		access_mode_override="WALK" if first_stop_id else None,
 		egress_mode_override="WALK" if last_stop_id else None,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 		debug_profile=debug_profile
 	)
 
@@ -827,7 +847,7 @@ def _try_station_anchored_fallback(
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
-		ignore_route_name=ignore_route_name
+		route_match=route_match
 	)
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"
@@ -877,7 +897,7 @@ def _load_and_align_segment_candidates(
 		otp_url,
 		request_timeout,
 		print_query,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
 ):
 	"""
@@ -891,7 +911,7 @@ def _load_and_align_segment_candidates(
 	modes_json, modes_list, is_bus_s_train, route_names, route_names_ext, route_short_name_for_loading, route_name_groups_for_search, via_stopids = _resolve_segment_search_params(
 		segment_legs, tu_gtfs_station_df, otp_mode_routes_cache, otp_route_name_index,
 		exclude_via_stopids=exclude_via_stopids,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 	)
 	if not modes_json:
 		return pd.DataFrame(), REASON_NO_VALID_MODES
@@ -925,7 +945,7 @@ def _load_and_align_segment_candidates(
 		depart_dt_override=depart_dt,
 		access_mode_override="WALK" if origin_stop_id else None,
 		egress_mode_override="WALK" if destination_stop_id else None,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 		debug_profile=debug_profile,
 	)
 	if raw_df.empty:
@@ -938,7 +958,7 @@ def _load_and_align_segment_candidates(
 		route_name_groups=route_name_groups_for_search,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 	)
 	if filtered_df.empty:
 		return filtered_df, reason
@@ -976,7 +996,7 @@ def _try_split_station_anchored_fallback(
 		walk_retry_enabled=False,
 		walk_reluctance_sequence=(3, 4, 6),
 		wait_min=0,
-		ignore_route_name=False,
+		route_match=ROUTE_MATCH_EXACT,
 ):
 	"""
 	Generalized station-anchored fallback: splits the TU trip at every resolvable
@@ -1062,7 +1082,7 @@ def _try_split_station_anchored_fallback(
 				otp_url=otp_url,
 				request_timeout=request_timeout,
 				print_query=print_query,
-				ignore_route_name=ignore_route_name,
+				route_match=route_match,
 				debug_profile = "OFF"
 			)
 			if segment_df.empty:
@@ -1097,7 +1117,7 @@ def _try_split_station_anchored_fallback(
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tur_id,
-		ignore_route_name=ignore_route_name,
+		route_match=route_match,
 	)
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"

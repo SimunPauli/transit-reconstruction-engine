@@ -249,13 +249,26 @@ columns in `trip_matching_summaries_file` and counted in `summary_stats_file`'s 
 | `trip_wrong_route` | Matched only after the route-name filter was dropped — the itinerary uses the right modes in the right order, but not necessarily the routes TU recorded |
 | `trip_not_found` | No itinerary matched; see `failure_reason` |
 
-`trip_wrong_route` comes from the retry described in [candidate filtering](#5-candidate-filtering):
-when a trip with a bus/S-train leg fails for a route-related reason (`invalid_route_name`,
-`no_required_routes`, `no_otp_candidates`, or their `anchored_` variants), the search is run once
-more with route names ignored and matching falls back to mode + leg order. Such a trip is still
-written to `rmse_based_matches_file` — it's kept separate rather than dropped, because its route
-assignment is the part that's unverified, not the trip itself. `summary_stats_file` reports
-`success_rate_pct` (`trip_found` only) alongside `success_rate_incl_wrong_route_pct` (both).
+When a trip with a bus/S-train leg fails for a route-related reason (`invalid_route_name`,
+`no_required_routes`, `no_otp_candidates`, or their `anchored_` variants), the search is re-run
+with the TU route name progressively widened, stopping at the first level that matches. The
+level used is recorded in the `route_match` column (empty for trips without a bus/S-train leg,
+and for trips not found):
+
+| `route_match` | Bus route accepted | Outcome |
+|---|---|---|
+| `exact` | As TU wrote it (`150`) | `trip_found` |
+| `letter` | + a missing letter suffix (`150` → `150S`) | `trip_found` |
+| `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_found` |
+| `ignored` | Any route — mode + leg order only | `trip_wrong_route` |
+
+Each level also accepts everything the previous ones did, so the correct legs of a multi-bus trip
+still match. `letter` and `digit` only widen bus routes (S-train comes from a survey dropdown), and
+a level that adds no real GTFS route over the previous one is skipped rather than re-queried.
+A `trip_wrong_route` trip is still written to `rmse_based_matches_file` — it's kept separate
+rather than dropped, because its route assignment is the part that's unverified, not the trip
+itself. `summary_stats_file` reports `success_rate_pct` (`trip_found` only) alongside
+`success_rate_incl_wrong_route_pct` (both), and counts trips per `route_match` level.
 
 ### Failure reasons
 
@@ -468,8 +481,9 @@ After alignment, candidates are filtered to remove any itinerary where:
   subsequence match on matched `Delturnr` values).
 
 If a trip with a bus/S-train leg ends up with no candidates for a route-related reason, the
-whole search is retried once with the route-name filter dropped; a match found that way is
-recorded as `trip_wrong_route` rather than `trip_found` (see [Trip outcomes](#trip-outcomes)).
+whole search is retried with the bus route name widened step by step (missing letter, then one
+digit moved by 1), and finally with the route-name filter dropped; see
+[Trip outcomes](#trip-outcomes) for the levels and how each is recorded.
 
 ---
 

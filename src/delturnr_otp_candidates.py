@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import Counter
-from .constant import WALK_BIKE_TIME_RATIO
-from .otp_utils import route_names_match
+from .constant import WALK_BIKE_TIME_RATIO, ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED
+from .otp_utils import route_names_match, route_match_flags
 
 def add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df,
@@ -9,7 +9,7 @@ def add_tu_delturnr_to_otp_candidates(
 		tu_gtfs_station_df,
 		bike_stage_modes=(2,8),
 		diagnostics=None,
-		ignore_route_name=False
+		route_match=ROUTE_MATCH_EXACT
 ):
 	"""
 	Add a tu_Delturnr column to OTP legs by aligning each OTP itinerary with the TU leg sequence.
@@ -25,9 +25,10 @@ def add_tu_delturnr_to_otp_candidates(
 	which OTP legs came close. Pass summarize_alignment_diagnostics() the same list to
 	turn it into something printable.
 
-	ignore_route_name skips the BUS/S_TRAIN route-name comparison below, so a leg is matched
-	on mode (and, for SUBWAY/RAIL, station) alone - used by the route-name-ignored retry in
-	tu_otp_matching.py.
+	route_match (a ROUTE_MATCH_* level) sets how loosely BUS route names compare, so the
+	alignment accepts the same routes the OTP query was widened to. ROUTE_MATCH_IGNORED skips
+	the BUS/S_TRAIN route-name comparison, so a leg is matched on mode (and, for SUBWAY/RAIL,
+	station) alone.
 	"""
 	from .tu_gtfs_stations_match import _normalise_name
 
@@ -60,10 +61,15 @@ def add_tu_delturnr_to_otp_candidates(
 			return False
 		if not str(tu_route).strip():
 			return True
-		# BUS route names are free-texted in TU, so respondents both misspace them
-		# ('102 A') and drop the trailing letter ('150' for '150S'). S_TRAIN comes
-		# from a survey dropdown, so it is compared without the letter fallback.
-		return route_names_match(tu_route, otp_route, allow_missing_letter=(mode == "BUS"))
+		# BUS route names are free-texted in TU, so respondents misspace them ('102 A'),
+		# drop the trailing letter ('150' for '150S') or miss a digit ('192' for '191').
+		# S_TRAIN comes from a survey dropdown, so it is never widened.
+		allow_missing_letter, allow_digit_shift = route_match_flags(route_match, mode)
+		return route_names_match(
+			tu_route, otp_route,
+			allow_missing_letter=allow_missing_letter,
+			allow_digit_shift=allow_digit_shift,
+		)
 
 	def _station_mismatch(tu_station_name, otp_gtfs_id, otp_stop_name, mode):
 		"""None if the TU station matches the OTP stop, else why it does not.
@@ -122,7 +128,7 @@ def add_tu_delturnr_to_otp_candidates(
 			return "mode", f"OTP leg is {otp_leg['mode']}, TU leg is {tu_mode}"
 
 		# For BUS/S_TRAIN, check route name
-		if otp_leg["mode"] in {"BUS", "S_TRAIN"} and not ignore_route_name:
+		if otp_leg["mode"] in {"BUS", "S_TRAIN"} and route_match != ROUTE_MATCH_IGNORED:
 			# A collapsed interlined leg matches on the boarding route or the continuing one:
 			# the respondent stayed in the vehicle and may report either line.
 			interlined = otp_leg.get("interlined_route_short_names")

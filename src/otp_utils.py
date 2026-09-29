@@ -8,6 +8,9 @@ from .constant import (
 	REASON_NO_REQUIRED_ROUTES,
 	REASON_NO_REQUIRED_MODES,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
+	ROUTE_MATCH_EXACT,
+	ROUTE_MATCH_LETTER,
+	ROUTE_MATCH_DIGIT,
 )
 
 def normalize_route_name(route_name):
@@ -59,7 +62,23 @@ def build_route_name_index(route_short_names):
 			digits_only.setdefault(digits, set()).add(real_name)
 	return exact, digits_only
 
-def resolve_tu_route_name(tu_route, route_name_index, allow_missing_letter=False):
+def shift_one_digit(normalized):
+	"""
+	The normalized name itself plus every name with exactly ONE digit moved by 1,
+	suffix kept: '192' -> {'192', '292', '182', '191', '193'}, '150S' -> {'150S', '250S', '140S', '160S', '151S'}.
+	No carry (a 9 does not become 10) and no leading zero, so the digit count never changes.
+	"""
+	digits = "".join(char for char in normalized if char.isdigit())
+	suffix = normalized[len(digits):]
+	shifted = {normalized}
+	for position, digit in enumerate(digits):
+		for new_digit in (int(digit) - 1, int(digit) + 1):
+			if not 0 <= new_digit <= 9 or (position == 0 and new_digit == 0):
+				continue
+			shifted.add(digits[:position] + str(new_digit) + digits[position + 1:] + suffix)
+	return shifted
+
+def resolve_tu_route_name(tu_route, route_name_index, allow_missing_letter=False, allow_digit_shift=False):
 	"""
 	Translate a TU route name into the real GTFS spelling(s), so the
 	routeShortNames filter sent to OTP carries values that exist in the graph.
@@ -71,6 +90,7 @@ def resolve_tu_route_name(tu_route, route_name_index, allow_missing_letter=False
 	That is intended: the filter only narrows the search, and the leg
 	comparison plus RMSE ranking pick the winner. A TU value that already
 	carries a letter is taken at its word and resolves to the exact route only.
+	allow_digit_shift also takes every one-digit neighbour (see shift_one_digit).
 	"""
 	if not route_name_index:
 		return set()
@@ -78,29 +98,44 @@ def resolve_tu_route_name(tu_route, route_name_index, allow_missing_letter=False
 	normalized = normalize_route_name(tu_route)
 	if not normalized:
 		return set()
-	resolved = set(exact.get(normalized, ()))
-	if allow_missing_letter and normalized.isdigit():
-		resolved |= digits_only.get(normalized, set())
+	candidates = shift_one_digit(normalized) if allow_digit_shift else {normalized}
+	resolved = set()
+	for candidate in candidates:
+		resolved |= exact.get(candidate, set())
+		if allow_missing_letter and candidate.isdigit():
+			resolved |= digits_only.get(candidate, set())
 	return resolved
 
-def route_names_match(tu_route, otp_route, allow_missing_letter=False) -> bool:
+def route_names_match(tu_route, otp_route, allow_missing_letter=False, allow_digit_shift=False) -> bool:
 	"""
 	Compare a TU route name against a GTFS/OTP one on their normalized forms.
 
 	With allow_missing_letter (BUS only), a purely numeric TU value also matches
 	a route that adds a letter suffix to it — '150' matches '150S'. The suffix
 	must be all letters, so '15' still does not match '150S' and '150' does not
-	match '1500'.
+	match '1500'. allow_digit_shift also accepts every one-digit neighbour of the
+	TU value (see shift_one_digit), with the same letter rule.
 	"""
 	tu_normalized = normalize_route_name(tu_route)
 	otp_normalized = normalize_route_name(otp_route)
 	if not tu_normalized or not otp_normalized:
 		return False
-	if tu_normalized == otp_normalized:
-		return True
-	if allow_missing_letter and tu_normalized.isdigit() and otp_normalized.startswith(tu_normalized):
-		return otp_normalized[len(tu_normalized):].isalpha()
+	candidates = shift_one_digit(tu_normalized) if allow_digit_shift else {tu_normalized}
+	for candidate in candidates:
+		if candidate == otp_normalized:
+			return True
+		if allow_missing_letter and candidate.isdigit() and otp_normalized.startswith(candidate):
+			if otp_normalized[len(candidate):].isalpha():
+				return True
 	return False
+
+def route_match_flags(route_match, otp_mode):
+	"""(allow_missing_letter, allow_digit_shift) for one route_match level; both BUS only."""
+	is_bus = otp_mode == "BUS"
+	return (
+		is_bus and route_match in (ROUTE_MATCH_LETTER, ROUTE_MATCH_DIGIT),
+		is_bus and route_match == ROUTE_MATCH_DIGIT,
+	)
 
 def has_invalid_route_name(route_names) -> bool:
 	if not route_names:
@@ -117,7 +152,7 @@ def has_invalid_route_name(route_names) -> bool:
 
 	return False
 
-def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index=None):
+def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index=None, route_match=ROUTE_MATCH_EXACT):
 	"""
 	Extracts and maps transit modes and routes for a given TurId.
 	Handles fallback routes for RAIL, TRAM, and SUBWAY using a cache.
@@ -125,6 +160,7 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 	otp_route_name_index maps "BUS"/"S_TRAIN" to a build_route_name_index() pair,
 	used to translate TU's spelling of a route into the real GTFS one. Passing
 	None skips that translation and sends TU's names as written.
+	route_match (a ROUTE_MATCH_* level) sets how far a BUS name is widened.
 
 	Returns:
 		tuple: (route_names, route_names_ext, modes_json, modes_list, route_name_groups)
@@ -158,8 +194,8 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 		return [], [], modes_json, modes_list, []
 
 	# Resolve TU's spelling into the real GTFS names, so the routeShortNames filter
-	# carries values that exist in the graph. BUS is free-texted in TU and gets the
-	# missing-letter fallback ('150' -> '150S'); S_TRAIN comes from a survey dropdown
+	# carries values that exist in the graph. BUS is free-texted in TU and is widened
+	# per route_match; S_TRAIN comes from a survey dropdown
 	# and is taken at its word. A name that resolves to nothing is kept as written,
 	# so has_invalid_route_name still sees it and the trip fails the same way as before.
 	stage_mode_to_otp_mode = {31: "BUS", 32: "S_TRAIN"}
@@ -175,11 +211,13 @@ def resolve_route_short_names(tu_deltur_sub, otp_mode_routes_cache, otp_route_na
 			.drop_duplicates()
 			.tolist()
 		)
+		allow_missing_letter, allow_digit_shift = route_match_flags(route_match, otp_mode)
 		for tu_route_name in tu_route_names:
 			resolved = resolve_tu_route_name(
 				tu_route_name,
 				otp_route_name_index.get(otp_mode) if otp_route_name_index else None,
-				allow_missing_letter=(otp_mode == "BUS"),
+				allow_missing_letter=allow_missing_letter,
+				allow_digit_shift=allow_digit_shift,
 			)
 			if resolved:
 				route_names.extend(resolved)

@@ -1,4 +1,5 @@
 import pandas as pd
+from .constant import ROUTE_MATCH_LEVELS
 
 RMSE_MATCH_COLUMN_ORDER = [
 	"TurId",
@@ -60,11 +61,15 @@ def _build_summary_stats(trip_matching_summaries_df):
 	wrong_route = int(trip_matching_summaries_df["trip_wrong_route"].sum())
 	not_found = int(trip_matching_summaries_df["trip_not_found"].sum())
 
+	route_match_counts = trip_matching_summaries_df["route_match"].value_counts()
+
 	overview_df = pd.DataFrame([{
 		"total_trips": total,
 		"trips_found": found,
 		"trips_wrong_route": wrong_route,
 		"trips_not_found": not_found,
+		# BUS/S_TRAIN trips found, by how far the TU route name had to be widened
+		**{f"route_match_{level}": int(route_match_counts.get(level, 0)) for level in ROUTE_MATCH_LEVELS},
 		"success_rate_pct": round(100 * found / total, 1) if total else 0.0,
 		"success_rate_incl_wrong_route_pct": round(100 * (found + wrong_route) / total, 1) if total else 0.0
 	}])

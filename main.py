@@ -153,6 +153,7 @@ def _run(config, tee):
 					"trip_found": 0,
 					"trip_wrong_route": 0,
 					"trip_not_found": 1,
+					"route_match": pd.NA,
 					"last_print_if_not_found": str(exc),
 					"failure_reason": type(exc).__name__,
 					"used_anchor_fallback": False,
