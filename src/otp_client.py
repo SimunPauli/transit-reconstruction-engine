@@ -1,6 +1,7 @@
 import requests
 from requests.exceptions import Timeout, RequestException
 import json
+import threading
 import textwrap
 import pandas as pd
 import numpy as np
@@ -8,7 +9,12 @@ from typing import Optional, Any
 from .otp_parser import json_to_df
 from .constant import ACCESS_EGRESS_MODE_MAP, LOCAL_TIMEZONE
 
+# Per-thread trace ID (e.g. "TurId=123"), sent as X-Correlation-ID so OTP's log lines name their trip.
+# Requires server.traceParameters in router-config.json.
+trace = threading.local()
+
 def get_response(url, query, variables, timeout=60):
+	trace_id = getattr(trace, "id", None)
 	try:
 		response = requests.post(
 			url,
@@ -16,6 +22,7 @@ def get_response(url, query, variables, timeout=60):
 				"query": query,
 				"variables": variables
 			},
+			headers={"X-Correlation-ID": trace_id} if trace_id else None,
 			timeout=timeout
 		)
 	except Timeout as exc:

@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 import pandas as pd
 from src import load_TU_data
 from src.tu_otp_matching import match_tu_trip_to_otp
+from src import otp_client
 from src.otp_client import get_all_routes_for_mode
 from src.otp_utils import build_route_name_index
 from src.tu_gtfs_stations_match import match_tu_gtfs_stations
@@ -112,6 +113,7 @@ def _run(config, tee):
 	def match_one(tu_tur_row):
 		"""Match one TU trip, buffering its prints. Returns (output, match, summary)."""
 		tee.local.buffer = io.StringIO()
+		otp_client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
 			match_result = match_tu_trip_to_otp(
 				tu_tur_row=tu_tur_row,
@@ -161,6 +163,7 @@ def _run(config, tee):
 		finally:
 			output = tee.local.buffer.getvalue()
 			tee.local.buffer = None
+			otp_client.trace.id = None
 		return output, rmse_based_match, trip_matching_summary
 
 	# Trips are independent and I/O-bound on OTP, hence threads. map() yields in TU order.
