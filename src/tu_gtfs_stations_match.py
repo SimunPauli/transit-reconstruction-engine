@@ -97,7 +97,7 @@ TU_NAME_ALIASES = {
 # metro-open-date) and Copenhagen Metro's real M3/M4 rollout history.
 MODE_OPEN_DATE_OVERRIDES = {
 	("Østerport", "SUBWAY"): date(2019, 9, 29),
-	("Nordhavn", "SUBWAY"): date(2019, 9, 29),
+	("Nordhavn", "SUBWAY"): date(2020, 3, 28),
 	("Nørrebro", "SUBWAY"): date(2019, 9, 29),
 	("København H", "SUBWAY"): date(2019, 9, 29),
 	("København Syd", "SUBWAY"): date(2024, 6, 22),
