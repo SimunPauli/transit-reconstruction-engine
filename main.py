@@ -1,6 +1,7 @@
 import io
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import pandas as pd
@@ -29,6 +30,22 @@ class _Tee:
 
 	def write(self, data): [file.write(data) for file in self._targets()]
 	def flush(self): [file.flush() for file in self._targets()]
+
+
+def _wait_for_output_dir(output_dir, retry_s=60):
+	"""Block until output_dir (a network share) is reachable, so a dropped mount doesn't lose the results held in memory."""
+	while True:
+		try:
+			if output_dir.is_dir():
+				return
+			error = "directory missing"
+		except OSError as exc:
+			error = exc
+		# Straight to the console: the log file lives on the same share.
+		print(f"Output dir unreachable ({error}): {output_dir}\n"
+			  f"Results are kept in memory. Re-mount / re-authenticate the share; retrying in {retry_s}s...",
+			  file=sys.__stdout__, flush=True)
+		time.sleep(retry_s)
 
 
 def main():
@@ -176,6 +193,8 @@ def _run(config, tee):
 				rmse_based_matches.append(rmse_based_match)
 			if trip_matching_summary is not None:
 				trip_matching_summaries.append(trip_matching_summary)
+
+	_wait_for_output_dir(config["paths"]["output_dir"])
 
 	if not rmse_based_matches:
 		print("No rmse-based matches found.")
