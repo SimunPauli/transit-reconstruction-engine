@@ -102,6 +102,8 @@ MODE_OPEN_DATE_OVERRIDES = {
 	("København H", "SUBWAY"): date(2019, 9, 29),
 	("København Syd", "SUBWAY"): date(2024, 6, 22),
 }
+#TODO: Check if letbane/TRAM station need to be added
+
 
 # Rejseplanen encodes a stop's mode in the stop name itself wherever one station is
 # split into several physically separate stops: the metro platforms of an interchange
