@@ -1,4 +1,7 @@
+import io
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import pandas as pd
 from src import load_TU_data
@@ -13,10 +16,18 @@ from src.export_files import _write_failures_file, _print_and_export_summary_sta
 
 
 class _Tee:
-	"""Writes to multiple files at once, so print() can go to both the console and log_file."""
-	def __init__(self, *files): self.files = files
-	def write(self, data): [file.write(data) for file in self.files]
-	def flush(self): [file.flush() for file in self.files]
+	"""Writes to multiple files at once, so print() can go to both the console and log_file.
+	Worker threads print into their own thread-local buffer instead, so concurrent trips don't interleave."""
+	def __init__(self, *files):
+		self.files = files
+		self.local = threading.local()
+
+	def _targets(self):
+		buffer = getattr(self.local, "buffer", None)
+		return (buffer,) if buffer is not None else self.files
+
+	def write(self, data): [file.write(data) for file in self._targets()]
+	def flush(self): [file.flush() for file in self._targets()]
 
 
 def main():
@@ -26,11 +37,12 @@ def main():
 	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
 	# this module and calls main() directly, without ever executing the __main__ guard below.
 	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
-		with redirect_stdout(_Tee(sys.stdout, log_file)):
-			_run(config)
+		tee = _Tee(sys.stdout, log_file)
+		with redirect_stdout(tee):
+			_run(config, tee)
 
 
-def _run(config):
+def _run(config, tee):
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
 	station_anchor_wait_min = config.get("matching", {}).get("station_anchor_wait_min", 0)
 	transit_retry_cfg = config.get("reluctance_retries", {}).get("transit", {})
@@ -46,6 +58,8 @@ def _run(config):
 	request_timeout = config_request["request_timeout"]
 	data_dir = config["paths"]["data_dir"]
 	YEAR = config["tu_subset"]["year"]
+	# Concurrent OTP requests. The ceiling is OTP's own parallelism, not Python's.
+	max_workers = config.get("run", {}).get("max_workers", 8)
 
 	print(f"Search window: {search_window}")
 
@@ -95,7 +109,9 @@ def _run(config):
 	rmse_based_matches = []
 	trip_matching_summaries = []
 
-	for i, tu_tur_row in tu_tur.iterrows():
+	def match_one(tu_tur_row):
+		"""Match one TU trip, buffering its prints. Returns (output, match, summary)."""
+		tee.local.buffer = io.StringIO()
 		try:
 			match_result = match_tu_trip_to_otp(
 				tu_tur_row=tu_tur_row,
@@ -115,10 +131,21 @@ def _run(config):
 				walk_retry_enabled=walk_retry_enabled,
 				walk_reluctance_sequence=walk_reluctance_sequence
 			)
+			if return_trip_summary:
+				rmse_based_match, trip_matching_summary = match_result
+			else:
+				rmse_based_match, trip_matching_summary = match_result, None
+			if rmse_based_match is None:
+				print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
+			else:
+				rmse_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "tu_deltur_depart_time", "otp_leg_depart_time"]
+				print("rmse_based_match:")
+				print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
+			rmse_based_match, trip_matching_summary = None, None
 			if return_trip_summary:
-				trip_matching_summaries.append({
+				trip_matching_summary = {
 					"TurId": tu_tur_row['TurId'],
 					"SessionId": tu_tur_row.get("SessionId"),
 					"trip_found": 0,
@@ -130,27 +157,21 @@ def _run(config):
 					"rmse": pd.NA, "depart_deviation_min": pd.NA,
 					"arrival_deviation_min": pd.NA, "deviation_duration_min": pd.NA,
 					"deviation_distance_km": pd.NA, "iteration_id": pd.NA
-				})
-			continue
+				}
+		finally:
+			output = tee.local.buffer.getvalue()
+			tee.local.buffer = None
+		return output, rmse_based_match, trip_matching_summary
 
-		if return_trip_summary:
-			rmse_based_match, trip_matching_summary = match_result
-		else:
-			rmse_based_match = match_result
-			trip_matching_summary = None
-		if rmse_based_match is None:
-			if return_trip_summary:
+	# Trips are independent and I/O-bound on OTP, hence threads. map() yields in TU order.
+	print(f"Matching {len(tu_tur)} trips with {max_workers} worker(s)...")
+	with ThreadPoolExecutor(max_workers=max_workers) as executor:
+		for output, rmse_based_match, trip_matching_summary in executor.map(match_one, (row for _, row in tu_tur.iterrows())):
+			print(output, end="")
+			if rmse_based_match is not None:
+				rmse_based_matches.append(rmse_based_match)
+			if trip_matching_summary is not None:
 				trip_matching_summaries.append(trip_matching_summary)
-			print(f"No rmse-based match found for TurId: {tu_tur_row['TurId']}")
-			continue
-
-		rmse_based_match_print_col = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "tu_deltur_depart_time", "otp_leg_depart_time"]
-		print("rmse_based_match:")
-		print(rmse_based_match[rmse_based_match_print_col].to_string(index=False, max_colwidth=None))
-
-		rmse_based_matches.append(rmse_based_match)
-		if return_trip_summary:
-			trip_matching_summaries.append(trip_matching_summary)
 
 	if not rmse_based_matches:
 		print("No rmse-based matches found.")
