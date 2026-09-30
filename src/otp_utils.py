@@ -275,14 +275,27 @@ def get_via_stops(tu_deltur_sub, tu_gtfs_station_df):
 			how="left"  # preserve order of via_stopid
 		)
 	)
-	# Keep only rows with non-null gtfs_station_id and remove duplicates while preserving order
-	via_stopids = (
-		merged[merged["gtfs_station_id"].notna()]
-		.drop_duplicates(subset=["gtfs_station_id"], keep='first')
-		["gtfs_station_id"]
-		.tolist()
-	)
+	# One via per TU station, listing all its stop_ids (a station may map to several twin
+	# stops; OTP accepts a visit to any of them). Order preserved; a stop_id already used
+	# by an earlier via is dropped.
+	via_stopids = []
+	seen = set()
+	stations = merged[merged["gtfs_station_id"].notna()].groupby(["otp_mode", "tu_station_name"], sort=False)
+	for _, stop_ids in stations["gtfs_station_id"]:
+		stop_ids = [stop_id for stop_id in dict.fromkeys(stop_ids) if stop_id not in seen]
+		seen.update(stop_ids)
+		if stop_ids:
+			via_stopids.append(stop_ids)
 	return via_stopids
+
+
+def drop_via_stations(via_stopids, stop_ids):
+	"""Drop every via whose station includes one of stop_ids (e.g. a segment's own origin/
+	destination anchor stop); None if no via is left."""
+	stop_ids = {stop_id for stop_id in stop_ids if stop_id}
+	if not via_stopids:
+		return via_stopids
+	return [ids for ids in via_stopids if not stop_ids.intersection(ids)] or None
 
 
 def filter_candidates_by_requirements(

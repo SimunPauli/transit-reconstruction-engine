@@ -181,7 +181,8 @@ def graphql_json_request(
 		})
 
 	if via_stopids is not None:
-		variables["via"] = [{"visit": {"stopLocationIds": [stop_id]}} for stop_id in via_stopids]
+		# One visit per station; any one of its stop_ids satisfies it
+		variables["via"] = [{"visit": {"stopLocationIds": stop_ids}} for stop_ids in via_stopids]
 
 	if modes_json is not None:
 		transit_cost_map = {

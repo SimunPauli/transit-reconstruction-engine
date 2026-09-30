@@ -9,6 +9,7 @@ from .otp_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 	get_via_stops,
+	drop_via_stations,
 	filter_candidates_by_requirements,
 )
 from .tu_utils import add_tu_deltur_depart_times, absorb_short_walk_into_car
@@ -53,8 +54,8 @@ def _resolve_segment_search_params(
 	_match_once (the whole trip) and _load_and_align_segment_candidates (one anchor-split
 	segment), so this resolution logic lives in exactly one place.
 
-	exclude_via_stopids drops the given stop IDs from the resolved via_stopids - used by
-	segment queries to exclude their own origin/destination boundary stops, which are already
+	exclude_via_stopids drops the vias at the given stop IDs' stations - used by segment
+	queries to exclude their own origin/destination boundary stops, which are already
 	the query's origin/destination override rather than a via constraint.
 
 	Returns (modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
@@ -85,8 +86,8 @@ def _resolve_segment_search_params(
 		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
 	else:
 		via_stopids = None
-	if via_stopids and exclude_via_stopids:
-		via_stopids = [stop_id for stop_id in via_stopids if stop_id not in exclude_via_stopids] or None
+	if exclude_via_stopids:
+		via_stopids = drop_via_stations(via_stopids, exclude_via_stopids)
 
 	return (
 		modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
@@ -184,7 +185,7 @@ def _match_once(
 	):
 		return _return_not_found(f"{REASON_INVALID_ROUTE_NAME} (routes={route_names})", REASON_INVALID_ROUTE_NAME)
 	if print_trip_header and via_stopids:
-		print(f"via_stopids: {', '.join(via_stopids)}")
+		print(f"via_stopids: {', '.join('/'.join(stop_ids) for stop_ids in via_stopids)}")
 
 	# is_bus_s_train/is_rail_tram_subway_ferry are the two TRANSIT_MODES categories with
 	# different route-name handling (see _resolve_segment_search_params); every TU trip must
@@ -799,10 +800,7 @@ def _try_station_anchored_fallback(
 		depart_dt_transit = tu_tur_row["depart_dt"]
 	depart_dt_str_transit = depart_dt_transit.strftime("%Y-%m-%dT%H:%M:%S%z")
 
-	via_stopids_filtered = via_stopids
-	if via_stopids:
-		exclude = {stop_id for stop_id in (first_stop_id, last_stop_id) if stop_id}
-		via_stopids_filtered = [stop_id for stop_id in via_stopids if stop_id not in exclude] or None
+	via_stopids_filtered = drop_via_stations(via_stopids, (first_stop_id, last_stop_id))
 
 	raw_transit_df, _ = _load_candidates_with_reluctance_retries(
 		tu_tur_row=tu_tur_row,

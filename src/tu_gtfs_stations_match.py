@@ -51,18 +51,17 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
 			period=period,
 		)
 
-		for mode, stop in matches.items():
-			#print(f"{mode}: {stop['name']} (name similarity: {stop.get('name_similarity', 'N/A')})")
-			# Append match to list
-			matches_list.append({
-				'tu_station_id': row['id'],
-				'tu_station_name': row['statnavn'],
-				'gtfs_station_id': stop['stop_gtfsId'],
-				'gtfs_station_name': stop['name'],
-				'otp_mode': mode,
-				'name_similarity': stop.get('name_similarity', None),
-				'distance_degree': stop['distance_degree']
-			})
+		for mode, stops in matches.items():
+			for _, stop in stops.iterrows():  # best match first, then its twins
+				matches_list.append({
+					'tu_station_id': row['id'],
+					'tu_station_name': row['statnavn'],
+					'gtfs_station_id': stop['stop_gtfsId'],
+					'gtfs_station_name': stop['name'],
+					'otp_mode': mode,
+					'name_similarity': stop.get('name_similarity', None),
+					'distance_degree': stop['distance_degree']
+				})
 
 	result_df = pd.DataFrame(matches_list)
 	return result_df
@@ -83,6 +82,11 @@ TU_MODE_TO_GTFS = {
 TU_NAME_ALIASES = {
 	"København Syd": ["Ny Ellebjerg St."],
 }
+
+# Stops tied with the best match on mode and name score within this radius are one station
+# under several stop_ids (a stop Rejseplan renumbered or moved, which the GTFS merger keeps
+# apart), each serving only part of the year. All are kept, so a via can accept any of them.
+STATION_TWIN_RADIUS_M = 150
 
 # Stations where a mode was added to an already-existing station later than the
 # station row's own OpenDate reflects. tu_stations only has one OpenDate/ClosedDate
@@ -181,8 +185,9 @@ def find_gtfs_stations_for_tu_station(
 
 	Returns
 	-------
-	dict mapping GTFS mode string → matched stop (pd.Series).
-	e.g. {"S_TRAIN": <stop row>, "SUBWAY": <stop row>}
+	dict mapping GTFS mode string → matched stops (pd.DataFrame), best match first,
+	plus its twins within STATION_TWIN_RADIUS_M.
+	e.g. {"S_TRAIN": <stop rows>, "SUBWAY": <stop rows>}
 	If both modes share one stop, the same stop appears under both keys.
 	"""
 	# 1. Active modes for this TU station. Most stations are fully covered by the
@@ -299,13 +304,27 @@ def find_gtfs_stations_for_tu_station(
 			# stop (e.g. a street-level stop that happens to carry a rare/anomalous
 			# trip pattern under the right mode) over the actual station platform, so
 			# distance only breaks ties between equally-good name matches.
-			best = mode_stops.sort_values(
+			ranked = mode_stops.sort_values(
 				["name_similarity", "distance_degree"], ascending=[False, True]
-			).iloc[0]
+			)
+			best = ranked.iloc[0]
+			# Keep the best stop's twins (see STATION_TWIN_RADIUS_M); best stays first.
+			twin_dist_m = np.hypot(
+				(ranked["lat"] - best["lat"]) * 111_320,
+				(ranked["lon"] - best["lon"]) * 111_320 * np.cos(np.radians(best["lat"])),
+			)
+			matched = ranked[
+				(ranked["name_similarity"] == best["name_similarity"]) & (twin_dist_m <= STATION_TWIN_RADIUS_M)
+			]
+			if len(matched) > 1:
+				print(
+					f"  Note: '{tu_name}' ({mode}) matches {len(matched)} stops, all used: "
+					f"{', '.join(matched['stop_gtfsId'])}"
+				)
 		else:
 			# No TU name available to compare against -- fall back to nearest by distance.
-			best = mode_stops.loc[mode_stops["distance_degree"].idxmin()]
-		result[mode] = best
+			matched = mode_stops.loc[[mode_stops["distance_degree"].idxmin()]]
+		result[mode] = matched
 
 	return result
 
