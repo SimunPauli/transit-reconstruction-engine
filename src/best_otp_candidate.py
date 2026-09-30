@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from .config_loader import get_config
-from .constant import STREET_MODES
+from .constant import STREET_MODES, TRANSIT_STAGE_MODES
 
 def find_best_match_by_rmse(
 		tu_tur_row,
@@ -29,6 +29,15 @@ def find_best_match_by_rmse(
 
 	expected_depart  = tu_tur_row["depart_dt"]
 	expected_arrival = tu_tur_row["arrival_dt"]
+
+	# Add the initial wait time to expected_depart. expected_depart is used to pick the
+	# best-fitting candidate trip from OTP, but OTP always departs at a time that
+	# leaves no wait time, so the wait must be added for the comparison to be fair.
+	tu_deltur_sub = tu_deltur_sub.sort_values('Delturnr', ascending=True)
+	first_wait = tu_deltur_sub.StageWaitMin[
+		tu_deltur_sub.StageMode.isin(TRANSIT_STAGE_MODES)
+	].iloc[0]
+	expected_depart = expected_depart +  pd.to_timedelta(first_wait, unit = "min")
 
 	legs = otp_candidates_df.copy()
 

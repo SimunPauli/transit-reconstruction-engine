@@ -69,6 +69,7 @@ WALK_BIKE_TIME_RATIO = config["walk_bike_time_ratio"]
 #CAR-family stage modes, for tu_utils.absorb_short_walk_into_car.
 WALK_STAGE_MODES = {1, 7}
 CAR_STAGE_MODES = {11, 12, 14, 25, 26, 35}
+TRANSIT_STAGE_MODES = {31, 32, 33, 34, 37}
 WALK_CAR_ABSORB_MAX_KM = config["matching"]["walk_car_absorb_max_km"]
 
 #Wall-clock limit for one trip's station-anchored fallback (0 = unlimited). Its query count
