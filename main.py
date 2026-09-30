@@ -202,7 +202,9 @@ def _run(config, tee):
 			trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 			trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 			_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
-			_print_and_export_summary_stats(trip_matching_summaries, config["paths"]["summary_stats_file"])
+			_print_and_export_summary_stats(
+				trip_matching_summaries, config["paths"]["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+			)
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
@@ -212,7 +214,9 @@ def _run(config, tee):
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
 		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
 		_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
-		_print_and_export_summary_stats(trip_matching_summaries, config["paths"]["summary_stats_file"])
+		_print_and_export_summary_stats(
+			trip_matching_summaries, config["paths"]["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+		)
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
 	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
