@@ -1,6 +1,8 @@
 import pandas as pd
 import utm
 from pathlib import Path
+from datetime import datetime
+
 
 def load_tu(data_dir,
             YEAR,
@@ -19,28 +21,28 @@ def load_tu(data_dir,
 
 	tu_stations["id"] = tu_stations.index
 
-	# --- Sort tu_session ---
+	#Sort tu_session
 	tu_session = tu_session.sort_values(by="SessionId")
 
-	# --- Join tu_tur + tu_deltur ---
+	#Join tu_tur + tu_deltur
 	tu_deltur = (
 		tu_tur[["SessionId", "TurId"]]
 		.merge(tu_deltur, on="TurId", how="right")
 	)
 
-	# --- Number of deltur ---
+	#Number of deltur
 	tu_deltur["n_deltur"] = (
 		tu_deltur.groupby("TurId")["Delturnr"]
 		.transform("max")
 	)
 
-	# --- Add Lat/Lon (destination) ---
+	#Add Lat/Lon (destination)
 	tu_tur[["tiladrlat", "tiladrlon"]] = tu_tur.apply(
 		lambda row: pd.Series(utm.to_latlon(row["tiladre"], row["tiladrn"], zone_number=32, zone_letter='N')),
 		axis=1
 	)
 
-	# --- Add Lat/Lon (origin) ---
+	#Add Lat/Lon (origin)
 	tu_tur[["orig_lat", "orig_lon"]] = tu_tur.apply(
 		lambda row: pd.Series(utm.to_latlon(row["orig_e"], row["orig_n"], zone_number=32, zone_letter='N')),
 		axis=1
@@ -49,7 +51,6 @@ def load_tu(data_dir,
 	tu_tur = pd.merge(tu_tur, tu_session, on="SessionId", how="left")
 
 
-	from datetime import datetime
 	tu_tur["date"] = datetime(1970, 1, 1) + pd.to_timedelta(tu_tur["DiaryDate"], unit="D")
 	tu_tur["date_str"] = tu_tur["date"].dt.strftime("%Y-%m-%d")
 
