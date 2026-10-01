@@ -86,6 +86,13 @@ def load_tu(data_dir,
 	if YEAR is not None:
 		tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
 
+	#remove trip outside of Denmark and/or which include border crossing
+	tu_tur = tu_tur[
+		~(
+			(tu_tur["DestMuncode"].isin([997, 998, 999])) or (tu_tur["OrigMuncode"].isin([997, 998, 999]))
+		)
+	]
+
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)].copy() #Not ferry
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 
