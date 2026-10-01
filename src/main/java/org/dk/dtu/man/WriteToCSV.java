@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 
 // Simple script to write a database from TU data (in .accdb format) to a csv file.
 // So far only tested with "journey", "session", and "tur" tables
-// Other tables may produce an error if comma separator is unsuitable (i.e., if commas are found in the table)
+// Fields containing commas, quotes or line breaks are quoted
 public class WriteToCSV {
 
     public static final String SEP = ",";
@@ -25,7 +25,7 @@ public class WriteToCSV {
                     """);
         }
 
-        Database db = DatabaseBuilder.open(new File(args[0]));
+        Database db = new DatabaseBuilder(new File(args[0])).setReadOnly(true).open();
         Table table = db.getTable(args[2]);
         if(table == null) {
             throw new RuntimeException("Database table '" + args[2] + "' not found!\n" +
@@ -64,11 +64,7 @@ public class WriteToCSV {
                 builder.append(SEP);
                 Object value = row.get(colName);
                 if(value != null) {
-                    if(value.toString().contains(SEP)) {
-                        out.close();
-                        throw new RuntimeException("Separator in column \"" + colName + "\": " + value);
-                    }
-                    builder.append(value);
+                    builder.append(toCsvField(value.toString()));
                 }
             }
             out.println(builder);
@@ -102,12 +98,21 @@ public class WriteToCSV {
     // Gets the corresponding R column type (see read_delim help in R Documentation)
     public static String getRType(DataType type) {
         return switch (type) {
-            case INT, LONG -> "i";
-            case FLOAT, DOUBLE -> "n";
+            case BYTE, INT, LONG -> "i";
+            case FLOAT, DOUBLE, NUMERIC, MONEY -> "n";
             case BOOLEAN -> "l";
-            case TEXT -> "c";
-            default -> throw new IllegalArgumentException("Unknown/unsupported data type: " + type.name());
+            case TEXT, MEMO, GUID -> "c";
+            case SHORT_DATE_TIME, EXT_DATE_TIME -> "T";
+            default -> "?"; // let readr guess
         };
+    }
+
+    // Quotes a field containing the separator, quotes or line breaks (RFC 4180)
+    public static String toCsvField(String s) {
+        if(s.contains(SEP) || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
     }
 
     // Opens or appends file for writing
