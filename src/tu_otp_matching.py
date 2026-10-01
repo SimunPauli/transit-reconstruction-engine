@@ -126,9 +126,6 @@ def _match_once(
 	don't want the summary strip it themselves.
 	"""
 	i_TurId = tu_tur_row["TurId"]
-	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
-	tu_deltur_sub = absorb_short_walk_into_car(tu_deltur_sub)
-	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
 	used_anchor_fallback = False
 
 	def _empty_trip_summary(last_print_if_not_found, failure_reason):
@@ -160,6 +157,13 @@ def _match_once(
 		print(f"Tur coordinates origin (lat lon) :     {round(tu_tur_row['orig_lat'],5)} {round(tu_tur_row['orig_lon'],5)}")
 		print(f"Tur coordinates destination (lat lon): {round(tu_tur_row['tiladrlat'],5)} {round(tu_tur_row['tiladrlon'],5)}")
 		print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
+
+	# After the header, so WALK_CAR_ABSORBED prints inside its own trip's block.
+	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
+	tu_deltur_sub = absorb_short_walk_into_car(tu_deltur_sub, verbose=print_trip_header)
+	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
+
+	if print_trip_header:
 		# Print for debugging
 		tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
 		                           "StageDurationMin", "Route", "FromStation", "ToStation"]

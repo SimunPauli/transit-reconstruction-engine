@@ -1,7 +1,7 @@
 import pandas as pd
 from .constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM
 
-def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM):
+def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM, verbose=True):
 	"""
 	Merges a short WALK leg (e.g. walking to/from a parked car) into an adjacent CAR-family
 	leg. Must run before anything derives access/egress mode from tu_deltur_sub's outer legs
@@ -32,10 +32,11 @@ def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM
 			if car_idx > i:  # WALK came first, so its wait is the wait before the merged leg
 				car_row["StageWaitMin"] = row.get("StageWaitMin")
 
-			print(
-				f"WALK_CAR_ABSORBED: merged Delturnr {row['Delturnr']} "
-				f"(WALK, {length} km) into Delturnr {car_row['Delturnr']} (CAR)"
-			)
+			if verbose:
+				print(
+					f"WALK_CAR_ABSORBED: merged Delturnr {row['Delturnr']} "
+					f"(WALK, {length} km) into Delturnr {car_row['Delturnr']} (CAR)"
+				)
 			del rows[i]
 			merged_any = True
 			break
