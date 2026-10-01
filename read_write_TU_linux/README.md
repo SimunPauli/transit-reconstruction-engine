@@ -5,3 +5,5 @@ Writes TU data in access database format (.accdb) to a CSV file. Requires 3 argu
 (1) Path to database
 (2) Path to output csv file
 (3) Name of database table to convert (e.g., journey, session, tur...)
+
+Also writes `<output>_types.csv` next to the csv, listing each column's database type (Jackcess `DataType` name).

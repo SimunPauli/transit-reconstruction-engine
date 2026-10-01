@@ -41,6 +41,17 @@ public class WriteToCSV {
         String s = table.getColumns().stream().map(Column::getType).map(WriteToCSV::getRType).collect(Collectors.joining(""));
         Logger.info("col_types argument for R: c" + s);
 
+        // Write each column's database type to <output>_types.csv
+        File typesFile = new File(args[1].replaceFirst("\\.csv$", "") + "_types.csv");
+        Logger.info("writing column types to '" + typesFile + "'");
+        PrintWriter typesOut = openFileForSequentialWriting(typesFile, false);
+        assert typesOut != null;
+        typesOut.println("column" + SEP + "type");
+        for(Column column : table.getColumns()) {
+            typesOut.println(toCsvField(column.getName()) + SEP + column.getType().name());
+        }
+        typesOut.close();
+
         // Open new file
         Logger.info("opening file '" + args[1] + "'");
         System.out.println();

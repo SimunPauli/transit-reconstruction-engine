@@ -18,15 +18,15 @@ secret_db_path = matches[0]
 
 
 def _read_write(table, db_path, csv_output_dir):
-    csv_output_path = Path(csv_output_dir) / table
+    csv_output_path = Path(csv_output_dir) / f"{table}.csv"
     subprocess.run(
         ["java", "-jar", str(JAR_PATH), str(db_path), str(csv_output_path), table],
         check=True,
     )
 
 
-# write TU "session" tables as csv
-for table in ["dataset_session_secret_part","dataset_tur_secret_part", "dataset_deltur"]:
+# write TU tables as csv
+for table in ["dataset_session_secret_part","dataset_tur_secret_part", "dataset_tur", "dataset_deltur"]:
     _read_write(table, secret_db_path, CSV_OUTPUT_DIR)
 
 
