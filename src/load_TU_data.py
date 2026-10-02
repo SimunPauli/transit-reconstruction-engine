@@ -3,26 +3,51 @@ import utm
 from pathlib import Path
 from datetime import datetime
 
+# Access column types, as listed in read_write_TU_linux's <table>_types.csv.
+# Integer types are left to pandas: int64, or float64 (NaN) if values are missing, as with read_excel.
+DB_TEXT_TYPES = {"TEXT", "MEMO", "GUID"}
+DB_FLOAT_TYPES = {"FLOAT", "DOUBLE", "NUMERIC", "MONEY"}
+DB_DATE_TYPES = {"SHORT_DATE_TIME", "EXT_DATE_TIME"}
+
+
+def _read_tu_table(path):
+	"""Reads an Excel file, or a read_write_TU_linux csv typed by its <name>_types.csv."""
+	if path.suffix in (".xlsx", ".xls"):
+		return pd.read_excel(path)
+
+	types = pd.read_csv(path.with_name(path.stem + "_types.csv"))
+	db_types = dict(zip(types["column"], types["type"]))
+	dtype = {col: "str" for col, t in db_types.items() if t in DB_TEXT_TYPES}
+	dtype |= {col: "float64" for col, t in db_types.items() if t in DB_FLOAT_TYPES}
+	dates = [col for col, t in db_types.items() if t in DB_DATE_TYPES]
+
+	return pd.read_csv(path, dtype=dtype, parse_dates=dates).drop(columns="rowId")
+
 
 def load_tu(data_dir,
             YEAR,
             session_file,
             tur_file,
+            tur_secret_file,
             deltur_file,
             stations_file,
             transit_code_tu = [31, 32, 33, 34, 37]):
 
 	data_dir = Path(data_dir)
+	tu_session = _read_tu_table(data_dir / session_file)
+	tu_tur = _read_tu_table(data_dir / tur_file)
+	tu_tur_secret = _read_tu_table(data_dir / tur_secret_file)
+	tu_deltur = _read_tu_table(data_dir / deltur_file)
+	tu_stations = _read_tu_table(data_dir / stations_file)
 
-	tu_session = pd.read_excel(data_dir / session_file)
-	tu_tur = pd.read_excel(data_dir / tur_file)
-	tu_deltur = pd.read_excel(data_dir / deltur_file)
-	tu_stations = pd.read_excel(data_dir / stations_file)
 
 	tu_stations["id"] = tu_stations.index
 
 	#Sort tu_session
 	tu_session = tu_session.sort_values(by="SessionId")
+
+	tu_tur_secret = tu_tur_secret.rename(columns={"turid":"TurId"})
+	tu_tur = tu_tur.merge(tu_tur_secret, on="TurId", how="right")
 
 	#Join tu_tur + tu_deltur
 	tu_deltur = (
@@ -87,10 +112,9 @@ def load_tu(data_dir,
 		tu_tur = tu_tur[(tu_tur["DiaryYear"] == YEAR)]
 
 	#remove trip outside of Denmark and/or which include border crossing
+	outside_dk_code = [997, 998, 999]
 	tu_tur = tu_tur[
-		~(
-			(tu_tur["DestMuncode"].isin([997, 998, 999])) or (tu_tur["OrigMuncode"].isin([997, 998, 999]))
-		)
+		~tu_tur["DestMuncode"].isin(outside_dk_code) & ~tu_tur["OrigMuncode"].isin(outside_dk_code)
 	]
 
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)].copy() #Not ferry

@@ -88,6 +88,7 @@ def _run(config, tee):
 		YEAR = YEAR,
 		session_file=config["tu_files"]["session_file"],
 		tur_file=config["tu_files"]["tur_file"],
+		tur_secret_file=config["tu_files"]["tur_secret_file"],
 		deltur_file=config["tu_files"]["deltur_file"],
 		stations_file=config["tu_files"]["stations_file"],
 		transit_code_tu = [31, 32, 33, 34, 37],
