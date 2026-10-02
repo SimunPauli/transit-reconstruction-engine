@@ -112,7 +112,17 @@ def load_tu(data_dir,
 	]
 
 	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)].copy() #Not ferry
-	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
+
+	#Add Lat/Lon (destination, origin), dropping trips without valid coordinates
+	invalid = (
+		_add_lat_lon(tu_tur, "tiladre", "tiladrn", "tiladrlat", "tiladrlon")
+		| _add_lat_lon(tu_tur, "orig_e", "orig_n", "orig_lat", "orig_lon")
+	)
+	if invalid.any():
+		print(f"Warning: dropping {invalid.sum()} trips with missing/invalid UTM coordinates, TurId: {tu_tur.loc[invalid, 'TurId'].tolist()}")
+		tu_tur = tu_tur[~invalid]
+
+	tu_deltur =tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 
 	public_driver_TurId = tu_deltur[
 		(tu_deltur["StageMode"].isin(transit_code_tu)) & (tu_deltur["StageDrivPass"]==1) #is driver
@@ -122,6 +132,16 @@ def load_tu(data_dir,
 	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])]
 
 	return [tu_session, tu_tur, tu_deltur, tu_stations]
+
+def _add_lat_lon(df, e_col, n_col, lat_col, lon_col):
+	"""Adds lat/lon from UTM zone 32N; returns mask of rows with missing/out-of-range coordinates (left NaN)."""
+	valid = df[e_col].between(100000, 999999) & df[n_col].between(0, 10000000)
+	df[[lat_col, lon_col]] = float("nan")
+	if valid.any():
+		lat, lon = utm.to_latlon(df.loc[valid, e_col].to_numpy(), df.loc[valid, n_col].to_numpy(), zone_number=32, zone_letter="N")
+		df.loc[valid, lat_col] = lat
+		df.loc[valid, lon_col] = lon
+	return ~valid
 
 def _build_local_datetime(df, date_col, hour_col, minute_col, timezone="Europe/Copenhagen"):
 	valid = df[[date_col, hour_col, minute_col]].notna().all(axis=1)
