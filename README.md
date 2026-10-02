@@ -29,6 +29,7 @@ This project will be extended with choice-set generation for route choice modell
 ## Requirements
 
 - Python 3.13+
+- Java 21 and Maven, to build `read_write_TU_linux` (exports the TU Access database to csv)
 - A running instance of the modified OTP (link above), loaded with the relevant GTFS
   data, accessible at the `otp_url` defined in `config.json`
 
@@ -48,6 +49,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 ```
+
+Then export the TU tables from the Access database to csv (see `read_write_TU_linux/README.md`):
+
+```bash
+cd read_write_TU_linux
+mvn package        # builds the jar run.py calls
+python run.py      # set TU_DATA_VERSION and CSV_OUTPUT_DIR in run.py first
+```
+
+Rerun `run.py` whenever a new TU data version is used.
+
 ---
 
 ## Configuration
@@ -94,9 +106,10 @@ Create it based on the template below:
   },
 
   "tu_files": {
-    "session_file": "tu_session_secret_2024.xlsx",
-    "tur_file": "tu_tur_secret_2024.xlsx",
-    "deltur_file": "tu_deltur_2024.xlsx",
+    "session_file": "dataset_session.csv",
+    "tur_file": "dataset_tur.csv",
+    "tur_secret_file": "dataset_tur_secret_part.csv",
+    "deltur_file": "dataset_deltur.csv",
     "stations_file": "Stationer_tudatabase.xlsx"
   },
   "tu_subset": {
@@ -135,7 +148,7 @@ Create it based on the template below:
 | `reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `reluctance_retries.transit.enabled` is true |
 | `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
 | `reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `reluctance_retries.walk.enabled` is true |
-| `paths.data_dir` | Directory containing the TU input Excel files |
+| `paths.data_dir` | Directory containing the TU input files (Excel, or csv from `read_write_TU_linux`) |
 | `paths.output_dir` | Base directory for output files; each run writes into `output_dir/<tu_subset.year>/<run_id>/`, where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated at startup |
 | `paths.log_file` | Log file name (relative to `output_dir`) |
 | `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
@@ -154,7 +167,11 @@ Create it based on the template below:
 ## Input data
 
 The TU data is confidential and not included in this repository.
-The tool expects four Excel files, with at minimum the columns listed below.
+The tool expects five files, with at minimum the columns listed below. Each is either an Excel file
+(`.xlsx`/`.xls`) or a csv exported from the TU Access database by `read_write_TU_linux/run.py`. A csv is
+read using the column types in its `<name>_types.csv` (written alongside it): text, decimal and date columns
+get those types, integer columns are inferred by pandas (as with Excel). The stations file has no database
+table, so it stays Excel.
 
 ### Session file (`tu_files.session_file`)
 
@@ -162,7 +179,11 @@ The tool expects four Excel files, with at minimum the columns listed below.
 |--------|-------------|
 | `SessionId` | |
 
-### Trip file (`tu_files.tur_file`)
+### Trip files (`tu_files.tur_file` + `tu_files.tur_secret_file`)
+
+Both are required. The trip table (`dataset_tur`) and its confidential part (`dataset_tur_secret_part`) are
+joined on `TurId` (the secret file's `turid` is renamed to `TurId`). Only trips present in the secret file are
+kept. Together they must provide:
 
 | Column | Description |
 |--------|-------------|
@@ -306,7 +327,7 @@ be found in `log_file` with a plain text search.
 
 ## How to run
 
-1. **Load TU data** — session, trip, leg, and station data are read from Excel.
+1. **Load TU data** — session, trip (+ secret trip), leg, and station data are read from csv or Excel.
 2. **Match TU stations to GTFS** — each TU station is matched to a GTFS stop via
    bounding-box queries to OTP, filtered by name similarity and proximity.
 3. **For each TU trip:**
@@ -317,7 +338,7 @@ be found in `log_file` with a plain text search.
    - Each OTP leg is aligned to the corresponding TU leg.
    - The best itinerary is selected by minimising a weighted RMSE across departure
      time, arrival time, leg duration, and leg distance.
-4. **Results are exported** to Excel.
+4. **Results are exported** to Excel/csv in `paths.output_dir`.
 
 
 
