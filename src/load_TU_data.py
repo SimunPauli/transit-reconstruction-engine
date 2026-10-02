@@ -48,6 +48,12 @@ def load_tu(data_dir,
 
 	tu_tur_secret = tu_tur_secret.rename(columns={"turid":"TurId"})
 	tu_tur = tu_tur.merge(tu_tur_secret, on="TurId", how="right")
+	tu_tur = tu_tur[[
+		"TurId", "SessionId",
+		"DepartHH", "DepartMM", "ArrivalHH", "ArrivalMM",
+		"orig_e", "orig_n", "tiladre", "tiladrn",
+		"OrigMuncode", "DestMuncode", "PtPrimMode",
+	]]
 
 	#Join tu_tur + tu_deltur
 	tu_deltur = (
@@ -59,18 +65,6 @@ def load_tu(data_dir,
 	tu_deltur["n_deltur"] = (
 		tu_deltur.groupby("TurId")["Delturnr"]
 		.transform("max")
-	)
-
-	#Add Lat/Lon (destination)
-	tu_tur[["tiladrlat", "tiladrlon"]] = tu_tur.apply(
-		lambda row: pd.Series(utm.to_latlon(row["tiladre"], row["tiladrn"], zone_number=32, zone_letter='N')),
-		axis=1
-	)
-
-	#Add Lat/Lon (origin)
-	tu_tur[["orig_lat", "orig_lon"]] = tu_tur.apply(
-		lambda row: pd.Series(utm.to_latlon(row["orig_e"], row["orig_n"], zone_number=32, zone_letter='N')),
-		axis=1
 	)
 
 	tu_tur = pd.merge(tu_tur, tu_session, on="SessionId", how="left")

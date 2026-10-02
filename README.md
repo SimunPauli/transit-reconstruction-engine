@@ -178,6 +178,8 @@ table, so it stays Excel.
 | Column | Description |
 |--------|-------------|
 | `SessionId` | |
+| `DiaryDate` | Days since 1970-01-01 |
+| `DiaryYear` | |
 
 ### Trip files (`tu_files.tur_file` + `tu_files.tur_secret_file`)
 
@@ -189,8 +191,6 @@ kept. Together they must provide:
 |--------|-------------|
 | `TurId` | |
 | `SessionId` | |
-| `DiaryDate` | Days since 1970-01-01 |
-| `DiaryYear` | |
 | `PtPrimMode` | Primary public transport mode code |
 | `DepartHH` | Departure hour |
 | `DepartMM` | Departure minute |
