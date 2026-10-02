@@ -21,7 +21,8 @@ def _read_tu_table(path):
 	dtype |= {col: "float64" for col, t in db_types.items() if t in DB_FLOAT_TYPES}
 	dates = [col for col, t in db_types.items() if t in DB_DATE_TYPES]
 
-	return pd.read_csv(path, dtype=dtype, parse_dates=dates).drop(columns="rowId")
+	# copy() consolidates read_csv's one-block-per-column frame (avoids PerformanceWarning on later inserts)
+	return pd.read_csv(path, dtype=dtype, parse_dates=dates).drop(columns="rowId").copy()
 
 
 def load_tu(data_dir,
