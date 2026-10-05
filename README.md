@@ -124,7 +124,7 @@ Create it based on the template below:
     "w_departure_min": 1.0,
     "w_arrival_min": 1.0,
     "w_street_mode_min": 0.0,
-    "w_street_mode_km": 1.0,
+    "w_street_mode_km": 20.0,
     "w_transit_min": 1.0,
     "w_transit_km": 0.0
   },
@@ -519,27 +519,31 @@ each OTP itinerary against the TU record across four dimensions:
 |-----------|-------------|
 | Departure time | Trip level (minutes deviation) |
 | Arrival time | Trip level (minutes deviation) |
-| Transit duration | Per matched leg transit |
-| Street distance | Per matched leg transit |
+| Transit duration | Per matched transit leg |
+| Street distance | Per matched street leg |
 
 Each dimension has a configurable weight (`squared_error_weights` in `config.json`).
 Unmatched OTP legs, such as extra transfer walks, incur no penalty. The current
 weights set the street-duration and transit-distance terms to `0`, because
 respondents’ reported transit distances are considered unreliable, and because
 sum of duration on street and transit legs is already indirectly captured by the
-departure- and arrival-time terms. The WSS is:
+departure- and arrival-time terms. The WRSS is:
 
 $$
-\text{WSS} = 
-  \sqrt{ 
-    \sum_{\text{legs}} \left(
-      w_\text{dep} \cdot \Delta t_\text{dep}^2 +
-      w_\text{arr} \cdot \Delta t_\text{arr}^2 +
-      w_\text{min} \cdot \Delta \text{dur}^2 +
-      w_\text{km} \cdot \Delta \text{dist}^2
+\text{WRSS} =
+  \sqrt{
+    w_\text{dep} \cdot \Delta t_\text{dep}^2 +
+    w_\text{arr} \cdot \Delta t_\text{arr}^2 +
+    \sum_{\text{matched legs } l} \left(
+      w_{\text{min},m(l)} \cdot \Delta \text{dur}_l^2 +
+      w_{\text{km},m(l)} \cdot \Delta \text{dist}_l^2
     \right)
   }
 $$
+
+where $m(l)$ is street or transit, selecting the `w_street_mode_*` or `w_transit_*`
+weights, and $\Delta t_\text{dep}$ is measured against the TU departure plus the first
+transit leg's wait (OTP itineraries start with no wait before the first boarding).
 
 The itinerary with the lowest RMSE is selected as the reproduced trip.
 
