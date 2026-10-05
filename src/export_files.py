@@ -136,8 +136,41 @@ def _build_station_stats(trip_matching_summaries_df, tu_deltur, tu_gtfs_station_
 	)
 
 
+SESSION_FLAG_MIN_PROBLEM_TRIPS = 2  # sessions with at least this many wrong-route/not-found trips are flagged
+
+
+def _build_session_stats(trip_matching_summaries_df):
+	"""
+	Match outcome per SessionId (one interview). Several problem trips (wrong route or not found) in
+	one session point at that respondent's reporting rather than at OTP or the GTFS data.
+	"""
+	df = trip_matching_summaries_df
+	problem_reason = (
+		df.get("failure_reason", pd.Series(pd.NA, index=df.index))
+		.where(df["trip_not_found"] == 1)
+		.mask(df["trip_wrong_route"] == 1, "wrong_route")
+	)
+	stats = df.groupby("SessionId").agg(
+		trips=("TurId", "size"),
+		trips_found=("trip_found", "sum"),
+		trips_wrong_route=("trip_wrong_route", "sum"),
+		trips_not_found=("trip_not_found", "sum"),
+	).reset_index()
+	stats["problem_trips"] = stats["trips_wrong_route"] + stats["trips_not_found"]
+	stats["problem_rate_pct"] = (100 * stats["problem_trips"] / stats["trips"]).round(1)
+	failure_reasons = (
+		problem_reason.groupby(df["SessionId"])
+		.agg(lambda reasons: "/".join(f"{reason}×{count}" for reason, count in reasons.value_counts().items()))
+		.rename("failure_reasons")
+	)
+	stats = stats.join(failure_reasons, on="SessionId")
+	stats["flagged"] = stats["problem_trips"] >= SESSION_FLAG_MIN_PROBLEM_TRIPS
+	return stats.sort_values(["problem_trips", "problem_rate_pct"], ascending=False).reset_index(drop=True)
+
+
 def _print_and_export_summary_stats(trip_matching_summaries_df, path, tu_deltur=None, tu_gtfs_station_df=None):
 	overview_df, failure_counts_df = _build_summary_stats(trip_matching_summaries_df)
+	session_stats_df = _build_session_stats(trip_matching_summaries_df)
 	station_stats_df = None
 	if tu_deltur is not None and tu_gtfs_station_df is not None:
 		station_stats_df = _build_station_stats(trip_matching_summaries_df, tu_deltur, tu_gtfs_station_df)
@@ -150,10 +183,15 @@ def _print_and_export_summary_stats(trip_matching_summaries_df, path, tu_deltur=
 	if station_stats_df is not None and not station_stats_df.empty:
 		print("\nStations with the most trips not found (all in the 'stations' sheet):")
 		print(station_stats_df.head(10).to_string(index=False))
+	n_flagged = int(session_stats_df["flagged"].sum())
+	if n_flagged:
+		print(f"\n{n_flagged} session(s) with {SESSION_FLAG_MIN_PROBLEM_TRIPS}+ problem trips; top 10 (all in the 'sessions' sheet):")
+		print(session_stats_df.head(10).to_string(index=False))
 
 	with pd.ExcelWriter(path) as writer:
 		overview_df.to_excel(writer, sheet_name="overview", index=False)
 		failure_counts_df.to_excel(writer, sheet_name="failure_reasons", index=False)
+		session_stats_df.to_excel(writer, sheet_name="sessions", index=False)
 		if station_stats_df is not None:
 			station_stats_df.to_excel(writer, sheet_name="stations", index=False)
 	print(f"Summary statistics exported to {path}")
