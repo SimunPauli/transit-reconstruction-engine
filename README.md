@@ -320,6 +320,7 @@ be found in `log_file` with a plain text search.
 | `no_direct_egress_route` | Station-anchored fallback: no direct (walk/car) route found from the anchor station to the true destination |
 | `anchored_no_otp_candidates` | Station-anchored fallback: the direct access/egress leg(s) were found, but OTP returned zero transit itineraries from/to the anchor station |
 | `anchored_no_required_routes` / `anchored_no_required_modes` / `anchored_no_matching_leg_sequence` | Station-anchored fallback: transit itineraries were found from/to the anchor station, but none passed the same route/mode/sequence checks as the full-route search |
+| `duration_outside_search_window` | Candidates passed all filters, but every one's total duration differs from the TU trip's by more than `search_window` |
 | `no_best_match` | Candidates passed all filters, but RMSE ranking found no best trip |
 | *(exception class name, e.g. `TimeoutError`)* | An unexpected error was raised while processing the trip; see `log_file` for the message |
 
@@ -441,7 +442,8 @@ OTP is queried via the `planConnection` GraphQL API with the constraints above,
 starting from the TU departure time. Because OTP returns a paginated result, the
 tool fetches itineraries both forward and backward in time until it has up to
 `max_itinerary_candidates` itineraries within the `search_window`, or the `search_window`
-boundary is reached. Duplicate itineraries from pagination overlap are removed.
+boundary is reached. Duplicate itineraries from pagination overlap are removed, as are
+itineraries starting outside `search_window`, which OTP's page widening can reach.
 
 If the initial query returns no valid candidates after filtering, the tool retries with two
 independent, configurable mechanisms (`reluctance_retries` in `config.json`), each of which

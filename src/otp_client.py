@@ -587,6 +587,16 @@ def load_all_candidates(tu_tur_row: pd.Series | None = None,
 
 	otp_candidates_df = _deduplicate_itineraries(otp_candidates_df)
 
+	# OTP widens a sparse page's window (pagingSearchWindowAdjustments, up to +4h per page),
+	# so pages can reach hours from the TU departure. Keep only itineraries starting inside it.
+	if not otp_candidates_df.empty:
+		start = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert(LOCAL_TIMEZONE)
+		in_window = start.between(window_start, window_end)
+		if not in_window.all():
+			n_dropped = otp_candidates_df.loc[~in_window, "iteration_id"].nunique()
+			print(f"Dropped {n_dropped} itinerary(ies) starting outside the search window [{window_start:%H:%M}, {window_end:%H:%M}]")
+			otp_candidates_df = otp_candidates_df[in_window].reset_index(drop=True)
+
 	return otp_candidates_df
 
 
