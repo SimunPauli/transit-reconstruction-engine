@@ -65,13 +65,13 @@ def find_best_match_by_rmse(
 		(transit_mask,     w_transit_min,     w_transit_km),
 	]:
 		legs.loc[mask, "deviation_duration_min"] = (
-			(legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"])
+			(legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"]).abs()
 		)
 		legs.loc[mask, "weighted_sq_deviation_duration"] = (
 			w_min * ((legs.loc[mask, "duration_min"] - legs.loc[mask, "tu_duration_min"]) ** 2)
 		)
 		legs.loc[mask, "deviation_distance_km"] = (
-				(legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"])
+				(legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"]).abs()
 		)
 		legs.loc[mask, "weighted_sq_deviation_distance"] = (
 			w_km * ((legs.loc[mask, "distance_km"] - legs.loc[mask, "tu_distance_km"]) ** 2)
@@ -81,9 +81,9 @@ def find_best_match_by_rmse(
 	trips = legs.groupby("iteration_id").agg(
 		start_trip = ("start_trip", "first"),
 		end_trip = ("end_trip", "first"),
-		deviation_duration_min = ("deviation_duration_min", "sum"), #this to report the difference and not to be used in rmse
+		deviation_duration_min = ("deviation_duration_min", "sum"), #sum of abs leg differences, for reporting only, not used in rmse
 		weighted_sq_deviation_duration = ("weighted_sq_deviation_duration", "sum"),
-		deviation_distance_km = ("deviation_distance_km", "sum"), #this to report the difference and not to be used in rmse
+		deviation_distance_km = ("deviation_distance_km", "sum"), #sum of abs leg differences, for reporting only, not used in rmse
 		weighted_sq_deviation_distance = ("weighted_sq_deviation_distance", "sum"),
 		system_notice_tag = ("system_notice_tag", "first"),
 	).reset_index()
