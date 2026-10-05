@@ -523,7 +523,8 @@ each OTP itinerary against the TU record across four dimensions:
 | Street distance | Per matched street leg |
 
 Each dimension has a configurable weight (`squared_error_weights` in `config.json`).
-Unmatched OTP legs, such as extra transfer walks, incur no penalty. The current
+Unmatched OTP legs, such as extra transfer walks, incur no penalty, as they are 
+treated as unknown. The current
 weights set the street-duration and transit-distance terms to `0`, because
 respondents’ reported transit distances are considered unreliable, and because
 sum of duration on street and transit legs is already indirectly captured by the
