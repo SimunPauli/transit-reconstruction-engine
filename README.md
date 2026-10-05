@@ -502,6 +502,8 @@ After alignment, candidates are filtered to remove any itinerary where:
 - Not all required transit modes are present.
 - The transit legs do not appear in the same order as in TU (verified as a
   subsequence match on matched `Delturnr` values).
+- Its total duration differs from the TU trip's (arrival − departure) by more than
+  `search_window`, e.g. through a long wait forced by via stops.
 
 If a trip with a bus/S-train leg ends up with no candidates for a route-related reason, the
 whole search is retried with the bus route name widened step by step (missing letter, then one

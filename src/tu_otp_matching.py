@@ -25,6 +25,7 @@ from .constant import (
 	REASON_NO_CONNECTING_SEGMENT,
 	REASON_ANCHOR_TIMEOUT,
 	ANCHOR_TIMEOUT_MIN,
+	REASON_DURATION_OUTSIDE_SEARCH_WINDOW,
 	REASON_NO_BEST_MATCH,
 	REASON_CAR_LEG_NOT_SATISFIED,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
@@ -359,6 +360,22 @@ def _match_once(
 		.dt.tz_convert("Europe/Copenhagen")
 		.dt.strftime("%H:%M")
 	)
+
+	# Arrival check as OTP departure + TU trip duration, so a departure shift isn't counted twice.
+	# Catches itineraries departing on time but arriving hours late, e.g. a long wait forced by via stops.
+	tu_trip_duration = tu_tur_row["arrival_dt"] - tu_tur_row["depart_dt"]
+	if pd.notna(tu_trip_duration):
+		otp_trip_duration = (
+			pd.to_datetime(otp_candidates_df["end_trip"], utc=True)
+			- pd.to_datetime(otp_candidates_df["start_trip"], utc=True)
+		)
+		within = (otp_trip_duration - tu_trip_duration).abs() <= pd.Timedelta(search_window)
+		if not within.all():
+			n_dropped = otp_candidates_df.loc[~within, "iteration_id"].nunique()
+			print(f"Dropped {n_dropped} itinerary(ies) whose duration differs from TU's by more than the search window")
+			otp_candidates_df = otp_candidates_df[within]
+		if otp_candidates_df.empty:
+			return _return_not_found(REASON_DURATION_OUTSIDE_SEARCH_WINDOW)
 
 	#find root sum squared of weighted differences
 	trips = find_best_match_by_rmse(

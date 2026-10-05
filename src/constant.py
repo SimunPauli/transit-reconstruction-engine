@@ -94,6 +94,7 @@ REASON_NO_DIRECT_EGRESS_ROUTE = "no_direct_egress_route"
 REASON_NO_DIRECT_INTERIOR_ROUTE = "no_direct_interior_route"
 REASON_NO_CONNECTING_SEGMENT = "no_connecting_segment"
 REASON_ANCHOR_TIMEOUT = "anchor_timeout"
+REASON_DURATION_OUTSIDE_SEARCH_WINDOW = "duration_outside_search_window"
 REASON_NO_BEST_MATCH = "no_best_match"
 REASON_CAR_LEG_NOT_SATISFIED = "car_leg_not_satisfied"
 
