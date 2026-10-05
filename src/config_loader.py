@@ -1,4 +1,5 @@
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +15,8 @@ def load_config(config_path="config.json", create_output_dir=True):
 	output_dir = Path(config["paths"]["output_dir"]).expanduser() / str(year) / run_id
 	if create_output_dir:
 		output_dir.mkdir(parents=True, exist_ok=True)
+		# Keep the run's settings with its output
+		shutil.copy(config_path, output_dir / "config.json")
 
 	config["paths"]["output_dir"] = output_dir
 	config["paths"]["log_file"] = output_dir / config["paths"]["log_file"]
