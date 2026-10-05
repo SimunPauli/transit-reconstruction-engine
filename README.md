@@ -258,6 +258,7 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 | `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. A `sessions` sheet gives the outcome per `SessionId`, flagging sessions with 2+ wrong-route/not-found trips (likely respondent reporting errors). Also printed to console/`log_file` at the end of the run. |
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
+| `config.json` | Copy of the `config.json` the run was started with |
 
 ### Trip outcomes
 
