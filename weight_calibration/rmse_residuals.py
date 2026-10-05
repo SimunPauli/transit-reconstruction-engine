@@ -1,0 +1,198 @@
+"""
+Spread of the RMSE components among a finished run's best matches, for setting squared_error_weights.
+
+A weight acts as 1 / (expected deviation)², so the spreads give the weights' ratios. For street
+distance it also fits spread = c * TU distance^p per mode, to see how the error grows with leg
+length. Trips whose departure or arrival is off by more than LARGE_DEVIATION_MIN are listed, as
+likely TU time errors. Only trips found with the TU-recorded route (trip_found == 1) are used.
+
+The spreads are optimistic: the matches were picked by minimising these same deviations.
+
+Run from tu_reconstruct_trips/:  .venv/bin/python weight_calibration/rmse_residuals.py <output_dir>/<year>/<run_id>
+Writes rmse_residuals.xlsx into that run directory.
+"""
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src import config_loader
+
+if len(sys.argv) != 2:
+	sys.exit("Usage: .venv/bin/python weight_calibration/rmse_residuals.py <output_dir>/<year>/<run_id>")
+RUN_DIR = Path(sys.argv[1]).expanduser()
+if not RUN_DIR.is_dir():
+	sys.exit(f"Run directory not found: {RUN_DIR.resolve()}\nGive the full path, <output_dir>/<year>/<run_id>")
+
+# Before the other src imports: they call get_config(), which would create a new empty run dir.
+# The run's own config, so TU files, weights and constants match the run; older runs have none.
+RUN_CONFIG = RUN_DIR / "config.json"
+CONFIG_PATH = RUN_CONFIG if RUN_CONFIG.is_file() else Path("config.json")
+config_loader._config = config_loader.load_config(CONFIG_PATH, create_output_dir=False)
+
+from src import load_TU_data
+from src.constant import STREET_MODES
+from src.tu_utils import absorb_short_walk_into_car
+
+DISTANCE_BINS_KM = [0, 0.5, 1, 2, 5, 10, 20, np.inf]
+MIN_BIN_LEGS = 20  # bins with fewer legs are left out of the c * d^p fit
+LARGE_DEVIATION_MIN = 60
+PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
+
+
+def robust_sd(values):
+	"""1.4826 * MAD: equals the sd for normal errors, but a few bad matches can't inflate it."""
+	values = values.dropna()
+	return 1.4826 * (values - values.median()).abs().median() if len(values) else np.nan
+
+
+def spread_table(df, value_col, by):
+	return df.groupby(by, observed=True).agg(
+		n=(value_col, "count"),
+		median=(value_col, "median"),
+		robust_sd=(value_col, robust_sd),
+		sd=(value_col, "std"),
+		p90_abs=(value_col, lambda values: values.abs().quantile(0.9)),
+	).reset_index()
+
+
+def fit_distance_spread(binned):
+	"""Weighted log-log least squares of robust_sd = c * tu_km_median^p per mode, over bins with enough legs."""
+	rows = []
+	for mode, bins in binned.groupby("mode"):
+		bins = bins[(bins["n"] >= MIN_BIN_LEGS) & (bins["tu_km_median"] > 0) & (bins["robust_sd"] > 0)]
+		c, p = np.nan, np.nan
+		if len(bins) >= 2:
+			p, log_c = np.polyfit(np.log(bins["tu_km_median"]), np.log(bins["robust_sd"]), 1, w=np.sqrt(bins["n"]))
+			c = np.exp(log_c)
+		rows.append({"mode": mode, "c_km": c, "p": p, "bins_used": len(bins)})
+	return pd.DataFrame(rows)
+
+
+def analyse(matches, summaries, tu_deltur, weights):
+	found_ids = summaries.loc[summaries["trip_found"] == 1, "TurId"]
+
+	found = summaries[summaries["TurId"].isin(found_ids)]
+	time_cols = ["depart_deviation_min", "arrival_deviation_min"]
+	trip = found.melt(value_vars=time_cols, var_name="component", value_name="deviation_min")
+
+	max_abs_deviation = found[time_cols].abs().max(axis=1)
+	large_deviations = (
+		found.loc[max_abs_deviation > LARGE_DEVIATION_MIN, ["TurId", *time_cols, "rmse", "used_anchor_fallback"]]
+		.assign(max_abs_deviation_min=max_abs_deviation)
+		.sort_values("max_abs_deviation_min", ascending=False)
+	)
+
+	# Score against the TU legs as matching saw them, after short walks were merged into car legs
+	tu_legs = pd.concat(
+		absorb_short_walk_into_car(legs, verbose=False)
+		for _, legs in tu_deltur[tu_deltur["TurId"].isin(found_ids)].groupby("TurId")
+	)
+	legs = (
+		matches[matches["TurId"].isin(found_ids) & matches["tu_Delturnr"].notna()]
+		.astype({"tu_Delturnr": "Int64"})
+		.merge(
+			tu_legs[["TurId", "Delturnr", "StageLength", "StageDurationMin"]].astype({"Delturnr": "Int64"}),
+			left_on=["TurId", "tu_Delturnr"], right_on=["TurId", "Delturnr"], how="left",
+		)
+	)
+	legs["deviation_km"] = legs["distance_km"] - legs["StageLength"]
+	legs["deviation_min"] = legs["duration_min"] - legs["StageDurationMin"]
+
+	street = legs[legs["mode"].isin(STREET_MODES)]
+	street = pd.concat([street, street.assign(mode="ALL_STREET")])
+	transit = legs[~legs["mode"].isin(STREET_MODES)]
+
+	binned = (
+		street.assign(tu_km_bin=pd.cut(street["StageLength"], DISTANCE_BINS_KM, right=False).astype(str))
+		.groupby(["mode", "tu_km_bin"], observed=True)
+		.agg(
+			n=("deviation_km", "count"),
+			tu_km_median=("StageLength", "median"),
+			median=("deviation_km", "median"),
+			robust_sd=("deviation_km", robust_sd),
+		)
+		.reset_index()
+		.sort_values(["mode", "tu_km_median"])
+	)
+
+	trip_spread = spread_table(trip, "deviation_min", "component")
+	transit_spread = spread_table(transit, "deviation_min", "mode")
+	street_spread = spread_table(street, "deviation_km", "mode")
+
+	# Weights implied by the spreads, relative to w_departure_min, next to the configured ones
+	sd_depart = trip_spread.set_index("component").loc["depart_deviation_min", "robust_sd"]
+	implied = pd.concat([
+		pd.DataFrame({
+			"weight": "w_arrival_min", "mode": "",
+			"robust_sd": trip_spread.set_index("component").loc["arrival_deviation_min", "robust_sd"],
+			"configured": weights["w_arrival_min"],
+		}, index=[0]),
+		transit_spread[["mode", "robust_sd"]].assign(weight="w_transit_min", configured=weights["w_transit_min"]),
+		street_spread[["mode", "robust_sd"]].assign(weight="w_street_mode_km", configured=weights["w_street_mode_km"]),
+	], ignore_index=True)
+	implied["implied"] = (sd_depart / implied["robust_sd"]) ** 2 * weights["w_departure_min"]
+	implied = implied[["weight", "mode", "robust_sd", "implied", "configured"]]
+
+	return {
+		"trip_times": trip_spread,
+		"transit_duration": transit_spread,
+		"street_distance": street_spread,
+		"street_distance_bins": binned,
+		"street_distance_fit": fit_distance_spread(binned),
+		"implied_weights": implied,
+		"large_time_deviations": large_deviations,
+	}
+
+
+def main(run_dir):
+	config = config_loader.get_config()
+	paths = config["paths"]
+	run_dir = Path(run_dir)
+	# The run's TU year, from <output_dir>/<year>/<run_id>
+	year_dir = run_dir.resolve().parent.name
+	if not year_dir.isdigit():
+		sys.exit(f"Expected <output_dir>/<year>/<run_id>, but the run's parent directory is '{year_dir}'")
+	year = int(year_dir)
+
+	if CONFIG_PATH == RUN_CONFIG:
+		print(f"Using the run's config: {CONFIG_PATH}", flush=True)
+	else:
+		print(f"No config.json in the run directory, using the current one: {CONFIG_PATH.resolve()}", flush=True)
+
+	# Run files first: they're small, so a wrong path or dropped share fails before the slow TU load
+	print(f"Reading run files from {run_dir}...", flush=True)
+	matches = pd.read_csv(run_dir / paths["rmse_based_matches_file"].name)
+	summaries = pd.read_excel(run_dir / paths["trip_matching_summaries_file"].name)
+
+	print(f"Loading TU data for {year} from {paths['data_dir']}...", flush=True)
+	_, _, tu_deltur, _ = load_TU_data.load_tu(
+		data_dir=str(paths["data_dir"]),
+		YEAR=year,
+		**{name: config["tu_files"][name] for name in
+		   ("session_file", "tur_file", "tur_secret_file", "deltur_file", "stations_file")},
+	)
+	# The run's own files were written by pandas, so match TurId's dtype to TU's
+	turid_dtype = tu_deltur["TurId"].dtype
+	matches = matches.astype({"TurId": turid_dtype})
+	summaries = summaries.astype({"TurId": turid_dtype})
+
+	print(f"Comparing {int((summaries['trip_found'] == 1).sum())} found trips...", flush=True)
+	tables = analyse(matches, summaries, tu_deltur, config["squared_error_weights"])
+
+	with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
+		for name, table in tables.items():
+			cut = f" (first {PRINT_ROWS} of {len(table)})" if len(table) > PRINT_ROWS else ""
+			print(f"\n{name}{cut}:\n{table.head(PRINT_ROWS).to_string(index=False)}")
+
+	out_path = run_dir / "rmse_residuals.xlsx"
+	with pd.ExcelWriter(out_path) as writer:
+		for name, table in tables.items():
+			table.to_excel(writer, sheet_name=name, index=False)
+	print(f"\nWritten to {out_path}")
+
+
+if __name__ == "__main__":
+	main(RUN_DIR)
