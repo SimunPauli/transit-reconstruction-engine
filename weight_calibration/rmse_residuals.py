@@ -41,6 +41,21 @@ MIN_BIN_LEGS = 20  # bins with fewer legs are left out of the c * d^p fit
 LARGE_DEVIATION_MIN = 60
 PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
 
+# Printed above each table. All deviations are OTP − TU.
+TABLE_DESCRIPTIONS = {
+	"trip_times": "Departure and arrival time deviation per trip (OTP − TU, min).",
+	"transit_duration": "Transit leg duration deviation per mode (OTP − TU, min).",
+	"street_distance": "Street leg distance deviation per mode (OTP − TU, km).",
+	"street_distance_bins": "Street leg distance deviation per mode and TU leg length bin (OTP − TU, km).\n"
+							"tu_StageLength is the bin's median TU leg length (km).",
+	"street_distance_fit": f"Fit of robust_sd_deviation_km = c_km * tu_StageLength^p per mode, over bins with "
+						   f">= {MIN_BIN_LEGS} legs.\np ≈ 0: one w_street_mode_km fits all lengths; p > 0: long legs dominate the score.",
+	"implied_weights": "Weights implied by the spreads, w = w_departure_min * (robust_sd_departure / robust_sd)²,\n"
+					   "next to the configured ones. Optimistic: the matches were picked with the configured weights.",
+	"large_time_deviations": f"Trips with departure or arrival off by more than {LARGE_DEVIATION_MIN} min "
+							 f"(OTP − TU), likely TU time errors.",
+}
+
 
 def robust_sd(values):
 	"""1.4826 * MAD: equals the sd for normal errors, but a few bad matches can't inflate it."""
@@ -49,23 +64,23 @@ def robust_sd(values):
 
 
 def spread_table(df, value_col, by):
-	return df.groupby(by, observed=True).agg(
-		n=(value_col, "count"),
-		median=(value_col, "median"),
-		robust_sd=(value_col, robust_sd),
-		sd=(value_col, "std"),
-		p90_abs=(value_col, lambda values: values.abs().quantile(0.9)),
-	).reset_index()
+	return df.groupby(by, observed=True).agg(**{
+		"n": (value_col, "count"),
+		f"median_{value_col}": (value_col, "median"),
+		f"robust_sd_{value_col}": (value_col, robust_sd),
+		f"sd_{value_col}": (value_col, "std"),
+		f"p90_abs_{value_col}": (value_col, lambda values: values.abs().quantile(0.9)),
+	}).reset_index()
 
 
 def fit_distance_spread(binned):
-	"""Weighted log-log least squares of robust_sd = c * tu_km_median^p per mode, over bins with enough legs."""
+	"""Weighted log-log least squares of robust_sd_deviation_km = c * tu_StageLength^p per mode, over bins with enough legs."""
 	rows = []
 	for mode, bins in binned.groupby("mode"):
-		bins = bins[(bins["n"] >= MIN_BIN_LEGS) & (bins["tu_km_median"] > 0) & (bins["robust_sd"] > 0)]
+		bins = bins[(bins["n"] >= MIN_BIN_LEGS) & (bins["tu_StageLength"] > 0) & (bins["robust_sd_deviation_km"] > 0)]
 		c, p = np.nan, np.nan
 		if len(bins) >= 2:
-			p, log_c = np.polyfit(np.log(bins["tu_km_median"]), np.log(bins["robust_sd"]), 1, w=np.sqrt(bins["n"]))
+			p, log_c = np.polyfit(np.log(bins["tu_StageLength"]), np.log(bins["robust_sd_deviation_km"]), 1, w=np.sqrt(bins["n"]))
 			c = np.exp(log_c)
 		rows.append({"mode": mode, "c_km": c, "p": p, "bins_used": len(bins)})
 	return pd.DataFrame(rows)
@@ -110,12 +125,12 @@ def analyse(matches, summaries, tu_deltur, weights):
 		.groupby(["mode", "tu_km_bin"], observed=True)
 		.agg(
 			n=("deviation_km", "count"),
-			tu_km_median=("StageLength", "median"),
-			median=("deviation_km", "median"),
-			robust_sd=("deviation_km", robust_sd),
+			tu_StageLength=("StageLength", "median"),
+			median_deviation_km=("deviation_km", "median"),
+			robust_sd_deviation_km=("deviation_km", robust_sd),
 		)
 		.reset_index()
-		.sort_values(["mode", "tu_km_median"])
+		.sort_values(["mode", "tu_StageLength"])
 	)
 
 	trip_spread = spread_table(trip, "deviation_min", "component")
@@ -123,18 +138,17 @@ def analyse(matches, summaries, tu_deltur, weights):
 	street_spread = spread_table(street, "deviation_km", "mode")
 
 	# Weights implied by the spreads, relative to w_departure_min, next to the configured ones
-	sd_depart = trip_spread.set_index("component").loc["depart_deviation_min", "robust_sd"]
+	trip_sd = trip_spread.set_index("component")["robust_sd_deviation_min"]
 	implied = pd.concat([
-		pd.DataFrame({
-			"weight": "w_arrival_min", "mode": "",
-			"robust_sd": trip_spread.set_index("component").loc["arrival_deviation_min", "robust_sd"],
-			"configured": weights["w_arrival_min"],
-		}, index=[0]),
-		transit_spread[["mode", "robust_sd"]].assign(weight="w_transit_min", configured=weights["w_transit_min"]),
-		street_spread[["mode", "robust_sd"]].assign(weight="w_street_mode_km", configured=weights["w_street_mode_km"]),
+		pd.DataFrame({"weight": "w_arrival_min", "mode": "", "robust_sd": trip_sd["arrival_deviation_min"], "unit": "min",
+					  "configured_weight": weights["w_arrival_min"]}, index=[0]),
+		transit_spread[["mode", "robust_sd_deviation_min"]].rename(columns={"robust_sd_deviation_min": "robust_sd"})
+			.assign(weight="w_transit_min", unit="min", configured_weight=weights["w_transit_min"]),
+		street_spread[["mode", "robust_sd_deviation_km"]].rename(columns={"robust_sd_deviation_km": "robust_sd"})
+			.assign(weight="w_street_mode_km", unit="km", configured_weight=weights["w_street_mode_km"]),
 	], ignore_index=True)
-	implied["implied"] = (sd_depart / implied["robust_sd"]) ** 2 * weights["w_departure_min"]
-	implied = implied[["weight", "mode", "robust_sd", "implied", "configured"]]
+	implied["implied_weight"] = (trip_sd["depart_deviation_min"] / implied["robust_sd"]) ** 2 * weights["w_departure_min"]
+	implied = implied[["weight", "mode", "robust_sd", "unit", "implied_weight", "configured_weight"]]
 
 	return {
 		"trip_times": trip_spread,
@@ -184,8 +198,8 @@ def main(run_dir):
 
 	with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
 		for name, table in tables.items():
-			cut = f" (first {PRINT_ROWS} of {len(table)})" if len(table) > PRINT_ROWS else ""
-			print(f"\n{name}{cut}:\n{table.head(PRINT_ROWS).to_string(index=False)}")
+			cut = f" (first {PRINT_ROWS} of {len(table)} rows)" if len(table) > PRINT_ROWS else ""
+			print(f"\n=== {name}{cut} ===\n{TABLE_DESCRIPTIONS[name]}\n\n{table.head(PRINT_ROWS).to_string(index=False)}")
 
 	out_path = run_dir / "rmse_residuals.xlsx"
 	with pd.ExcelWriter(out_path) as writer:
