@@ -15,8 +15,9 @@ From `tu_reconstruct_trips/`, pointing at a finished run directory:
 It reads the run's `rmse_based_matches_file` and `trip_matching_summaries_file`, and reloads the TU
 leg file to compare against. The TU year is taken from the run directory's `<year>`. The TU files,
 weights and other settings come from the `config.json` saved in the run directory; runs from before
-it was saved fall back to the current `config.json`, which must then match the run. No OTP server is
-needed.
+it was saved fall back to the current `config.json`, whose TU files and settings must then match the
+run. Their run weights are unknown, so `implied_weights`' `configured_weight` is left empty. No OTP
+server is needed.
 
 The tables are printed and written to `rmse_residuals.xlsx` in the run directory.
 

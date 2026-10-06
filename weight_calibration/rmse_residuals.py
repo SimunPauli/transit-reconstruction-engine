@@ -177,7 +177,8 @@ def main(run_dir):
 	if CONFIG_PATH == RUN_CONFIG:
 		print(f"Using the run's config: {CONFIG_PATH}", flush=True)
 	else:
-		print(f"No config.json in the run directory, using the current one: {CONFIG_PATH.resolve()}", flush=True)
+		print(f"No config.json in the run directory, using the current one: {CONFIG_PATH.resolve()}\n"
+			  f"configured_weight is left empty, as the run's weights are unknown.", flush=True)
 
 	# Run files first: they're small, so a wrong path or dropped share fails before the slow TU load
 	print(f"Reading run files from {run_dir}...", flush=True)
@@ -198,6 +199,9 @@ def main(run_dir):
 
 	print(f"Comparing {int((summaries['trip_found'] == 1).sum())} found trips...", flush=True)
 	tables = analyse(matches, summaries, tu_deltur, config["squared_error_weights"])
+	if CONFIG_PATH != RUN_CONFIG:
+		# The current config's weights aren't necessarily the ones the run was matched with
+		tables["implied_weights"]["configured_weight"] = np.nan
 
 	with pd.option_context("display.width", 200, "display.float_format", "{:.3f}".format):
 		for name, table in tables.items():
