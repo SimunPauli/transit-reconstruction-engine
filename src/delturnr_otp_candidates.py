@@ -63,12 +63,13 @@ def add_tu_delturnr_to_otp_candidates(
 			return True
 		# BUS route names are free-texted in TU, so respondents misspace them ('102 A'),
 		# drop the trailing letter ('150' for '150S') or miss a digit ('192' for '191').
-		# S_TRAIN comes from a survey dropdown, so it is never widened.
-		allow_missing_letter, allow_digit_shift = route_match_flags(route_match, mode)
+		# S_TRAIN comes from a survey dropdown, so it is only widened to its sibling line.
+		allow_missing_letter, allow_digit_shift, allow_sibling = route_match_flags(route_match, mode)
 		return route_names_match(
 			tu_route, otp_route,
 			allow_missing_letter=allow_missing_letter,
 			allow_digit_shift=allow_digit_shift,
+			allow_sibling=allow_sibling,
 		)
 
 	def _station_mismatch(tu_station_name, otp_gtfs_id, otp_stop_name, mode):

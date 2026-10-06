@@ -81,7 +81,8 @@ Create it based on the template below:
     "return_trip_summary": true,
     "print_deviation": true,
     "station_anchor_wait_min": 0,
-    "walk_car_absorb_max_km": 0.5
+    "walk_car_absorb_max_km": 0.5,
+    "s_train_sibling_lines": true
   },
   "reluctance_retries": {
     "transit": {
@@ -144,6 +145,7 @@ Create it based on the template below:
 | `matching.print_deviation` | Whether to print RMSE deviation details per trip |
 | `matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
 | `matching.walk_car_absorb_max_km` | A WALK leg shorter than this (km), adjacent to a CAR-family leg (e.g. walking to/from a parked car), is merged into that CAR leg before matching, so the CAR leg is correctly detected as the trip's access/egress mode instead of being hidden behind the short walk |
+| `matching.s_train_sibling_lines` | Whether to try the `sibling` route-match level, accepting the S-train line sharing the TU line's track (A↔E, B↔Bx, C↔H) before dropping the route name (see "Trip outcomes" below) |
 | `reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
 | `reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `reluctance_retries.transit.enabled` is true |
 | `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
@@ -277,15 +279,18 @@ with the TU route name progressively widened, stopping at the first level that m
 level used is recorded in the `route_match` column (empty for trips without a bus/S-train leg,
 and for trips not found):
 
-| `route_match` | Bus route accepted | Outcome |
+| `route_match` | Route accepted | Outcome |
 |---|---|---|
 | `exact` | As TU wrote it (`150`) | `trip_found` |
+| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_found` |
 | `letter` | + a missing letter suffix (`150` → `150S`) | `trip_found` |
 | `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_found` |
 | `ignored` | Any route — mode + leg order only | `trip_wrong_route` |
 
 Each level also accepts everything the previous ones did, so the correct legs of a multi-bus trip
-still match. `letter` and `digit` only widen bus routes (S-train comes from a survey dropdown), and
+still match. `letter` and `digit` only widen bus routes (S-train comes from a survey dropdown),
+`sibling` only S-train routes, since respondents mix up lines that share a track and alternate by
+time of day (e.g. on the Køge line, E runs on weekday daytimes and A in the evenings and at weekends), and
 a level that adds no real GTFS route over the previous one is skipped rather than re-queried.
 A `trip_wrong_route` trip is still written to `rmse_based_matches_file` — it's kept separate
 rather than dropped, because its route assignment is the part that's unverified, not the trip

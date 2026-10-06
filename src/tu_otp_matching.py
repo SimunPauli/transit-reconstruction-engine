@@ -450,8 +450,8 @@ def match_tu_trip_to_otp(
 	BUS/S_TRAIN route name as written; if that fails for a route-related reason (invalid route
 	name, or the route restriction narrowing the search down to nothing - see
 	ROUTE_RELATED_FAILURE_REASONS) and the trip actually has a BUS/S_TRAIN leg, retries at each
-	looser ROUTE_MATCH_LEVELS level in turn (missing letter, one digit moved by 1, route name
-	ignored) until one matches. A level whose route set is no wider than the previous one's is
+	looser ROUTE_MATCH_LEVELS level in turn (S-train sibling line, missing letter, one digit
+	moved by 1, route name ignored) until one matches. A level whose route set is no wider than the previous one's is
 	skipped, since it would repeat the same query. trip_summary["route_match"] records the level
 	used. A trip only found with the route ignored is reported as its own outcome -
 	trip_summary["trip_wrong_route"] == 1 rather than trip_summary["trip_found"] == 1 - since its

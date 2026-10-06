@@ -99,12 +99,25 @@ REASON_NO_BEST_MATCH = "no_best_match"
 REASON_CAR_LEG_NOT_SATISFIED = "car_leg_not_satisfied"
 
 #How strictly TU's BUS/S_TRAIN route names are enforced, tried in this order until a trip matches.
-#Each level also accepts everything the previous ones did; LETTER and DIGIT only widen BUS.
+#Each level also accepts everything the previous ones did; SIBLING only widens S_TRAIN,
+#LETTER and DIGIT only widen BUS.
 ROUTE_MATCH_EXACT = "exact"       # as TU wrote it
+ROUTE_MATCH_SIBLING = "sibling"   # + S-train line sharing its track ('A' -> 'E')
 ROUTE_MATCH_LETTER = "letter"     # + missing letter suffix ('150' -> '150S')
 ROUTE_MATCH_DIGIT = "digit"       # + one digit moved by 1 ('192' -> '191', '171' -> '161')
 ROUTE_MATCH_IGNORED = "ignored"   # route name dropped, mode + leg order only
-ROUTE_MATCH_LEVELS = (ROUTE_MATCH_EXACT, ROUTE_MATCH_LETTER, ROUTE_MATCH_DIGIT, ROUTE_MATCH_IGNORED)
+
+#Respondents mix up S-train lines sharing track. Keys/values are normalized names ('Bx' -> 'BX').
+S_TRAIN_SIBLING_LINES_ENABLED = config["matching"]["s_train_sibling_lines"]
+S_TRAIN_SIBLING_LINES = {"A": "E", "E": "A", "B": "BX", "BX": "B", "C": "H", "H": "C"}
+
+ROUTE_MATCH_LEVELS = (
+	ROUTE_MATCH_EXACT,
+	*([ROUTE_MATCH_SIBLING] if S_TRAIN_SIBLING_LINES_ENABLED else []),
+	ROUTE_MATCH_LETTER,
+	ROUTE_MATCH_DIGIT,
+	ROUTE_MATCH_IGNORED,
+)
 
 #Failure reasons that stem from the BUS/S_TRAIN route-name requirement itself (an invalid TU
 #route name, or the route restriction narrowing the OTP query/filter down to nothing) - these
