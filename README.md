@@ -551,11 +551,13 @@ where $m(l)$ is street or transit, selecting the `w_street_mode_*` or `w_transit
 weights, and $\Delta t_\text{dep}$ is measured against the TU departure plus the first
 transit leg's wait (OTP itineraries start with no wait before the first boarding).
 
-Trip duration is scored instead of arrival time because the two time errors are correlated:
-a respondent who rounds 8:05 to 8:00 shifts both departure and arrival. Scoring both would
-count that one error twice and favour a candidate that leaves on time but takes longer over
-one that is shifted but has the right duration. The duration term still covers waiting and
-transfer time, which no leg term does.
+Trip duration is scored instead of arrival time because TU's arrival is not reported on its
+own: it is derived from the departure plus all legs' durations and waits. Any departure error,
+such as a respondent rounding 8:05 to 8:00, is therefore carried into the arrival. Scoring both
+would count that one error twice and favour a candidate that leaves on time but takes longer
+over one that is shifted but has the right duration. Departure and trip duration are TU's two
+independent time inputs. The duration term still covers waiting and transfer time, which no
+leg term does.
 
 The itinerary with the lowest RMSE is selected as the reproduced trip.
 
