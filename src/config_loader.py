@@ -16,7 +16,7 @@ def load_config(config_path="config.json", create_output_dir=True):
 	if create_output_dir:
 		output_dir.mkdir(parents=True, exist_ok=True)
 		# Keep the run's settings with its output
-		shutil.copy(config_path, output_dir / "config.json")
+		shutil.copyfile(config_path, output_dir / "config.json")  # contents only: the share rejects chmod
 
 	config["paths"]["output_dir"] = output_dir
 	config["paths"]["log_file"] = output_dir / config["paths"]["log_file"]
