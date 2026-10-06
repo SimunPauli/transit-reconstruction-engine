@@ -46,9 +46,8 @@ TABLE_DESCRIPTIONS = {
 	"trip_times": "Departure and arrival time deviation per trip (OTP − TU, min).",
 	"transit_duration": "Transit leg duration deviation per mode (OTP − TU, min).",
 	"street_distance": "Street leg distance deviation per mode (OTP − TU, km).",
-	"street_distance_bins": "Street leg distance deviation per mode and TU leg length bin (OTP − TU, km).\n"
-							"tu_StageLength is the bin's median TU leg length (km).",
-	"street_distance_fit": f"Fit of robust_sd_deviation_km = c_km * tu_StageLength^p per mode, over bins with "
+	"street_distance_bins": "Street leg distance deviation per mode and TU leg length bin (OTP − TU, km).",
+	"street_distance_fit": f"Fit of robust_sd_deviation_km = c_km * median_tu_StageLength_km^p per mode, over bins with "
 						   f">= {MIN_BIN_LEGS} legs.\np ≈ 0: one w_street_mode_km fits all lengths; p > 0: long legs dominate the score.",
 	"implied_weights": "Weights implied by the spreads, w = w_departure_min * (robust_sd_departure / robust_sd)²,\n"
 					   "next to the configured ones. Optimistic: the matches were picked with the configured weights.",
@@ -74,13 +73,13 @@ def spread_table(df, value_col, by):
 
 
 def fit_distance_spread(binned):
-	"""Weighted log-log least squares of robust_sd_deviation_km = c * tu_StageLength^p per mode, over bins with enough legs."""
+	"""Weighted log-log least squares of robust_sd_deviation_km = c * median_tu_StageLength_km^p per mode, over bins with enough legs."""
 	rows = []
 	for mode, bins in binned.groupby("mode"):
-		bins = bins[(bins["n"] >= MIN_BIN_LEGS) & (bins["tu_StageLength"] > 0) & (bins["robust_sd_deviation_km"] > 0)]
+		bins = bins[(bins["n"] >= MIN_BIN_LEGS) & (bins["median_tu_StageLength_km"] > 0)]
 		c, p = np.nan, np.nan
 		if len(bins) >= 2:
-			p, log_c = np.polyfit(np.log(bins["tu_StageLength"]), np.log(bins["robust_sd_deviation_km"]), 1, w=np.sqrt(bins["n"]))
+			p, log_c = np.polyfit(np.log(bins["median_tu_StageLength_km"]), np.log(bins["robust_sd_deviation_km"]), 1, w=np.sqrt(bins["n"]))
 			c = np.exp(log_c)
 		rows.append({"mode": mode, "c_km": c, "p": p, "bins_used": len(bins)})
 	return pd.DataFrame(rows)
@@ -125,12 +124,12 @@ def analyse(matches, summaries, tu_deltur, weights):
 		.groupby(["mode", "tu_km_bin"], observed=True)
 		.agg(
 			n=("deviation_km", "count"),
-			tu_StageLength=("StageLength", "median"),
+			median_tu_StageLength_km=("StageLength", "median"),
 			median_deviation_km=("deviation_km", "median"),
 			robust_sd_deviation_km=("deviation_km", robust_sd),
 		)
 		.reset_index()
-		.sort_values(["mode", "tu_StageLength"])
+		.sort_values(["mode", "median_tu_StageLength_km"])
 	)
 
 	trip_spread = spread_table(trip, "deviation_min", "component")
