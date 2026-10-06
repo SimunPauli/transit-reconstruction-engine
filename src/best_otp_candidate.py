@@ -12,7 +12,7 @@ def find_best_match_by_rmse(
 
 	Calculates weighted squared differences for:
 	- Departure time (minutes)
-	- Arrival time (minutes)
+	- Trip duration (minutes): arrival minus departure deviation, so a shifted clock time isn't counted twice
 	- Duration per leg (minutes) - split by street_mode vs transit
 	- Distance per leg (km) - split by street_mode vs transit
 
@@ -21,7 +21,7 @@ def find_best_match_by_rmse(
 	config = get_config()
 	config_weights = config["squared_error_weights"]
 	w_departure_min   = config_weights["w_departure_min"]
-	w_arrival_min     = config_weights["w_arrival_min"]
+	w_trip_duration_min = config_weights["w_trip_duration_min"]
 	w_street_mode_min = config_weights["w_street_mode_min"]
 	w_transit_min     = config_weights["w_transit_min"]
 	w_street_mode_km  = config_weights["w_street_mode_km"]
@@ -92,13 +92,14 @@ def find_best_match_by_rmse(
 	# Trip-level time deviations
 	trips["depart_deviation_min"]  = (trips["start_trip"] - expected_depart).dt.total_seconds() / 60
 	trips["arrival_deviation_min"] = (trips["end_trip"]   - expected_arrival).dt.total_seconds() / 60
+	trips["trip_duration_deviation_min"] = trips["arrival_deviation_min"] - trips["depart_deviation_min"]
 
-	trips["weighted_sq_deviation_depart"]  = w_departure_min * (trips["depart_deviation_min"] ** 2)
-	trips["weighted_sq_deviation_arrival"] = w_arrival_min   * (trips["arrival_deviation_min"] ** 2)
+	trips["weighted_sq_deviation_depart"]        = w_departure_min     * (trips["depart_deviation_min"] ** 2)
+	trips["weighted_sq_deviation_trip_duration"] = w_trip_duration_min * (trips["trip_duration_deviation_min"] ** 2)
 
 	trips["sum_weighted_sq_diff"] = (
 		trips["weighted_sq_deviation_depart"]    +
-		trips["weighted_sq_deviation_arrival"]   +
+		trips["weighted_sq_deviation_trip_duration"] +
 		trips["weighted_sq_deviation_duration"]  +
 		trips["weighted_sq_deviation_distance"]
 	)

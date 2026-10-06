@@ -9,7 +9,7 @@ This project reproduces public transport trips from the Danish National Travel S
 and GTFS data.
 
 For each trip in TU, the tool queries OTP for candidate itineraries and selects the
-best match using a weighted RMSE score across departure time, arrival time, leg
+best match using a weighted RMSE score across departure time, trip duration, leg
 duration, and leg distance.
 
 The GTFS data is updated about every 10 days, and is available to DTU back to 2015 (with 
@@ -122,7 +122,7 @@ Create it based on the template below:
   },
   "squared_error_weights": {
     "w_departure_min": 1.0,
-    "w_arrival_min": 1.0,
+    "w_trip_duration_min": 1.0,
     "w_street_mode_min": 0.0,
     "w_street_mode_km": 20.0,
     "w_transit_min": 1.0,
@@ -339,7 +339,7 @@ be found in `log_file` with a plain text search.
      from TU are present, in the correct order.
    - Each OTP leg is aligned to the corresponding TU leg.
    - The best itinerary is selected by minimising a weighted RMSE across departure
-     time, arrival time, leg duration, and leg distance.
+     time, trip duration, leg duration, and leg distance.
 4. **Results are exported** to Excel/csv in `paths.output_dir`.
 
 
@@ -523,7 +523,7 @@ each OTP itinerary against the TU record across four dimensions:
 | Dimension | Compared at |
 |-----------|-------------|
 | Departure time | Trip level (minutes deviation) |
-| Arrival time | Trip level (minutes deviation) |
+| Trip duration | Trip level (minutes deviation of arrival − departure) |
 | Transit duration | Per matched transit leg |
 | Street distance | Per matched street leg |
 
@@ -533,13 +533,13 @@ treated as unknown. The current
 weights set the street-duration and transit-distance terms to `0`, because
 respondents’ reported transit distances are considered unreliable, and because
 sum of duration on street and transit legs is already indirectly captured by the
-departure- and arrival-time terms. The WRSS is:
+trip duration term. The WRSS is:
 
 $$
 \text{WRSS} =
   \sqrt{
     w_\text{dep} \cdot \Delta t_\text{dep}^2 +
-    w_\text{arr} \cdot \Delta t_\text{arr}^2 +
+    w_\text{trip} \cdot (\Delta t_\text{arr} - \Delta t_\text{dep})^2 +
     \sum_{\text{matched legs } l} \left(
       w_{\text{min},m(l)} \cdot \Delta \text{dur}_l^2 +
       w_{\text{km},m(l)} \cdot \Delta \text{dist}_l^2
@@ -550,6 +550,12 @@ $$
 where $m(l)$ is street or transit, selecting the `w_street_mode_*` or `w_transit_*`
 weights, and $\Delta t_\text{dep}$ is measured against the TU departure plus the first
 transit leg's wait (OTP itineraries start with no wait before the first boarding).
+
+Trip duration is scored instead of arrival time because the two time errors are correlated:
+a respondent who rounds 8:05 to 8:00 shifts both departure and arrival. Scoring both would
+count that one error twice and favour a candidate that leaves on time but takes longer over
+one that is shifted but has the right duration. The duration term still covers waiting and
+transfer time, which no leg term does.
 
 The itinerary with the lowest RMSE is selected as the reproduced trip.
 

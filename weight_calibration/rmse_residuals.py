@@ -43,7 +43,8 @@ PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
 
 # Printed above each table. All deviations are OTP − TU.
 TABLE_DESCRIPTIONS = {
-	"trip_times": "Departure and arrival time deviation per trip (OTP − TU, min).",
+	"trip_times": "Departure, arrival and trip duration (arrival − departure) deviation per trip (OTP − TU, min).\n"
+				  "Trip duration is scored, not arrival. A trip duration sd well below arrival's means a shared clock shift.",
 	"transit_duration": "Transit leg duration deviation per mode (OTP − TU, min).",
 	"street_distance": "Street leg distance deviation per mode (OTP − TU, km).",
 	"street_distance_bins": "Street leg distance deviation per mode and TU leg length bin (OTP − TU, km).",
@@ -89,8 +90,10 @@ def analyse(matches, summaries, tu_deltur, weights):
 	found_ids = summaries.loc[summaries["trip_found"] == 1, "TurId"]
 
 	found = summaries[summaries["TurId"].isin(found_ids)]
+	# Scored instead of arrival, so a shifted clock time isn't counted twice
+	found = found.assign(trip_duration_deviation_min=found["arrival_deviation_min"] - found["depart_deviation_min"])
 	time_cols = ["depart_deviation_min", "arrival_deviation_min"]
-	trip = found.melt(value_vars=time_cols, var_name="component", value_name="deviation_min")
+	trip = found.melt(value_vars=[*time_cols, "trip_duration_deviation_min"], var_name="component", value_name="deviation_min")
 
 	max_abs_deviation = found[time_cols].abs().max(axis=1)
 	large_deviations = (
@@ -139,8 +142,9 @@ def analyse(matches, summaries, tu_deltur, weights):
 	# Weights implied by the spreads, relative to w_departure_min, next to the configured ones
 	trip_sd = trip_spread.set_index("component")["robust_sd_deviation_min"]
 	implied = pd.concat([
-		pd.DataFrame({"weight": "w_arrival_min", "mode": "", "robust_sd": trip_sd["arrival_deviation_min"], "unit": "min",
-					  "configured_weight": weights["w_arrival_min"]}, index=[0]),
+		# Runs from before trip duration replaced arrival have no configured w_trip_duration_min
+		pd.DataFrame({"weight": "w_trip_duration_min", "mode": "", "robust_sd": trip_sd["trip_duration_deviation_min"],
+					  "unit": "min", "configured_weight": weights.get("w_trip_duration_min", np.nan)}, index=[0]),
 		transit_spread[["mode", "robust_sd_deviation_min"]].rename(columns={"robust_sd_deviation_min": "robust_sd"})
 			.assign(weight="w_transit_min", unit="min", configured_weight=weights["w_transit_min"]),
 		street_spread[["mode", "robust_sd_deviation_km"]].rename(columns={"robust_sd_deviation_km": "robust_sd"})

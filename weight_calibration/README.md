@@ -77,7 +77,7 @@ pools all street modes.
 
 | Sheet | Contents |
 |---|---|
-| `trip_times` | Spread of departure and arrival deviations (min) |
+| `trip_times` | Spread of departure, arrival and trip duration (arrival − departure) deviations (min) |
 | `transit_duration` | Spread of transit leg duration deviations (min), per mode |
 | `street_distance` | Spread of street leg distance deviations (km), per mode |
 | `street_distance_bins` | Street distance spread per mode and TU distance bin |
@@ -85,7 +85,7 @@ pools all street modes.
 | `implied_weights` | Weights implied by the spreads, next to the configured ones |
 | `large_time_deviations` | Trips with departure or arrival off by more than 60 min, likely TU time errors |
 
-Only `w_arrival_min`, `w_transit_min` and `w_street_mode_km` get implied values; `w_street_mode_min`
+Only `w_trip_duration_min`, `w_transit_min` and `w_street_mode_km` get implied values; `w_street_mode_min`
 and `w_transit_km` are not estimated.
 
 ## Limitations
