@@ -100,3 +100,28 @@ current weights, so the residuals are smaller than the true noise. Components wi
 shrunk most, which pulls the implied weights towards the configured ones. Use them as a check on
 direction and rough size, not as exact values; re-running with the implied weights and comparing
 shows whether they settle.
+
+## Comparing two runs
+
+The residuals can't show whether different weights pick better itineraries, only that they pick
+different ones. `compare_runs.py` lists which trips changed, e.g. to hand-check a sample:
+
+```bash
+.venv/bin/python weight_calibration/compare_runs.py <run_dir_a> <run_dir_b>
+```
+
+Each trip's transit legs are joined into two signatures and compared per TurId. Street legs are left
+out, as with the same graph they follow from the transit legs.
+
+| Change | Meaning |
+|---|---|
+| `route/transfer` | Different mode, route, or boarding/alighting stop on some leg |
+| `departure only` | Same route and stops, different train number or leg times |
+| `unchanged` | Same itinerary |
+| `status change` | Different outcome or route match level, or the trip is in one run only |
+
+The first three count only trips found (`trip_found`) in both runs. Status is decided before the
+weights rank the candidates, so between runs that differ only in weights it should be 0; otherwise
+something else differed, such as OTP timeouts or the config. Written to `compare_runs.xlsx` in
+`run_dir_b`, with sheets `summary`, `changed_trips` (both runs' signatures and RMSE components) and
+`status_changes`.
