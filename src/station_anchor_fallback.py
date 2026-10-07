@@ -254,7 +254,7 @@ def compute_anchor_split_segments(tu_deltur_sub, station_lookup):
 
 def stitch_segment_chains(chains, direct_leg_cache, wait_min=0):
 	"""
-	Combine every surviving chain built by tu_otp_matching._try_split_station_anchored_fallback
+	Combine every surviving chain built by station_anchor_search.try_split_station_anchored_fallback
 	into one stitched itinerary DataFrame, assigning each chain a fresh, contiguous
 	iteration_id. Generalizes stitch_candidates (which hardcodes exactly 1 access leg + 1
 	transit_df + 1 egress leg) to an arbitrary ordered list of segment parts, mixing "direct"
@@ -263,7 +263,7 @@ def stitch_segment_chains(chains, direct_leg_cache, wait_min=0):
 	Each chain is {"parts": [(kind, segment_index, leg_df_or_None), ...], ...} in left-to-right
 	segment order, where kind is "transit" (leg_df holds that segment's own OTP itinerary,
 	already absolute-correct - it was queried seeded at its actual predicted departure time,
-	see _try_split_station_anchored_fallback) or "direct" (leg_df is None; the segment's
+	see try_split_station_anchored_fallback) or "direct" (leg_df is None; the segment's
 	single cached itinerary is looked up in direct_leg_cache by segment_index instead, since
 	street-mode travel time doesn't depend on time of day and was only queried once).
 

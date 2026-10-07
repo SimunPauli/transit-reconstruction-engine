@@ -1,0 +1,301 @@
+import pandas as pd
+from itertools import combinations
+from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
+from .otp_client import load_all_candidates
+from .otp_utils import (
+	resolve_route_short_names,
+	get_via_stops,
+	drop_via_stations,
+	filter_candidates_by_requirements,
+)
+from .constant import (
+	REASON_NO_OTP_CANDIDATES,
+	REASON_NO_MATCHING_LEG_SEQUENCE,
+	ROUTE_MATCH_EXACT,
+	ROUTE_MATCH_IGNORED,
+)
+
+
+def resolve_segment_search_params(
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		otp_mode_routes_cache,
+		otp_route_name_index,
+		exclude_via_stopids=None,
+		route_match=ROUTE_MATCH_EXACT,
+):
+	"""
+	Derives one OTP search's route/mode/via-stop parameters from a tu_deltur_sub - shared by
+	_match_once (the whole trip) and _load_and_align_segment_candidates (one anchor-split
+	segment), so this resolution logic lives in exactly one place.
+
+	exclude_via_stopids drops the vias at the given stop IDs' stations - used by segment
+	queries to exclude their own origin/destination boundary stops, which are already
+	the query's origin/destination override rather than a via constraint.
+
+	Returns (modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
+	route_short_name_for_loading, route_name_groups_for_search, via_stopids).
+	"""
+	route_names, route_names_ext, modes_json, modes_list, route_name_groups = resolve_route_short_names(
+		tu_deltur_sub, otp_mode_routes_cache, otp_route_name_index, route_match=route_match
+	)
+
+	is_bus_s_train = any(mode in ["BUS", "S_TRAIN"] for mode in modes_list) #only BUS and S_TRAIN have stated route names
+	is_rail_tram_subway_ferry = any(mode in ["RAIL", "SUBWAY", "TRAM", "FERRY"] for mode in modes_list)
+
+	if route_match == ROUTE_MATCH_IGNORED:
+		# Drop OTP's own routeShortNames include-filter entirely
+		route_short_name_for_loading = None
+		route_name_groups_for_search = []
+	elif is_bus_s_train and is_rail_tram_subway_ferry:
+		route_short_name_for_loading = route_names_ext
+		route_name_groups_for_search = route_name_groups
+	elif is_bus_s_train:
+		route_short_name_for_loading = route_names
+		route_name_groups_for_search = route_name_groups
+	else:
+		route_short_name_for_loading = None
+		route_name_groups_for_search = route_name_groups
+
+	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any(): #Station only stated for RAIL, S_TRAIN and SUBWAY
+		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
+	else:
+		via_stopids = None
+	if exclude_via_stopids:
+		via_stopids = drop_via_stations(via_stopids, exclude_via_stopids)
+
+	return (
+		modes_json, modes_list, is_bus_s_train, route_names, route_names_ext,
+		route_short_name_for_loading, route_name_groups_for_search, via_stopids,
+	)
+
+
+def _build_reluctance_attempts(
+		modes_list,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.8, 0.75, 0.5),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(2.5, 3, 4)
+):
+	"""
+	Builds the ordered sequence of (transit_reluctances, walk_reluctance_override) attempts
+	tried after the baseline query finds no candidate. transit_reluctances lowers the cost of
+	specific transit modes, surfacing routes OTP's search ranked as too expensive to return.
+	walk_reluctance_override raises the cost of walking, countering OTP preferring a longer
+	walk to a "better" stop/route over the shorter walk to the one the respondent actually
+	used (a behavior TU respondents often don't follow). Each element of the returned list is
+	(transit_reluctances: dict | None, walk_reluctance: float | None); None means "use the
+	caller's baseline value for this attempt".
+	"""
+	attempts = [(None, None)]
+
+	if walk_retry_enabled:
+		for walk_reluctance in walk_reluctance_sequence:
+			attempts.append((None, walk_reluctance))
+
+	if transit_retry_enabled:
+		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
+		tu_transit_modes = [
+			mode
+			for mode in dict.fromkeys(modes_list)
+			if mode in transit_modes
+		]
+
+		for reluctance in transit_reluctance_sequence:
+			for mode in tu_transit_modes:
+				attempts.append(({mode: reluctance}, None))
+
+		for reluctance in transit_reluctance_sequence:
+			for n_modes in range(2, len(tu_transit_modes) + 1):
+				for modes in combinations(tu_transit_modes, n_modes):
+					attempts.append(({mode: reluctance for mode in modes}, None))
+
+	return attempts
+
+
+def align_and_filter_candidates(
+		otp_candidates_df,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		route_name_groups,
+		modes_list,
+		tur_id,
+		route_match=ROUTE_MATCH_EXACT
+):
+	alignment_diagnostics = []
+	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		bike_stage_modes=(2, 8),
+		diagnostics=alignment_diagnostics,
+		route_match=route_match
+	)
+
+	filtered_df, reason = filter_candidates_by_requirements(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		route_name_groups=route_name_groups,
+		modes_list=modes_list,
+		tur_id=tur_id
+	)
+
+	# no_matching_leg_sequence means the route and mode filters both passed, i.e. OTP
+	# returned itineraries with the modes and routes TU recorded and alignment still
+	# rejected every one of them. On its own that reason cannot distinguish a bad
+	# station mapping from a genuinely absent leg, so spell out where alignment stopped.
+	if reason == REASON_NO_MATCHING_LEG_SEQUENCE:
+		summary = summarize_alignment_diagnostics(alignment_diagnostics)
+		if summary:
+			print(summary)
+
+	return filtered_df, reason
+
+
+def _load_add_and_filter_candidates(
+		tu_tur_row,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		modes_json,
+		route_name_groups,
+		route_short_name_for_loading,
+		modes_list,
+		via_stopids,
+		walk_reluctance,
+		car_reluctance,
+		search_window,
+		max_itinerary_candidates,
+		otp_url,
+		request_timeout,
+		print_query,
+		transit_reluctances=None,
+		skip_alignment=False,
+		origin_location_override=None,
+		destination_location_override=None,
+		depart_dt_str_override=None,
+		depart_dt_override=None,
+		access_mode_override=None,
+		egress_mode_override=None,
+		route_match=ROUTE_MATCH_EXACT,
+		debug_profile="LIST_ALL",
+):
+	otp_candidates_df = load_all_candidates(
+		tu_tur_row=tu_tur_row,
+		tu_deltur_sub=tu_deltur_sub,
+		modes_json=modes_json,
+		route_short_name=route_short_name_for_loading,
+		via_stopids=via_stopids,
+		walk_reluctance=walk_reluctance,
+		car_reluctance=car_reluctance,
+		transit_reluctances=transit_reluctances,
+		search_window=search_window,
+		max_itinerary_candidates=max_itinerary_candidates,
+		otp_url=otp_url,
+		print_query=print_query,
+		request_timeout=request_timeout,
+		origin_location_override=origin_location_override,
+		destination_location_override=destination_location_override,
+		depart_dt_str_override=depart_dt_str_override,
+		depart_dt_override=depart_dt_override,
+		access_mode_override=access_mode_override,
+		egress_mode_override=egress_mode_override,
+		debug_profile=debug_profile,
+	)
+
+	if otp_candidates_df.empty:
+		return otp_candidates_df, REASON_NO_OTP_CANDIDATES
+
+	if skip_alignment:
+		return otp_candidates_df, ""
+
+	return align_and_filter_candidates(
+		otp_candidates_df=otp_candidates_df,
+		tu_deltur_sub=tu_deltur_sub,
+		tu_gtfs_station_df=tu_gtfs_station_df,
+		route_name_groups=route_name_groups,
+		modes_list=modes_list,
+		tur_id=tu_tur_row["TurId"],
+		route_match=route_match
+	)
+
+
+def load_candidates_with_reluctance_retries(
+		tu_tur_row,
+		tu_deltur_sub,
+		tu_gtfs_station_df,
+		modes_json,
+		route_name_groups,
+		route_short_name_for_loading,
+		modes_list,
+		via_stopids,
+		walk_reluctance,
+		car_reluctance,
+		search_window,
+		max_itinerary_candidates,
+		otp_url,
+		request_timeout,
+		print_query,
+		transit_retry_enabled=True,
+		transit_reluctance_sequence=(0.8, 0.75, 0.5),
+		walk_retry_enabled=True,
+		walk_reluctance_sequence=(2.5, 3, 4),
+		skip_alignment=False,
+		origin_location_override=None,
+		destination_location_override=None,
+		depart_dt_str_override=None,
+		depart_dt_override=None,
+		access_mode_override=None,
+		egress_mode_override=None,
+		route_match=ROUTE_MATCH_EXACT,
+		debug_profile="LIST_ALL"
+):
+	last_msg = ""
+
+	reluctance_attempts = _build_reluctance_attempts(
+		modes_list,
+		transit_retry_enabled=transit_retry_enabled,
+		transit_reluctance_sequence=transit_reluctance_sequence,
+		walk_retry_enabled=walk_retry_enabled,
+		walk_reluctance_sequence=walk_reluctance_sequence
+	)
+
+	for transit_reluctances, walk_reluctance_override in reluctance_attempts:
+		if transit_reluctances:
+			print(f"Retrying with transit reluctances: {transit_reluctances}")
+		if walk_reluctance_override is not None:
+			print(f"Retrying with walk_reluctance: {walk_reluctance_override}")
+
+		otp_candidates_df, msg_filter = _load_add_and_filter_candidates(
+			tu_tur_row=tu_tur_row,
+			tu_deltur_sub=tu_deltur_sub,
+			tu_gtfs_station_df=tu_gtfs_station_df,
+			modes_json=modes_json,
+			route_name_groups=route_name_groups,
+			route_short_name_for_loading=route_short_name_for_loading,
+			modes_list=modes_list,
+			via_stopids=via_stopids,
+			walk_reluctance=walk_reluctance if walk_reluctance_override is None else walk_reluctance_override,
+			car_reluctance=car_reluctance,
+			search_window=search_window,
+			max_itinerary_candidates=max_itinerary_candidates,
+			otp_url=otp_url,
+			request_timeout=request_timeout,
+			print_query=print_query,
+			transit_reluctances=transit_reluctances,
+			skip_alignment=skip_alignment,
+			origin_location_override=origin_location_override,
+			destination_location_override=destination_location_override,
+			depart_dt_str_override=depart_dt_str_override,
+			depart_dt_override=depart_dt_override,
+			access_mode_override=access_mode_override,
+			egress_mode_override=egress_mode_override,
+			route_match=route_match,
+			debug_profile=debug_profile,
+		)
+
+		if not otp_candidates_df.empty:
+			return otp_candidates_df, ""
+
+		last_msg = msg_filter
+
+	return pd.DataFrame(), last_msg
