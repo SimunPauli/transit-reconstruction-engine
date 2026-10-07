@@ -275,12 +275,14 @@ columns in `trip_matching_summaries_file` and counted in `summary_stats_file`'s 
 
 | Column | Meaning |
 |---|---|
-| `trip_found` | Matched, with every route name TU recorded for its bus/S-train legs present in the itinerary |
-| `trip_wrong_route` | Matched only after the route-name filter was dropped — the itinerary uses the right modes in the right order, but not necessarily the routes TU recorded |
+| `trip_found` | Matched, with every route name TU recorded for its bus/S-train legs present in the itinerary as written |
+| `trip_wrong_route` | Matched only after the route-name filter was widened (`route_match` other than `exact`) — the itinerary uses the right modes in the right order, but not exactly the routes TU recorded |
 | `trip_not_found` | No itinerary matched; see `failure_reason` |
 
 When a trip with a bus/S-train leg fails for a route-related reason (`invalid_route_name`,
-`no_required_routes`, `no_otp_candidates`, or their `anchored_` variants), the search is re-run
+`no_required_routes`, `no_otp_candidates`, their `anchored_` variants, or
+`anchored_no_matching_leg_sequence` — a route that doesn't serve an anchor station makes OTP
+board it elsewhere), the search is re-run
 with the TU route name progressively widened, stopping at the first level that matches. The
 level used is recorded in the `route_match` column (empty for trips without a bus/S-train leg,
 and for trips not found):
@@ -288,9 +290,9 @@ and for trips not found):
 | `route_match` | Route accepted | Outcome |
 |---|---|---|
 | `exact` | As TU wrote it (`150`) | `trip_found` |
-| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_found` |
-| `letter` | + a missing letter suffix (`150` → `150S`) | `trip_found` |
-| `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_found` |
+| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_wrong_route` |
+| `letter` | + a missing letter suffix (`150` → `150S`) | `trip_wrong_route` |
+| `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_wrong_route` |
 | `ignored` | Any route — mode + leg order only | `trip_wrong_route` |
 
 Each level also accepts everything the previous ones did, so the correct legs of a multi-bus trip
