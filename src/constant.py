@@ -121,13 +121,15 @@ ROUTE_MATCH_LEVELS = (
 
 #Failure reasons that stem from the BUS/S_TRAIN route-name requirement itself (an invalid TU
 #route name, or the route restriction narrowing the OTP query/filter down to nothing) - these
-#are the cases worth retrying with the route name ignored. Other reasons (bad leg sequence, car
-#leg not satisfied, etc.) aren't route-caused, so retrying without a route restriction would just
-#repeat the same query and fail again.
+#are the cases worth retrying with the route name ignored. An anchored leg-sequence failure counts
+#too: if the TU route doesn't serve an anchor station, OTP boards it elsewhere ('C' skipping Islev).
+#Other reasons (car leg not satisfied, etc.) aren't route-caused, so retrying without a route
+#restriction would just repeat the same query and fail again.
 ROUTE_RELATED_FAILURE_REASONS = {
 	REASON_INVALID_ROUTE_NAME,
 	REASON_NO_REQUIRED_ROUTES,
 	REASON_NO_OTP_CANDIDATES,
 	f"anchored_{REASON_NO_REQUIRED_ROUTES}",
 	f"anchored_{REASON_NO_OTP_CANDIDATES}",
+	f"anchored_{REASON_NO_MATCHING_LEG_SEQUENCE}",
 }
