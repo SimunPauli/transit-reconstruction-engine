@@ -125,7 +125,13 @@ Create it based on the template below:
     "w_departure_min": 1.0,
     "w_trip_duration_min": 1.0,
     "w_street_mode_min": 0.0,
-    "w_street_mode_km": 20.0,
+    "w_street_mode_km_by_length": [
+      {"below_km": 0.5, "w": 1800.0},
+      {"below_km": 1, "w": 800.0},
+      {"below_km": 2, "w": 200.0},
+      {"below_km": 5, "w": 60.0},
+      {"below_km": null, "w": 10.0}
+    ],
     "w_transit_min": 1.0,
     "w_transit_km": 0.0
   },
@@ -161,7 +167,7 @@ Create it based on the template below:
 | `paths.map_file` | Output file name for optional map visualisation |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
 | `station_matching.station_name_threshold` | Minimum name-similarity score (0–1, rapidfuzz WRatio) for a station name match; stations with no candidate above this are left unmatched for that mode rather than guessed by distance |
-| `squared_error_weights` | Weights applied to each component of the RMSE score |
+| `squared_error_weights` | Weights applied to each component of the RMSE score; street distance per TU leg length bin (see "Selecting the best match — weighted RMSE") |
 | `walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
 
 ---
@@ -547,7 +553,7 @@ $$
     w_\text{trip} \cdot (\Delta t_\text{arr} - \Delta t_\text{dep})^2 +
     \sum_{\text{matched legs } l} \left(
       w_{\text{min},m(l)} \cdot \Delta \text{dur}_l^2 +
-      w_{\text{km},m(l)} \cdot \Delta \text{dist}_l^2
+      w_{\text{km},m(l)}(d_l) \cdot \Delta \text{dist}_l^2
     \right)
   }
 $$
@@ -555,6 +561,11 @@ $$
 where $m(l)$ is street or transit, selecting the `w_street_mode_*` or `w_transit_*`
 weights, and $\Delta t_\text{dep}$ is measured against the TU departure plus the first
 transit leg's wait (OTP itineraries start with no wait before the first boarding).
+
+The street distance weight depends on the leg's TU length $d_l$, set per length bin in
+`w_street_mode_km_by_length`: each bin covers TU lengths below its `below_km` (`null`: no
+limit). The deviation grows with leg length, so a single weight would let long legs dominate
+the score. TU's length is used, not OTP's, so every candidate gets the same weight for a leg.
 
 Trip duration is scored instead of arrival time because TU's arrival is not reported on its
 own: it is derived from the departure plus all legs' durations and waits. Any departure error,

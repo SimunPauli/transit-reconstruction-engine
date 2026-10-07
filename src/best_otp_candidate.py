@@ -3,6 +3,11 @@ import numpy as np
 from .config_loader import get_config
 from .constant import STREET_MODES, TRANSIT_STAGE_MODES
 
+def street_length_bin(tu_km, length_bins):
+	"""Index of each TU leg length's bin in w_street_mode_km_by_length. A bin holds lengths below its below_km (null: no limit)."""
+	edges = [0, *[np.inf if length_bin["below_km"] is None else length_bin["below_km"] for length_bin in length_bins]]
+	return pd.cut(tu_km, edges, right=False, labels=False)
+
 def find_best_match_by_rmse(
 		tu_tur_row,
 		tu_deltur_sub,
@@ -14,7 +19,7 @@ def find_best_match_by_rmse(
 	- Departure time (minutes)
 	- Trip duration (minutes): arrival minus departure deviation, so a shifted clock time isn't counted twice
 	- Duration per leg (minutes) - split by street_mode vs transit
-	- Distance per leg (km) - split by street_mode vs transit
+	- Distance per leg (km) - split by street_mode vs transit; street weight per TU leg length bin
 
 	Parameters "w_" are weights for each of the metrics.
 	"""
@@ -24,7 +29,7 @@ def find_best_match_by_rmse(
 	w_trip_duration_min = config_weights["w_trip_duration_min"]
 	w_street_mode_min = config_weights["w_street_mode_min"]
 	w_transit_min     = config_weights["w_transit_min"]
-	w_street_mode_km  = config_weights["w_street_mode_km"]
+	street_km_length_bins = config_weights["w_street_mode_km_by_length"]
 	w_transit_km      = config_weights["w_transit_km"]
 
 	expected_depart  = tu_tur_row["depart_dt"]
@@ -57,12 +62,16 @@ def find_best_match_by_rmse(
 	street_mode_mask = legs["mode"].isin(STREET_MODES) & matched_mask
 	transit_mask     = ~legs["mode"].isin(STREET_MODES) & matched_mask
 
+	# Street distance errors grow with leg length, so the weight is set per TU length bin
+	w_street_km_by_bin = dict(enumerate(length_bin["w"] for length_bin in street_km_length_bins))
+	legs["w_street_mode_km"] = street_length_bin(legs["tu_distance_km"], street_km_length_bins).map(w_street_km_by_bin).to_numpy()
+
 	# Weighted squared differences — 0 for unmatched legs (no penalty for extra OTP legs)
 	legs["weighted_sq_deviation_duration"] = 0.0
 	legs["weighted_sq_deviation_distance"] = 0.0
 
 	for mask, w_min, w_km in [
-		(street_mode_mask, w_street_mode_min, w_street_mode_km),
+		(street_mode_mask, w_street_mode_min, legs.loc[street_mode_mask, "w_street_mode_km"]),
 		(transit_mask,     w_transit_min,     w_transit_km),
 	]:
 		legs.loc[mask, "deviation_duration_min"] = (
