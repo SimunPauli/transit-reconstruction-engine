@@ -30,21 +30,10 @@ def _match_once(
 	tu_deltur,
 	otp_mode_routes_cache,
 	otp_route_name_index,
-	otp_url,
-	search_window,
-	max_itinerary_candidates,
 	tu_gtfs_station_df,
 	anchor_station_lookup,
-	walk_reluctance=2,
-	car_reluctance=2,
-	transit_retry_enabled=True,
-	transit_reluctance_sequence=(0.5, 0.25, 0.1),
-	walk_retry_enabled=True,
-	walk_reluctance_sequence=(3, 4, 6),
+	settings,
 	print_deviation_details= True,
-	request_timeout=60,
-	print_query=False,
-	station_anchor_wait_min=0,
 	route_match=ROUTE_MATCH_EXACT,
 	print_trip_header=True,
 	debug_profile="LIST_ALL"
@@ -141,17 +130,7 @@ def _match_once(
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids,
-		walk_reluctance=walk_reluctance,
-		car_reluctance=car_reluctance,
-		transit_retry_enabled=transit_retry_enabled,
-		transit_reluctance_sequence=transit_reluctance_sequence,
-		walk_retry_enabled=walk_retry_enabled,
-		walk_reluctance_sequence=walk_reluctance_sequence,
-		search_window=search_window,
-		max_itinerary_candidates=max_itinerary_candidates,
-		otp_url=otp_url,
-		request_timeout=request_timeout,
-		print_query=print_query,
+		settings=settings,
 		route_match=route_match,
 		debug_profile=debug_profile,
 	)
@@ -184,7 +163,6 @@ def _match_once(
 				**_candidate_kwargs,
 				first_stop_id=first_stop_id,
 				last_stop_id=last_stop_id,
-				wait_min=station_anchor_wait_min
 			)
 			if not otp_candidates_df.empty:
 				used_anchor_fallback = True
@@ -254,18 +232,7 @@ def _match_once(
 			route_name_groups=route_name_groups_for_search,
 			modes_list=modes_list,
 			anchor_segments=anchor_segments,
-			walk_reluctance=walk_reluctance,
-			car_reluctance=car_reluctance,
-			transit_retry_enabled=transit_retry_enabled,
-			transit_reluctance_sequence=transit_reluctance_sequence,
-			walk_retry_enabled=walk_retry_enabled,
-			walk_reluctance_sequence=walk_reluctance_sequence,
-			search_window=search_window,
-			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url,
-			request_timeout=request_timeout,
-			print_query=print_query,
-			wait_min=station_anchor_wait_min,
+			settings=settings,
 			route_match=route_match,
 		)
 		if otp_candidates_df.empty:
@@ -298,7 +265,7 @@ def _match_once(
 			pd.to_datetime(otp_candidates_df["end_trip"], utc=True)
 			- pd.to_datetime(otp_candidates_df["start_trip"], utc=True)
 		)
-		within = (otp_trip_duration - tu_trip_duration).abs() <= pd.Timedelta(search_window)
+		within = (otp_trip_duration - tu_trip_duration).abs() <= pd.Timedelta(settings.search_window)
 		if not within.all():
 			n_dropped = otp_candidates_df.loc[~within, "iteration_id"].nunique()
 			print(f"Dropped {n_dropped} itinerary(ies) whose duration differs from TU's by more than the search window")
@@ -357,22 +324,11 @@ def match_tu_trip_to_otp(
 	tu_deltur,
 	otp_mode_routes_cache,
 	otp_route_name_index,
-	otp_url,
-	search_window,
-	max_itinerary_candidates,
 	tu_gtfs_station_df,
 	anchor_station_lookup,
-	walk_reluctance=2,
-	car_reluctance=2,
-	transit_retry_enabled=True,
-	transit_reluctance_sequence=(0.5, 0.25, 0.1),
-	walk_retry_enabled=True,
-	walk_reluctance_sequence=(3, 4, 6),
+	settings,
 	print_deviation_details=True,
 	return_trip_summary=False,
-	request_timeout=60,
-	print_query=False,
-	station_anchor_wait_min=0
 ):
 	"""
 	Matches one TU trip to the best OTP itinerary. Runs _match_once enforcing the TU-recorded
@@ -392,21 +348,10 @@ def match_tu_trip_to_otp(
 		tu_deltur=tu_deltur,
 		otp_mode_routes_cache=otp_mode_routes_cache,
 		otp_route_name_index=otp_route_name_index,
-		otp_url=otp_url,
-		search_window=search_window,
-		max_itinerary_candidates=max_itinerary_candidates,
 		tu_gtfs_station_df=tu_gtfs_station_df,
 		anchor_station_lookup=anchor_station_lookup,
-		walk_reluctance=walk_reluctance,
-		car_reluctance=car_reluctance,
-		transit_retry_enabled=transit_retry_enabled,
-		transit_reluctance_sequence=transit_reluctance_sequence,
-		walk_retry_enabled=walk_retry_enabled,
-		walk_reluctance_sequence=walk_reluctance_sequence,
+		settings=settings,
 		print_deviation_details=print_deviation_details,
-		request_timeout=request_timeout,
-		print_query=print_query,
-		station_anchor_wait_min=station_anchor_wait_min
 	)
 
 	result_df, trip_summary = _match_once(route_match=ROUTE_MATCH_EXACT, **_match_kwargs)

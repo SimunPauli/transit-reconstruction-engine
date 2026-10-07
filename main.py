@@ -7,6 +7,7 @@ from contextlib import redirect_stdout
 import pandas as pd
 from src import load_TU_data
 from src.tu_otp_matching import match_tu_trip_to_otp
+from src.candidate_search import SearchSettings
 from src import otp_client
 from src.otp_client import get_all_routes_for_mode
 from src.otp_utils import build_route_name_index
@@ -62,24 +63,26 @@ def main():
 
 def _run(config, tee):
 	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
-	station_anchor_wait_min = config.get("matching", {}).get("station_anchor_wait_min", 0)
 	transit_retry_cfg = config.get("reluctance_retries", {}).get("transit", {})
 	walk_retry_cfg = config.get("reluctance_retries", {}).get("walk", {})
-	transit_retry_enabled = transit_retry_cfg.get("enabled", True)
-	transit_reluctance_sequence = tuple(transit_retry_cfg.get("sequence", [0.5, 0.25, 0.1]))
-	walk_retry_enabled = walk_retry_cfg.get("enabled", True)
-	walk_reluctance_sequence = tuple(walk_retry_cfg.get("sequence", [3, 4, 6]))
 	config_request = config.get("request")
-	otp_url = config_request["otp_url"]
-	search_window = config_request["search_window"]
-	max_itinerary_candidates = config_request["max_itinerary_candidates"]
-	request_timeout = config_request["request_timeout"]
+	settings = SearchSettings(
+		otp_url=config_request["otp_url"],
+		search_window=config_request["search_window"],
+		max_itinerary_candidates=config_request["max_itinerary_candidates"],
+		request_timeout=config_request["request_timeout"],
+		transit_retry_enabled=transit_retry_cfg.get("enabled", True),
+		transit_reluctance_sequence=tuple(transit_retry_cfg.get("sequence", [0.5, 0.25, 0.1])),
+		walk_retry_enabled=walk_retry_cfg.get("enabled", True),
+		walk_reluctance_sequence=tuple(walk_retry_cfg.get("sequence", [3, 4, 6])),
+		station_anchor_wait_min=config.get("matching", {}).get("station_anchor_wait_min", 0),
+	)
 	data_dir = config["paths"]["data_dir"]
 	YEAR = config["tu_subset"]["year"]
 	# Concurrent OTP requests. The ceiling is OTP's own parallelism, not Python's.
 	max_workers = config.get("run", {}).get("max_workers", 8)
 
-	print(f"Search window: {search_window}")
+	print(f"Search window: {settings.search_window}")
 
 
 	print("Loading TU data...")
@@ -138,18 +141,10 @@ def _run(config, tee):
 				tu_deltur=tu_deltur,
 				otp_mode_routes_cache=otp_mode_routes_cache,
 				otp_route_name_index=otp_route_name_index,
-				otp_url=otp_url,
-				search_window=search_window,
-				max_itinerary_candidates=max_itinerary_candidates,
 				tu_gtfs_station_df=tu_gtfs_station_df,
 				anchor_station_lookup=anchor_station_lookup,
+				settings=settings,
 				return_trip_summary=return_trip_summary,
-				request_timeout=request_timeout,
-				station_anchor_wait_min=station_anchor_wait_min,
-				transit_retry_enabled=transit_retry_enabled,
-				transit_reluctance_sequence=transit_reluctance_sequence,
-				walk_retry_enabled=walk_retry_enabled,
-				walk_reluctance_sequence=walk_reluctance_sequence
 			)
 			if return_trip_summary:
 				rmse_based_match, trip_matching_summary = match_result

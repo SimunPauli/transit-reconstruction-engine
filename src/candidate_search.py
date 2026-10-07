@@ -1,4 +1,5 @@
 import pandas as pd
+from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from .otp_client import load_all_candidates
@@ -14,6 +15,23 @@ from .constant import (
 	ROUTE_MATCH_EXACT,
 	ROUTE_MATCH_IGNORED,
 )
+
+
+@dataclass(frozen=True)
+class SearchSettings:
+	"""Per-run OTP search settings (from config.json), shared by every query of every trip."""
+	otp_url: str
+	search_window: str
+	max_itinerary_candidates: int
+	request_timeout: int = 60
+	print_query: bool = False
+	walk_reluctance: float = 2
+	car_reluctance: float = 2
+	transit_retry_enabled: bool = True
+	transit_reluctance_sequence: tuple = (0.5, 0.25, 0.1)
+	walk_retry_enabled: bool = True
+	walk_reluctance_sequence: tuple = (3, 4, 6)
+	station_anchor_wait_min: float = 0
 
 
 def resolve_segment_search_params(
@@ -70,13 +88,7 @@ def resolve_segment_search_params(
 	)
 
 
-def _build_reluctance_attempts(
-		modes_list,
-		transit_retry_enabled=True,
-		transit_reluctance_sequence=(0.8, 0.75, 0.5),
-		walk_retry_enabled=True,
-		walk_reluctance_sequence=(2.5, 3, 4)
-):
+def _build_reluctance_attempts(modes_list, settings):
 	"""
 	Builds the ordered sequence of (transit_reluctances, walk_reluctance_override) attempts
 	tried after the baseline query finds no candidate. transit_reluctances lowers the cost of
@@ -89,11 +101,11 @@ def _build_reluctance_attempts(
 	"""
 	attempts = [(None, None)]
 
-	if walk_retry_enabled:
-		for walk_reluctance in walk_reluctance_sequence:
+	if settings.walk_retry_enabled:
+		for walk_reluctance in settings.walk_reluctance_sequence:
 			attempts.append((None, walk_reluctance))
 
-	if transit_retry_enabled:
+	if settings.transit_retry_enabled:
 		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
 		tu_transit_modes = [
 			mode
@@ -101,11 +113,11 @@ def _build_reluctance_attempts(
 			if mode in transit_modes
 		]
 
-		for reluctance in transit_reluctance_sequence:
+		for reluctance in settings.transit_reluctance_sequence:
 			for mode in tu_transit_modes:
 				attempts.append(({mode: reluctance}, None))
 
-		for reluctance in transit_reluctance_sequence:
+		for reluctance in settings.transit_reluctance_sequence:
 			for n_modes in range(2, len(tu_transit_modes) + 1):
 				for modes in combinations(tu_transit_modes, n_modes):
 					attempts.append(({mode: reluctance for mode in modes}, None))
@@ -161,13 +173,8 @@ def _load_add_and_filter_candidates(
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
+		settings,
 		walk_reluctance,
-		car_reluctance,
-		search_window,
-		max_itinerary_candidates,
-		otp_url,
-		request_timeout,
-		print_query,
 		transit_reluctances=None,
 		skip_alignment=False,
 		origin_location_override=None,
@@ -186,13 +193,13 @@ def _load_add_and_filter_candidates(
 		route_short_name=route_short_name_for_loading,
 		via_stopids=via_stopids,
 		walk_reluctance=walk_reluctance,
-		car_reluctance=car_reluctance,
+		car_reluctance=settings.car_reluctance,
 		transit_reluctances=transit_reluctances,
-		search_window=search_window,
-		max_itinerary_candidates=max_itinerary_candidates,
-		otp_url=otp_url,
-		print_query=print_query,
-		request_timeout=request_timeout,
+		search_window=settings.search_window,
+		max_itinerary_candidates=settings.max_itinerary_candidates,
+		otp_url=settings.otp_url,
+		print_query=settings.print_query,
+		request_timeout=settings.request_timeout,
 		origin_location_override=origin_location_override,
 		destination_location_override=destination_location_override,
 		depart_dt_str_override=depart_dt_str_override,
@@ -228,17 +235,7 @@ def load_candidates_with_reluctance_retries(
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
-		walk_reluctance,
-		car_reluctance,
-		search_window,
-		max_itinerary_candidates,
-		otp_url,
-		request_timeout,
-		print_query,
-		transit_retry_enabled=True,
-		transit_reluctance_sequence=(0.8, 0.75, 0.5),
-		walk_retry_enabled=True,
-		walk_reluctance_sequence=(2.5, 3, 4),
+		settings,
 		skip_alignment=False,
 		origin_location_override=None,
 		destination_location_override=None,
@@ -251,13 +248,7 @@ def load_candidates_with_reluctance_retries(
 ):
 	last_msg = ""
 
-	reluctance_attempts = _build_reluctance_attempts(
-		modes_list,
-		transit_retry_enabled=transit_retry_enabled,
-		transit_reluctance_sequence=transit_reluctance_sequence,
-		walk_retry_enabled=walk_retry_enabled,
-		walk_reluctance_sequence=walk_reluctance_sequence
-	)
+	reluctance_attempts = _build_reluctance_attempts(modes_list, settings)
 
 	for transit_reluctances, walk_reluctance_override in reluctance_attempts:
 		if transit_reluctances:
@@ -274,13 +265,8 @@ def load_candidates_with_reluctance_retries(
 			route_short_name_for_loading=route_short_name_for_loading,
 			modes_list=modes_list,
 			via_stopids=via_stopids,
-			walk_reluctance=walk_reluctance if walk_reluctance_override is None else walk_reluctance_override,
-			car_reluctance=car_reluctance,
-			search_window=search_window,
-			max_itinerary_candidates=max_itinerary_candidates,
-			otp_url=otp_url,
-			request_timeout=request_timeout,
-			print_query=print_query,
+			settings=settings,
+			walk_reluctance=settings.walk_reluctance if walk_reluctance_override is None else walk_reluctance_override,
 			transit_reluctances=transit_reluctances,
 			skip_alignment=skip_alignment,
 			origin_location_override=origin_location_override,

@@ -32,20 +32,9 @@ def try_station_anchored_fallback(
 		route_short_name_for_loading,
 		modes_list,
 		via_stopids,
-		walk_reluctance,
-		car_reluctance,
-		search_window,
-		max_itinerary_candidates,
-		otp_url,
-		request_timeout,
-		print_query,
+		settings,
 		first_stop_id,
 		last_stop_id,
-		transit_retry_enabled=True,
-		transit_reluctance_sequence=(0.5, 0.25, 0.1),
-		walk_retry_enabled=True,
-		walk_reluctance_sequence=(3, 4, 6),
-		wait_min=0,
 		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL"
 ):
@@ -72,9 +61,9 @@ def try_station_anchored_fallback(
 			tu_deltur_sub=tu_deltur_sub,
 			direct_mode=access_mode,
 			depart_dt_str=tu_tur_row["depart_dt_str"],
-			otp_url=otp_url,
-			request_timeout=request_timeout,
-			print_query=print_query,
+			otp_url=settings.otp_url,
+			request_timeout=settings.request_timeout,
+			print_query=settings.print_query,
 			destination_stop_id=first_stop_id
 		)
 		if access_leg_df.empty:
@@ -88,9 +77,9 @@ def try_station_anchored_fallback(
 			tu_deltur_sub=tu_deltur_sub,
 			direct_mode=egress_mode,
 			depart_dt_str=tu_tur_row["depart_dt_str"],
-			otp_url=otp_url,
-			request_timeout=request_timeout,
-			print_query=print_query,
+			otp_url=settings.otp_url,
+			request_timeout=settings.request_timeout,
+			print_query=settings.print_query,
 			origin_stop_id=last_stop_id
 		)
 		if egress_leg_df.empty:
@@ -98,7 +87,7 @@ def try_station_anchored_fallback(
 
 	if first_stop_id:
 		access_duration_min = int(access_leg_df["duration_min"].sum())
-		depart_dt_transit = tu_tur_row["depart_dt"] + pd.Timedelta(minutes=access_duration_min + wait_min)
+		depart_dt_transit = tu_tur_row["depart_dt"] + pd.Timedelta(minutes=access_duration_min + settings.station_anchor_wait_min)
 	else:
 		depart_dt_transit = tu_tur_row["depart_dt"]
 	depart_dt_str_transit = depart_dt_transit.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -114,17 +103,7 @@ def try_station_anchored_fallback(
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids_filtered,
-		walk_reluctance=walk_reluctance,
-		car_reluctance=car_reluctance,
-		transit_retry_enabled=transit_retry_enabled,
-		transit_reluctance_sequence=transit_reluctance_sequence,
-		walk_retry_enabled=walk_retry_enabled,
-		walk_reluctance_sequence=walk_reluctance_sequence,
-		search_window=search_window,
-		max_itinerary_candidates=max_itinerary_candidates,
-		otp_url=otp_url,
-		request_timeout=request_timeout,
-		print_query=print_query,
+		settings=settings,
 		skip_alignment=True,
 		origin_location_override={"stopLocation": {"stopLocationId": first_stop_id}} if first_stop_id else None,
 		destination_location_override={"stopLocation": {"stopLocationId": last_stop_id}} if last_stop_id else None,
@@ -139,7 +118,7 @@ def try_station_anchored_fallback(
 	if raw_transit_df.empty:
 		return pd.DataFrame(), f"anchored_{REASON_NO_OTP_CANDIDATES}"
 
-	stitched_df = stitch_candidates(raw_transit_df, access_leg_df, egress_leg_df, wait_min)
+	stitched_df = stitch_candidates(raw_transit_df, access_leg_df, egress_leg_df, settings.station_anchor_wait_min)
 
 	filtered_df, reason = align_and_filter_candidates(
 		otp_candidates_df=stitched_df,
@@ -155,7 +134,7 @@ def try_station_anchored_fallback(
 	return filtered_df, reason
 
 
-def _query_direct_segment(tu_tur_row, segment, otp_url, request_timeout, print_query):
+def _query_direct_segment(tu_tur_row, segment, settings):
 	"""
 	Query a "direct" (pure WALK/CAR, no transit leg) anchor-split segment once, using the TU
 	trip's own depart time as a placeholder - street-mode travel time in OTP doesn't depend
@@ -170,9 +149,9 @@ def _query_direct_segment(tu_tur_row, segment, otp_url, request_timeout, print_q
 		tu_deltur_sub=legs,
 		direct_mode=direct_mode,
 		depart_dt_str=tu_tur_row["depart_dt_str"],
-		otp_url=otp_url,
-		request_timeout=request_timeout,
-		print_query=print_query,
+		otp_url=settings.otp_url,
+		request_timeout=settings.request_timeout,
+		print_query=settings.print_query,
 		origin_stop_id=segment["origin_stop_id"],
 		destination_stop_id=segment["destination_stop_id"],
 	)
@@ -187,17 +166,7 @@ def _load_and_align_segment_candidates(
 		origin_stop_id,
 		destination_stop_id,
 		depart_dt,
-		walk_reluctance,
-		car_reluctance,
-		transit_retry_enabled,
-		transit_reluctance_sequence,
-		walk_retry_enabled,
-		walk_reluctance_sequence,
-		search_window,
-		max_itinerary_candidates,
-		otp_url,
-		request_timeout,
-		print_query,
+		settings,
 		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
 ):
@@ -228,17 +197,7 @@ def _load_and_align_segment_candidates(
 		route_short_name_for_loading=route_short_name_for_loading,
 		modes_list=modes_list,
 		via_stopids=via_stopids,
-		walk_reluctance=walk_reluctance,
-		car_reluctance=car_reluctance,
-		transit_retry_enabled=transit_retry_enabled,
-		transit_reluctance_sequence=transit_reluctance_sequence,
-		walk_retry_enabled=walk_retry_enabled,
-		walk_reluctance_sequence=walk_reluctance_sequence,
-		search_window=search_window,
-		max_itinerary_candidates=max_itinerary_candidates,
-		otp_url=otp_url,
-		request_timeout=request_timeout,
-		print_query=print_query,
+		settings=settings,
 		skip_alignment=True,
 		origin_location_override={"stopLocation": {"stopLocationId": origin_stop_id}} if origin_stop_id else None,
 		destination_location_override={"stopLocation": {"stopLocationId": destination_stop_id}} if destination_stop_id else None,
@@ -285,18 +244,7 @@ def try_split_station_anchored_fallback(
 		route_name_groups,
 		modes_list,
 		anchor_segments,
-		walk_reluctance,
-		car_reluctance,
-		search_window,
-		max_itinerary_candidates,
-		otp_url,
-		request_timeout,
-		print_query,
-		transit_retry_enabled=False,
-		transit_reluctance_sequence=(0.5, 0.25, 0.1),
-		walk_retry_enabled=False,
-		walk_reluctance_sequence=(3, 4, 6),
-		wait_min=0,
+		settings,
 		route_match=ROUTE_MATCH_EXACT,
 ):
 	"""
@@ -314,7 +262,7 @@ def try_split_station_anchored_fallback(
 	necessarily the one built from each segment's individually-best candidate.
 	"""
 	tur_id = tu_tur_row["TurId"]
-	wait_delta = pd.Timedelta(minutes=wait_min)
+	wait_delta = pd.Timedelta(minutes=settings.station_anchor_wait_min)
 	deadline = time.monotonic() + ANCHOR_TIMEOUT_MIN * 60 if ANCHOR_TIMEOUT_MIN else None
 
 	def _log(stage, status, detail=""):
@@ -325,7 +273,7 @@ def try_split_station_anchored_fallback(
 	for idx, seg in enumerate(anchor_segments):
 		if seg["kind"] != "direct":
 			continue
-		leg_df = _query_direct_segment(tu_tur_row, seg, otp_url, request_timeout, print_query)
+		leg_df = _query_direct_segment(tu_tur_row, seg, settings)
 		if leg_df.empty:
 			if idx == 0:
 				reason = REASON_NO_DIRECT_ACCESS_ROUTE
@@ -372,17 +320,7 @@ def try_split_station_anchored_fallback(
 				origin_stop_id=seg["origin_stop_id"],
 				destination_stop_id=seg["destination_stop_id"],
 				depart_dt=chain["depart_dt"],
-				walk_reluctance=walk_reluctance,
-				car_reluctance=car_reluctance,
-				transit_retry_enabled=transit_retry_enabled,
-				transit_reluctance_sequence=transit_reluctance_sequence,
-				walk_retry_enabled=walk_retry_enabled,
-				walk_reluctance_sequence=walk_reluctance_sequence,
-				search_window=search_window,
-				max_itinerary_candidates=max_itinerary_candidates,
-				otp_url=otp_url,
-				request_timeout=request_timeout,
-				print_query=print_query,
+				settings=settings,
 				route_match=route_match,
 				debug_profile = "OFF"
 			)
@@ -409,7 +347,7 @@ def try_split_station_anchored_fallback(
 		if not chains:
 			return pd.DataFrame(), f"anchored_{last_reason}"
 
-	stitched_df = stitch_segment_chains(chains, direct_leg_cache, wait_min)
+	stitched_df = stitch_segment_chains(chains, direct_leg_cache, settings.station_anchor_wait_min)
 
 	filtered_df, reason = align_and_filter_candidates(
 		otp_candidates_df=stitched_df,
