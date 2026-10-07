@@ -37,9 +37,10 @@ implied_k = w_departure_min * (sd_departure / sd_k)²
 errors, but a few bad matches or TU time errors can't inflate it. The plain `sd` is reported next to
 it; a much larger `sd` points to outliers.
 
-**Street distance vs leg length.** `w_street_mode_km` is one weight for all street legs, which
-assumes a 300 m walk and a 10 km bike ride are equally far off in km. To check this, street legs
-are binned by TU distance, and the spread per bin is fitted as
+**Street distance vs leg length.** One weight for all street legs would assume a 300 m walk and a
+10 km bike ride are equally far off in km, so `w_street_mode_km_by_length` sets it per TU length
+bin. `implied_weights` gives one implied weight per configured bin. To see how the spread grows,
+street legs are binned by TU distance, and the spread per bin is fitted as
 
 ```
 sd_km = c * distance_km^p
@@ -50,7 +51,7 @@ sd_km = c * distance_km^p
 
 | `p` | Meaning | Consequence for the weight |
 |---|---|---|
-| ≈ 0 | Same km deviation at any length | A single `w_street_mode_km` fits |
+| ≈ 0 | Same km deviation at any length | One weight fits all lengths |
 | ≈ 0.5 | Grows like √length (many small independent detours) | Long legs dominate the score |
 | ≈ 1 | Same % deviation at any length | Long legs dominate the score |
 
@@ -79,6 +80,7 @@ pools all street modes.
 | Sheet | Contents |
 |---|---|
 | `trip_times` | Spread of departure, arrival and trip duration (arrival − departure) deviations (min) |
+| `time_correlation` | Measured departure–arrival correlation (Pearson, Spearman), next to the one the trip duration term assumes |
 | `transit_duration` | Spread of transit leg duration deviations (min), per mode |
 | `street_distance` | Spread of street leg distance deviations (km), per mode |
 | `street_distance_bins` | Street distance spread per mode and TU distance bin |
@@ -86,8 +88,10 @@ pools all street modes.
 | `implied_weights` | Weights implied by the spreads, next to the configured ones |
 | `large_time_deviations` | Trips with departure or arrival off by more than 60 min, likely TU time errors |
 
-Only `w_trip_duration_min`, `w_transit_min` and `w_street_mode_km` get implied values; `w_street_mode_min`
-and `w_transit_km` are not estimated.
+Only `w_trip_duration_min`, `w_transit_min` and `w_street_mode_km_by_length` (per bin, over all
+street modes) get implied values; `w_street_mode_min` and `w_transit_km` are not estimated. For runs
+from before the length bins, the run's single `w_street_mode_km` is shown against the current
+config's bins.
 
 ## Limitations
 
