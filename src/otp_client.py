@@ -509,10 +509,8 @@ def request_direct_leg(
 		print_query: bool = False,
 ) -> pd.DataFrame:
 	"""
-	Query OTP once for a single street-only (WALK/CAR) itinerary. Used by the
-	station-anchored fallback in station_anchor_search.py, since street-mode travel time in OTP
-	doesn't depend on time-of-day, so this only needs to be requested once and its
-	duration reused as a fixed offset against every transit candidate.
+	Query OTP once for street-only (WALK/CAR) itineraries, without transit. Returns every
+	direct itinerary OTP finds (e.g. both riding and walking a bike).
 	"""
 	response = graphql_json_request(
 		origin=origin,
@@ -527,13 +525,7 @@ def request_direct_leg(
 		timeout=request_timeout,
 	)
 
-	direct_df = json_to_df(response)
-	if direct_df.empty:
-		return direct_df
-
-	# OTP may return more than one direct itinerary (e.g. walking a bike); keep the fastest.
-	fastest_iteration = direct_df.groupby("iteration_id")["duration_min"].sum().idxmin()
-	return direct_df[direct_df["iteration_id"] == fastest_iteration].reset_index(drop=True)
+	return json_to_df(response)
 
 
 ##Get all route names for a specific mode

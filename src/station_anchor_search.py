@@ -24,6 +24,14 @@ from .constant import (
 from .station_anchor_fallback import stitch_candidates, stitch_segment_chains
 
 
+def _fastest_itinerary(direct_df):
+	"""OTP may return more than one direct itinerary (e.g. walking a bike); keep the fastest."""
+	if direct_df.empty:
+		return direct_df
+	fastest_iteration = direct_df.groupby("iteration_id")["duration_min"].sum().idxmin()
+	return direct_df[direct_df["iteration_id"] == fastest_iteration].reset_index(drop=True)
+
+
 def try_station_anchored_fallback(
 		tu_tur_row,
 		tu_deltur_sub,
@@ -58,7 +66,7 @@ def try_station_anchored_fallback(
 	if first_stop_id:
 		access_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK")
 		origin, destination = tu_endpoints(tu_tur_row, destination_stop_id=first_stop_id)
-		access_leg_df = request_direct_leg(
+		access_leg_df = _fastest_itinerary(request_direct_leg(
 			origin=origin,
 			destination=destination,
 			direct_mode=access_mode,
@@ -66,7 +74,7 @@ def try_station_anchored_fallback(
 			otp_url=settings.otp_url,
 			request_timeout=settings.request_timeout,
 			print_query=settings.print_query,
-		)
+		))
 		if access_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_ACCESS_ROUTE
 
@@ -74,7 +82,7 @@ def try_station_anchored_fallback(
 	if last_stop_id:
 		egress_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK")
 		origin, destination = tu_endpoints(tu_tur_row, origin_stop_id=last_stop_id)
-		egress_leg_df = request_direct_leg(
+		egress_leg_df = _fastest_itinerary(request_direct_leg(
 			origin=origin,
 			destination=destination,
 			direct_mode=egress_mode,
@@ -82,7 +90,7 @@ def try_station_anchored_fallback(
 			otp_url=settings.otp_url,
 			request_timeout=settings.request_timeout,
 			print_query=settings.print_query,
-		)
+		))
 		if egress_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_EGRESS_ROUTE
 
@@ -142,7 +150,7 @@ def _query_direct_segment(tu_tur_row, segment, settings):
 	legs = segment["legs"].sort_values("Delturnr")
 	direct_mode = DIRECT_ACCESS_MODE_MAP.get(int(legs["StageMode"].iloc[0]), "WALK")
 	origin, destination = tu_endpoints(tu_tur_row, segment["origin_stop_id"], segment["destination_stop_id"])
-	return request_direct_leg(
+	return _fastest_itinerary(request_direct_leg(
 		origin=origin,
 		destination=destination,
 		direct_mode=direct_mode,
@@ -150,7 +158,7 @@ def _query_direct_segment(tu_tur_row, segment, settings):
 		otp_url=settings.otp_url,
 		request_timeout=settings.request_timeout,
 		print_query=settings.print_query,
-	)
+	))
 
 
 def _load_and_align_segment_candidates(
