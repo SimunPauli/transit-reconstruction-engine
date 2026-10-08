@@ -12,7 +12,7 @@ level) is decided before the weights rank the candidates, so status changes shou
 that differ only in weights; any are listed, as they point to e.g. OTP timeouts or a changed config.
 
 Run from tu_reconstruct_trips/:  .venv/bin/python weight_calibration/compare_runs.py <run_dir_a> <run_dir_b>
-Writes compare_runs.xlsx into run_dir_b.
+Writes compare_<run_id_a>_vs_<run_id_b>.xlsx into run_dir_b.
 """
 import json
 import sys
@@ -110,7 +110,7 @@ def main(run_dir_a, run_dir_b):
 			cut = f" (first {PRINT_ROWS} of {len(table)} rows)" if len(table) > PRINT_ROWS else ""
 			print(f"\n=== {name}{cut} ===\n{TABLE_DESCRIPTIONS[name]}\n\n{table.head(PRINT_ROWS).to_string(index=False)}")
 
-	out_path = run_dir_b / "compare_runs.xlsx"
+	out_path = run_dir_b / f"compare_{run_dir_a.name}_vs_{run_dir_b.name}.xlsx"
 	with pd.ExcelWriter(out_path) as writer:
 		for name, table in tables.items():
 			table.to_excel(writer, sheet_name=name, index=False)

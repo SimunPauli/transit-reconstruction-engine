@@ -122,6 +122,6 @@ out, as with the same graph they follow from the transit legs.
 
 The first three count only trips found (`trip_found`) in both runs. Status is decided before the
 weights rank the candidates, so between runs that differ only in weights it should be 0; otherwise
-something else differed, such as OTP timeouts or the config. Written to `compare_runs.xlsx` in
-`run_dir_b`, with sheets `summary`, `changed_trips` (both runs' signatures and RMSE components) and
+something else differed, such as OTP timeouts or the config. Written to
+`compare_<run_id_a>_vs_<run_id_b>.xlsx` in `run_dir_b`, with sheets `summary`, `changed_trips` (both runs' signatures and RMSE components) and
 `status_changes`.
