@@ -263,20 +263,21 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 | `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
 | `trip_matching_summaries_file` | Per-trip summary including the trip's outcome (see "Trip outcomes" below), RMSE score and deviation metrics |
 | `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
-| `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. A `sessions` sheet gives the outcome per `SessionId`, flagging sessions with 2+ wrong-route/not-found trips (likely respondent reporting errors). Also printed to console/`log_file` at the end of the run. |
+| `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. A `sessions` sheet gives the outcome per `SessionId`, flagging sessions with 2+ near-route/wrong-route/not-found trips (likely respondent reporting errors). Also printed to console/`log_file` at the end of the run. |
 | `tu_gtfs_station_file` | Mapping between TU station names and GTFS stop IDs |
 | `log_file` | Full console log of the run |
 | `config.json` | Copy of the `config.json` the run was started with |
 
 ### Trip outcomes
 
-Every TU trip ends in exactly one of three mutually exclusive outcomes, recorded as three 0/1
+Every TU trip ends in exactly one of four mutually exclusive outcomes, recorded as four 0/1
 columns in `trip_matching_summaries_file` and counted in `summary_stats_file`'s overview sheet:
 
 | Column | Meaning |
 |---|---|
 | `trip_found` | Matched, with every route name TU recorded for its bus/S-train legs present in the itinerary as written |
-| `trip_wrong_route` | Matched only after the route-name filter was widened (`route_match` other than `exact`) — the itinerary uses the right modes in the right order, but not exactly the routes TU recorded |
+| `trip_near_route` | Matched only after the route name was widened to a near one (`route_match` `sibling`, `letter` or `digit`) |
+| `trip_wrong_route` | Matched only with the route name ignored (`route_match` `ignored`) — the itinerary uses the right modes in the right order, but not necessarily the routes TU recorded |
 | `trip_not_found` | No itinerary matched; see `failure_reason` |
 
 When a trip with a bus/S-train leg fails for a route-related reason (`invalid_route_name`,
@@ -290,9 +291,9 @@ and for trips not found):
 | `route_match` | Route accepted | Outcome |
 |---|---|---|
 | `exact` | As TU wrote it (`150`) | `trip_found` |
-| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_wrong_route` |
-| `letter` | + a missing letter suffix (`150` → `150S`) | `trip_wrong_route` |
-| `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_wrong_route` |
+| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_near_route` |
+| `letter` | + a missing letter suffix (`150` → `150S`) | `trip_near_route` |
+| `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_near_route` |
 | `ignored` | Any route — mode + leg order only | `trip_wrong_route` |
 
 Each level also accepts everything the previous ones did, so the correct legs of a multi-bus trip
@@ -300,10 +301,11 @@ still match. `letter` and `digit` only widen bus routes (S-train comes from a su
 `sibling` only S-train routes, since respondents mix up lines that share a track and alternate by
 time of day (e.g. on the Køge line, E runs on weekday daytimes and A in the evenings and at weekends), and
 a level that adds no real GTFS route over the previous one is skipped rather than re-queried.
-A `trip_wrong_route` trip is still written to `rmse_based_matches_file` — it's kept separate
-rather than dropped, because its route assignment is the part that's unverified, not the trip
-itself. `summary_stats_file` reports `success_rate_pct` (`trip_found` only) alongside
-`success_rate_incl_wrong_route_pct` (both), and counts trips per `route_match` level.
+`trip_near_route` and `trip_wrong_route` trips are still written to `rmse_based_matches_file` —
+they're kept separate rather than dropped, because their route assignment is the part that's
+unverified, not the trip itself. `summary_stats_file` reports `success_rate_pct` (`trip_found`
+only), `success_rate_incl_near_route_pct` (+ `trip_near_route`) and
+`success_rate_incl_wrong_route_pct` (+ `trip_wrong_route`), and counts trips per `route_match` level.
 
 ### Failure reasons
 

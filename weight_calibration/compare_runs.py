@@ -25,6 +25,7 @@ TZ = "Europe/Copenhagen"
 PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
 SUMMARY_COLS = ["rmse", "depart_deviation_min", "arrival_deviation_min"]
 TEXT_COLS = ["mode", "route_gtfs_id", "from_gtfs_id", "to_gtfs_id", "trip_short_name", "interlined_trip_short_names"]
+NEAR_ROUTE_LEVELS = ["sibling", "letter", "digit"]  # route_match levels counted as trip_near_route
 
 # Printed above each table
 TABLE_DESCRIPTIONS = {
@@ -49,9 +50,12 @@ def load_run(run_dir):
 	# As text, so a train number isn't read as e.g. 1234.0
 	matches = pd.read_csv(run_file(run_dir, "rmse_based_matches_file"), dtype={col: str for col in TEXT_COLS})
 	summaries = pd.read_excel(run_file(run_dir, "trip_matching_summaries_file"))
+	# From route_match rather than the outcome columns, whose meaning changed between runs
 	summaries["status"] = np.select(
-		[summaries["trip_found"] == 1, summaries["trip_wrong_route"] == 1, summaries["trip_not_found"] == 1],
-		["trip_found", "trip_wrong_route", "trip_not_found"], default="unknown",
+		[summaries["trip_not_found"] == 1,
+		 summaries["route_match"].isin(NEAR_ROUTE_LEVELS),
+		 summaries["route_match"] == "ignored"],
+		["trip_not_found", "trip_near_route", "trip_wrong_route"], default="trip_found",
 	)
 	# The route match level is set before ranking too, so it's part of the status
 	summaries["status"] = summaries["status"] + summaries["route_match"].map(

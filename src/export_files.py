@@ -52,26 +52,30 @@ def _write_failures_file(trip_matching_summaries_df, path):
 def _build_summary_stats(trip_matching_summaries_df):
 	"""
 	Builds run-level summary tables from the per-trip matching summaries: an overview
-	(counts and success rates for each of the three outcomes - found with the TU-recorded
-	routes, found only by ignoring them, not found) and a breakdown of failure_reason
-	frequency among the trips not found.
+	(counts and success rates for each of the four outcomes - found with the TU-recorded
+	routes, found with a near route name, found only by ignoring them, not found) and a
+	breakdown of failure_reason frequency among the trips not found.
 	"""
 	total = len(trip_matching_summaries_df)
 	found = int(trip_matching_summaries_df["trip_found"].sum())
+	near_route = int(trip_matching_summaries_df["trip_near_route"].sum())
 	wrong_route = int(trip_matching_summaries_df["trip_wrong_route"].sum())
 	not_found = int(trip_matching_summaries_df["trip_not_found"].sum())
 
 	route_match_counts = trip_matching_summaries_df["route_match"].value_counts()
+	pct = lambda count: round(100 * count / total, 1) if total else 0.0
 
 	overview_df = pd.DataFrame([{
 		"total_trips": total,
 		"trips_found": found,
+		"trips_near_route": near_route,
 		"trips_wrong_route": wrong_route,
 		"trips_not_found": not_found,
 		# BUS/S_TRAIN trips found, by how far the TU route name had to be widened
 		**{f"route_match_{level}": int(route_match_counts.get(level, 0)) for level in ROUTE_MATCH_LEVELS},
-		"success_rate_pct": round(100 * found / total, 1) if total else 0.0,
-		"success_rate_incl_wrong_route_pct": round(100 * (found + wrong_route) / total, 1) if total else 0.0
+		"success_rate_pct": pct(found),
+		"success_rate_incl_near_route_pct": pct(found + near_route),
+		"success_rate_incl_wrong_route_pct": pct(found + near_route + wrong_route)
 	}])
 
 	failures_df = trip_matching_summaries_df.loc[trip_matching_summaries_df["trip_not_found"] == 1]
@@ -101,7 +105,9 @@ def _build_station_stats(trip_matching_summaries_df, tu_deltur, tu_gtfs_station_
 	legs = tu_deltur.loc[
 		tu_deltur["StageMode"].isin(STATION_STAGE_MODES), ["TurId", "otp_mode", "FromStation", "ToStation"]
 	]
-	outcomes = trip_matching_summaries_df[["TurId", "trip_found", "trip_wrong_route", "trip_not_found", "failure_reason"]]
+	outcomes = trip_matching_summaries_df[
+		["TurId", "trip_found", "trip_near_route", "trip_wrong_route", "trip_not_found", "failure_reason"]
+	]
 	visits = (
 		legs.melt(id_vars=["TurId", "otp_mode"], value_vars=["FromStation", "ToStation"], value_name="tu_station_name")
 		.dropna(subset=["tu_station_name"])
@@ -112,6 +118,7 @@ def _build_station_stats(trip_matching_summaries_df, tu_deltur, tu_gtfs_station_
 	stats = visits.groupby(keys).agg(
 		trips=("TurId", "size"),
 		trips_found=("trip_found", "sum"),
+		trips_near_route=("trip_near_route", "sum"),
 		trips_wrong_route=("trip_wrong_route", "sum"),
 		trips_not_found=("trip_not_found", "sum"),
 	).reset_index()
@@ -136,27 +143,29 @@ def _build_station_stats(trip_matching_summaries_df, tu_deltur, tu_gtfs_station_
 	)
 
 
-SESSION_FLAG_MIN_PROBLEM_TRIPS = 2  # sessions with at least this many wrong-route/not-found trips are flagged
+SESSION_FLAG_MIN_PROBLEM_TRIPS = 2  # sessions with at least this many near-route/wrong-route/not-found trips are flagged
 
 
 def _build_session_stats(trip_matching_summaries_df):
 	"""
-	Match outcome per SessionId (one interview). Several problem trips (wrong route or not found) in
+	Match outcome per SessionId (one interview). Several problem trips (near/wrong route or not found) in
 	one session point at that respondent's reporting rather than at OTP or the GTFS data.
 	"""
 	df = trip_matching_summaries_df
 	problem_reason = (
 		df.get("failure_reason", pd.Series(pd.NA, index=df.index))
 		.where(df["trip_not_found"] == 1)
+		.mask(df["trip_near_route"] == 1, "near_route")
 		.mask(df["trip_wrong_route"] == 1, "wrong_route")
 	)
 	stats = df.groupby("SessionId").agg(
 		trips=("TurId", "size"),
 		trips_found=("trip_found", "sum"),
+		trips_near_route=("trip_near_route", "sum"),
 		trips_wrong_route=("trip_wrong_route", "sum"),
 		trips_not_found=("trip_not_found", "sum"),
 	).reset_index()
-	stats["problem_trips"] = stats["trips_wrong_route"] + stats["trips_not_found"]
+	stats["problem_trips"] = stats["trips_near_route"] + stats["trips_wrong_route"] + stats["trips_not_found"]
 	stats["problem_rate_pct"] = (100 * stats["problem_trips"] / stats["trips"]).round(1)
 	failure_reasons = (
 		problem_reason.groupby(df["SessionId"])

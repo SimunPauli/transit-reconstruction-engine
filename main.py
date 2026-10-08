@@ -164,6 +164,7 @@ def _run(config, tee):
 					"TurId": tu_tur_row['TurId'],
 					"SessionId": tu_tur_row.get("SessionId"),
 					"trip_found": 0,
+					"trip_near_route": 0,
 					"trip_wrong_route": 0,
 					"trip_not_found": 1,
 					"route_match": pd.NA,

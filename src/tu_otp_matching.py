@@ -52,6 +52,7 @@ def _match_once(
 			"TurId": i_TurId,
 			"SessionId": tu_tur_row.get("SessionId"),
 			"trip_found": 0,
+			"trip_near_route": 0,
 			"trip_wrong_route": 0,
 			"trip_not_found": 1,
 			"route_match": pd.NA,
@@ -303,8 +304,9 @@ def _match_once(
 	trip_summary = {
 		"TurId": i_TurId,
 		"SessionId": tu_tur_row.get("SessionId"),
-		"trip_found": 1 if route_match == ROUTE_MATCH_EXACT else 0,
-		"trip_wrong_route": 0 if route_match == ROUTE_MATCH_EXACT else 1,
+		"trip_found": int(route_match == ROUTE_MATCH_EXACT),
+		"trip_near_route": int(route_match not in (ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED)),
+		"trip_wrong_route": int(route_match == ROUTE_MATCH_IGNORED),
 		"trip_not_found": 0,
 		"route_match": route_match if is_bus_s_train else pd.NA,
 		"last_print_if_not_found": "",
@@ -338,9 +340,9 @@ def match_tu_trip_to_otp(
 	looser ROUTE_MATCH_LEVELS level in turn (S-train sibling line, missing letter, one digit
 	moved by 1, route name ignored) until one matches. A level whose route set is no wider than the previous one's is
 	skipped, since it would repeat the same query. trip_summary["route_match"] records the level
-	used. A trip only found at a widened level is reported as its own outcome -
-	trip_summary["trip_wrong_route"] == 1 rather than trip_summary["trip_found"] == 1 - since its
-	transit legs don't run the routes exactly as TU recorded them.
+	used. A trip only found at a widened level is reported as its own outcome rather than
+	trip_summary["trip_found"] == 1, since its transit legs don't run the routes exactly as TU
+	recorded them: trip_near_route for sibling/letter/digit, trip_wrong_route for ignored.
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	_match_kwargs = dict(
