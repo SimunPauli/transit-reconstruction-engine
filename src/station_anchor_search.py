@@ -4,6 +4,7 @@ from .candidate_search import (
 	resolve_segment_search_params,
 	align_and_filter_candidates,
 	load_candidates_with_reluctance_retries,
+	tu_endpoints,
 )
 from .otp_client import request_direct_leg
 from .otp_utils import drop_via_stations
@@ -56,15 +57,15 @@ def try_station_anchored_fallback(
 	access_leg_df = None
 	if first_stop_id:
 		access_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK")
+		origin, destination = tu_endpoints(tu_tur_row, destination_stop_id=first_stop_id)
 		access_leg_df = request_direct_leg(
-			tu_tur_row=tu_tur_row,
-			tu_deltur_sub=tu_deltur_sub,
+			origin=origin,
+			destination=destination,
 			direct_mode=access_mode,
-			depart_dt_str=tu_tur_row["depart_dt_str"],
+			depart_dt=tu_tur_row["depart_dt"],
 			otp_url=settings.otp_url,
 			request_timeout=settings.request_timeout,
 			print_query=settings.print_query,
-			destination_stop_id=first_stop_id
 		)
 		if access_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_ACCESS_ROUTE
@@ -72,15 +73,15 @@ def try_station_anchored_fallback(
 	egress_leg_df = None
 	if last_stop_id:
 		egress_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK")
+		origin, destination = tu_endpoints(tu_tur_row, origin_stop_id=last_stop_id)
 		egress_leg_df = request_direct_leg(
-			tu_tur_row=tu_tur_row,
-			tu_deltur_sub=tu_deltur_sub,
+			origin=origin,
+			destination=destination,
 			direct_mode=egress_mode,
-			depart_dt_str=tu_tur_row["depart_dt_str"],
+			depart_dt=tu_tur_row["depart_dt"],
 			otp_url=settings.otp_url,
 			request_timeout=settings.request_timeout,
 			print_query=settings.print_query,
-			origin_stop_id=last_stop_id
 		)
 		if egress_leg_df.empty:
 			return pd.DataFrame(), REASON_NO_DIRECT_EGRESS_ROUTE
@@ -90,7 +91,6 @@ def try_station_anchored_fallback(
 		depart_dt_transit = tu_tur_row["depart_dt"] + pd.Timedelta(minutes=access_duration_min + settings.station_anchor_wait_min)
 	else:
 		depart_dt_transit = tu_tur_row["depart_dt"]
-	depart_dt_str_transit = depart_dt_transit.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 	via_stopids_filtered = drop_via_stations(via_stopids, (first_stop_id, last_stop_id))
 
@@ -105,12 +105,9 @@ def try_station_anchored_fallback(
 		via_stopids=via_stopids_filtered,
 		settings=settings,
 		skip_alignment=True,
-		origin_location_override={"stopLocation": {"stopLocationId": first_stop_id}} if first_stop_id else None,
-		destination_location_override={"stopLocation": {"stopLocationId": last_stop_id}} if last_stop_id else None,
-		depart_dt_str_override=depart_dt_str_transit,
-		depart_dt_override=depart_dt_transit,
-		access_mode_override="WALK" if first_stop_id else None,
-		egress_mode_override="WALK" if last_stop_id else None,
+		origin_stop_id=first_stop_id,
+		destination_stop_id=last_stop_id,
+		depart_dt=depart_dt_transit,
 		route_match=route_match,
 		debug_profile=debug_profile
 	)
@@ -144,16 +141,15 @@ def _query_direct_segment(tu_tur_row, segment, settings):
 	"""
 	legs = segment["legs"].sort_values("Delturnr")
 	direct_mode = DIRECT_ACCESS_MODE_MAP.get(int(legs["StageMode"].iloc[0]), "WALK")
+	origin, destination = tu_endpoints(tu_tur_row, segment["origin_stop_id"], segment["destination_stop_id"])
 	return request_direct_leg(
-		tu_tur_row=tu_tur_row,
-		tu_deltur_sub=legs,
+		origin=origin,
+		destination=destination,
 		direct_mode=direct_mode,
-		depart_dt_str=tu_tur_row["depart_dt_str"],
+		depart_dt=tu_tur_row["depart_dt"],
 		otp_url=settings.otp_url,
 		request_timeout=settings.request_timeout,
 		print_query=settings.print_query,
-		origin_stop_id=segment["origin_stop_id"],
-		destination_stop_id=segment["destination_stop_id"],
 	)
 
 
@@ -186,8 +182,6 @@ def _load_and_align_segment_candidates(
 	if not modes_json:
 		return pd.DataFrame(), REASON_NO_VALID_MODES
 
-	depart_dt_str = depart_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
-
 	raw_df, msg = load_candidates_with_reluctance_retries(
 		tu_tur_row=tu_tur_row,
 		tu_deltur_sub=segment_legs,
@@ -199,12 +193,9 @@ def _load_and_align_segment_candidates(
 		via_stopids=via_stopids,
 		settings=settings,
 		skip_alignment=True,
-		origin_location_override={"stopLocation": {"stopLocationId": origin_stop_id}} if origin_stop_id else None,
-		destination_location_override={"stopLocation": {"stopLocationId": destination_stop_id}} if destination_stop_id else None,
-		depart_dt_str_override=depart_dt_str,
-		depart_dt_override=depart_dt,
-		access_mode_override="WALK" if origin_stop_id else None,
-		egress_mode_override="WALK" if destination_stop_id else None,
+		origin_stop_id=origin_stop_id,
+		destination_stop_id=destination_stop_id,
+		depart_dt=depart_dt,
 		route_match=route_match,
 		debug_profile=debug_profile,
 	)
