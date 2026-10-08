@@ -539,18 +539,11 @@ def get_all_routes_for_mode(mode: str, url: str = "http://localhost:8080/otp/gtf
       }
     }
     """ % mode
-	try:
-		response = requests.post(url, json={"query": query})
-		response.raise_for_status()
-		data = response.json()
-		routes = [
-			r["shortName"] for r in data.get("data", {}).get("routes", [])
-			if r.get("shortName")
-		]
-		return routes
-	except Exception as e:
-		print(f"Error fetching routes for mode {mode}: {e}")
-		return []
+	data = get_response(url, query, {}).json()
+	return [
+		r["shortName"] for r in data.get("data", {}).get("routes", [])
+		if r.get("shortName")
+	]
 
 
 def get_stops_by_bbox_query(lat: float,
