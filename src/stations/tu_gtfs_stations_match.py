@@ -1,6 +1,6 @@
 import pandas as pd
 import utm
-from . import otp
+from src import otp
 import re
 from rapidfuzz import fuzz
 import numpy as np

@@ -2,14 +2,14 @@ import pandas as pd
 from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
-from . import otp
+from src import otp
 from .route_matching_utils import (
 	resolve_route_short_names,
 	get_via_stops,
 	drop_via_stations,
 	filter_candidates_by_requirements,
 )
-from .constant import (
+from src.constant import (
 	ACCESS_EGRESS_MODE_MAP,
 	REASON_NO_OTP_CANDIDATES,
 	REASON_NO_MATCHING_LEG_SEQUENCE,

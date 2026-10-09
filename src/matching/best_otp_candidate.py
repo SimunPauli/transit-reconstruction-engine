@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from .config_loader import get_config
-from .constant import STREET_MODES, TRANSIT_STAGE_MODES
+from src.config_loader import get_config
+from src.constant import STREET_MODES, TRANSIT_STAGE_MODES
 
 def street_length_bin(tu_km, length_bins):
 	"""Index of each TU leg length's bin in w_street_mode_km_by_length. A bin holds lengths below its below_km (null: no limit)."""

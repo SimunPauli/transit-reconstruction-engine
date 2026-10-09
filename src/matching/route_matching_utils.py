@@ -1,5 +1,5 @@
 import pandas as pd
-from .constant import (
+from src.constant import (
 	MODE_MAP,
 	INVALID_ROUTE_CHARS,
 	STREET_MODES,

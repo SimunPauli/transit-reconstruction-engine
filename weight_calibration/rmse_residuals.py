@@ -37,10 +37,10 @@ RUN_CONFIG = RUN_DIR / "config.json"
 CONFIG_PATH = RUN_CONFIG if RUN_CONFIG.is_file() else Path("config.json")
 config_loader._config = config_loader.load_config(CONFIG_PATH, create_output_dir=False)
 
-from src import load_TU_data
-from src.best_otp_candidate import street_length_bin
+from src.tu import load_TU_data
+from src.matching.best_otp_candidate import street_length_bin
 from src.constant import STREET_MODES
-from src.tu_utils import absorb_short_walk_into_car
+from src.tu.tu_utils import absorb_short_walk_into_car
 
 DISTANCE_BINS_KM = [0, 0.5, 1, 2, 5, 10, 20, np.inf]
 MIN_BIN_LEGS = 20  # bins with fewer legs are left out of the c * d^p fit

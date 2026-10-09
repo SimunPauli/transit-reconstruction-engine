@@ -1,5 +1,5 @@
 import pandas as pd
-from .constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM
+from src.constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM
 
 def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM, verbose=True):
 	"""

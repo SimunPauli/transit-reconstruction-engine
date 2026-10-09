@@ -8,8 +8,8 @@ from .route_matching_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 )
-from .tu_utils import add_tu_deltur_depart_times, absorb_short_walk_into_car
-from .constant import (
+from src.tu.tu_utils import add_tu_deltur_depart_times, absorb_short_walk_into_car
+from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,
 	REASON_INVALID_ROUTE_NAME,
@@ -21,8 +21,8 @@ from .constant import (
 	ROUTE_MATCH_IGNORED,
 	ROUTE_MATCH_LEVELS,
 )
-from .station_anchor_fallback import find_known_anchor_stations, compute_anchor_split_segments
-from .station_anchor_search import try_station_anchored_fallback, try_split_station_anchored_fallback
+from src.stations.station_anchor_fallback import find_known_anchor_stations, compute_anchor_split_segments
+from src.stations.station_anchor_search import try_station_anchored_fallback, try_split_station_anchored_fallback
 
 
 def _match_once(

@@ -1,5 +1,5 @@
 import pandas as pd
-from .constant import LOCAL_TIMEZONE
+from src.constant import LOCAL_TIMEZONE
 from .tu_gtfs_stations_match import _normalise_name
 
 #Only S_TRAIN, RAIL, and SUBWAY reliably have station names populated in TU (bus has
