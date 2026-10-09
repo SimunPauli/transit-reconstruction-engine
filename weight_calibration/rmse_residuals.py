@@ -31,11 +31,11 @@ except OSError as error:  # e.g. a dropped network share
 if not run_dir_exists:
 	sys.exit(f"Run directory not found: {RUN_DIR.resolve()}\nGive the full path, <output_dir>/<year>/<run_id>")
 
-# Before the other src imports: they call get_config(), which would create a new empty run dir.
+# Before the other src imports: they read get_config() at import time (src.constant).
 # The run's own config, so TU files, weights and constants match the run; older runs have none.
 RUN_CONFIG = RUN_DIR / "config.json"
 CONFIG_PATH = RUN_CONFIG if RUN_CONFIG.is_file() else Path("config.json")
-config_loader._config = config_loader.load_config(CONFIG_PATH, create_output_dir=False)
+config_loader._config = config_loader.load_config(CONFIG_PATH)
 
 from src.tu import load_TU_data
 from src.matching.best_otp_candidate import street_length_bin
@@ -221,8 +221,8 @@ def main(run_dir):
 
 	# Run files first: they're small, so a wrong path or dropped share fails before the slow TU load
 	print(f"Reading run files from {run_dir}...", flush=True)
-	matches = pd.read_csv(run_dir / paths["rmse_based_matches_file"].name)
-	summaries = pd.read_excel(run_dir / paths["trip_matching_summaries_file"].name)
+	matches = pd.read_csv(run_dir / paths["rmse_based_matches_file"])
+	summaries = pd.read_excel(run_dir / paths["trip_matching_summaries_file"])
 
 	print(f"Loading TU data for {year} from {paths['data_dir']}...", flush=True)
 	_, _, tu_deltur, _ = load_TU_data.load_tu(

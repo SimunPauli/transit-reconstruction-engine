@@ -12,7 +12,7 @@ from src import otp
 from src.matching.route_matching_utils import build_route_name_index
 from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.matching.anchor_stitching import build_anchor_station_lookup
-from src.config_loader import get_config
+from src.config_loader import get_config, start_run
 from src.constant import MODE_MAP
 from src.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
 
@@ -49,7 +49,7 @@ def _wait_for_output_dir(output_dir, retry_s=60):
 
 
 def main():
-	config = get_config()
+	config = start_run(get_config())
 
 	# Opened here (not just under `if __name__ == "__main__"`) so the log file is written
 	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
