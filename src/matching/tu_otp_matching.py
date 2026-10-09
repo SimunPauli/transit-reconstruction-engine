@@ -21,8 +21,8 @@ from src.constant import (
 	ROUTE_MATCH_IGNORED,
 	ROUTE_MATCH_LEVELS,
 )
-from src.stations.station_anchor_fallback import find_known_anchor_stations, compute_anchor_split_segments
-from src.stations.station_anchor_search import try_station_anchored_fallback, try_split_station_anchored_fallback
+from .anchor_stitching import find_known_anchor_stations, compute_anchor_split_segments
+from .anchor_fallback import try_station_anchored_fallback, try_split_station_anchored_fallback
 
 
 def _match_once(
@@ -147,7 +147,7 @@ def _match_once(
 		# CAR access/egress has no reliable direct request to OTP (see candidate_search._get_access_egress):
 		# access bundles ["WALK", "CAR_DROP_OFF"] and OTP is free to silently return WALK instead. So
 		# CAR trips are anchored at a known rail/S-train/subway station and stitched with an
-		# unambiguous single-mode CAR direct leg (station_anchor_search.py) instead of relying on
+		# unambiguous single-mode CAR direct leg (anchor_fallback.py) instead of relying on
 		# that bundled request.
 		first_stop_id, last_stop_id = find_known_anchor_stations(tu_deltur_sub, anchor_station_lookup)
 		anchor_usable = (

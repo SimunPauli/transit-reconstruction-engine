@@ -11,7 +11,7 @@ from src.matching.candidate_search import SearchSettings
 from src import otp
 from src.matching.route_matching_utils import build_route_name_index
 from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
-from src.stations.station_anchor_fallback import build_anchor_station_lookup
+from src.matching.anchor_stitching import build_anchor_station_lookup
 from src.config_loader import get_config
 from src.constant import MODE_MAP
 from src.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns

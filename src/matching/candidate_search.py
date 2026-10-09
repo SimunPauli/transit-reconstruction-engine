@@ -4,7 +4,6 @@ from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from src import otp
 from .route_matching_utils import resolve_route_short_names
-from src.stations.tu_gtfs_stations_match import get_via_stations, drop_via_stations
 from src.constant import (
 	ACCESS_EGRESS_MODE_MAP,
 	STREET_MODES,
@@ -65,6 +64,63 @@ def _get_access_egress(tu_deltur_sub: pd.DataFrame):
 	tu_egress = _normalise_access_egress_mode(last_mode, "egress")
 
 	return tu_access, tu_egress
+
+
+def get_via_stations(tu_deltur_sub, tu_gtfs_station_df):
+	if not (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any():
+		return None
+	stops_row = []
+	for _, row in tu_deltur_sub.loc[tu_deltur_sub["StageMode"].isin([32, 33, 34])].iterrows(): #TRAM is only added in data-processing. And my stationlist does not include these TRAM stations.
+		stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["FromStation"]})
+		stops_row.append({"otp_mode": row["otp_mode"], "tu_station_name": row["ToStation"]})
+	if not stops_row:
+		return None
+	via_stopid = (
+		pd.DataFrame(stops_row)
+		.dropna(subset=["tu_station_name"])
+		.drop_duplicates(subset=["otp_mode", "tu_station_name"], keep="first")
+		.reset_index(drop=True)
+	)
+	if via_stopid.empty:
+		return None
+
+	required_columns = ["otp_mode", "tu_station_name", "gtfs_station_id"]
+	missing_columns = [column for column in required_columns if column not in tu_gtfs_station_df.columns]
+	if missing_columns:
+		raise KeyError(f"tu_gtfs_station_df is missing required columns: {missing_columns}")
+
+
+	# Merge and maintain order
+	merged = (
+		via_stopid
+		.merge(
+			tu_gtfs_station_df[["otp_mode", "tu_station_name", "gtfs_station_id"]],
+			on=["otp_mode", "tu_station_name"],
+			how="left"  # preserve order of via_stopid
+		)
+	)
+	# One via per TU station, listing all its stop_ids (a station may map to several twin
+	# stops; OTP accepts a visit to any of them). Order preserved; a stop_id already used
+	# by an earlier via is dropped.
+	via_stopids = []
+	seen = set()
+	stations = merged[merged["gtfs_station_id"].notna()].groupby(["otp_mode", "tu_station_name"], sort=False)
+	for _, stop_ids in stations["gtfs_station_id"]:
+		stop_ids = [stop_id for stop_id in dict.fromkeys(stop_ids) if stop_id not in seen]
+		seen.update(stop_ids)
+		if stop_ids:
+			via_stopids.append(stop_ids)
+	return via_stopids
+
+
+def drop_via_stations(via_stopids, stop_ids):
+	"""Drop every via whose station includes one of stop_ids (e.g. a segment's own origin/
+	destination anchor stop); None if no via is left."""
+	stop_ids = {stop_id for stop_id in stop_ids if stop_id}
+	if not via_stopids:
+		return via_stopids
+	return [ids for ids in via_stopids if not stop_ids.intersection(ids)] or None
+
 
 
 def resolve_segment_search_params(

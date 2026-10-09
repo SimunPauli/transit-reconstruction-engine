@@ -1,6 +1,6 @@
 import pandas as pd
 from src.constant import LOCAL_TIMEZONE
-from .tu_gtfs_stations_match import _normalise_name
+from src.stations.tu_gtfs_stations_match import _normalise_name
 
 #Only S_TRAIN, RAIL, and SUBWAY reliably have station names populated in TU (bus has
 #no named stops; tram station names aren't reliably populated), so anchor-station
@@ -254,7 +254,7 @@ def compute_anchor_split_segments(tu_deltur_sub, station_lookup):
 
 def stitch_segment_chains(chains, direct_leg_cache, wait_min=0):
 	"""
-	Combine every surviving chain built by station_anchor_search.try_split_station_anchored_fallback
+	Combine every surviving chain built by anchor_fallback.try_split_station_anchored_fallback
 	into one stitched itinerary DataFrame, assigning each chain a fresh, contiguous
 	iteration_id. Generalizes stitch_candidates (which hardcodes exactly 1 access leg + 1
 	transit_df + 1 egress leg) to an arbitrary ordered list of segment parts, mixing "direct"
