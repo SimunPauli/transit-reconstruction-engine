@@ -6,7 +6,7 @@ import textwrap
 import pandas as pd
 import numpy as np
 from typing import Optional, Any
-from .otp_parser import json_to_df, deduplicate_itineraries
+from .parser import json_to_df, deduplicate_itineraries
 
 # Per-thread trace ID (e.g. "TurId=123"), sent as X-Correlation-ID so OTP's log lines name their trip.
 # Requires server.traceParameters in router-config.json.

@@ -8,8 +8,8 @@ import pandas as pd
 from src import load_TU_data
 from src.tu_otp_matching import match_tu_trip_to_otp
 from src.candidate_search import SearchSettings
-from src import otp_client
-from src.otp_client import get_all_routes_for_mode
+from src.otp import client
+from src.otp.client import get_all_routes_for_mode
 from src.route_matching_utils import build_route_name_index
 from src.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.station_anchor_fallback import build_anchor_station_lookup

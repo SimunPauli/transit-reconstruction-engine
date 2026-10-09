@@ -18,7 +18,7 @@ TRANSIT_MODES = {"BUS", "S_TRAIN", "RAIL", "SUBWAY", "TRAM", "FERRY"}
 _TIME_COLS = ("start_trip", "end_trip", "start_leg", "end_leg")
 
 #OTP's planConnection API gives trip-level start/end as ISO8601 strings but leg-level
-#startTime/endTime as raw epoch milliseconds (see otp_parser.py) — the two groups need
+#startTime/endTime as raw epoch milliseconds (see parser.py) — the two groups need
 #different pd.to_datetime parsing on the way in and different serialization on the way
 #out, or downstream code (e.g. tu_otp_matching.py's waitingtime calc, which does raw
 #ms arithmetic on start_leg/end_leg) breaks on stitched itineraries.

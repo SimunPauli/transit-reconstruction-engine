@@ -6,7 +6,7 @@ from .candidate_search import (
 	load_candidates_with_reluctance_retries,
 	tu_endpoints,
 )
-from .otp_client import request_direct_leg
+from src.otp.client import request_direct_leg
 from .route_matching_utils import drop_via_stations
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
