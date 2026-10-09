@@ -100,7 +100,7 @@ def _prep_leg_df(leg_df):
 def stitch_candidates(transit_df, access_leg_df=None, egress_leg_df=None, wait_min=0):
 	"""
 	Combine a street-only access leg and/or egress leg (each a single OTP direct-mode
-	itinerary, queried once via otp_client.request_direct_leg) with every itinerary in
+	itinerary, queried once via otp.client.request_direct_leg) with every itinerary in
 	transit_df (a normal transit OTP query anchored at a known station), producing one
 	stitched itinerary per transit_df iteration_id.
 
