@@ -34,7 +34,7 @@ def build_anchor_station_lookup(tu_gtfs_station_df):
 	reuse it, rather than rebuilding it on every trip.
 	"""
 	if tu_gtfs_station_df is None or tu_gtfs_station_df.empty:
-		ValueError(f"tu_gtfs_station does not exist")
+		raise ValueError("tu_gtfs_station_df is missing or empty: no TU station matched a GTFS stop")
 
 	station_lookup = {}
 	for _, row in tu_gtfs_station_df.iterrows():
