@@ -61,7 +61,6 @@ STREET_MODES = {
 }
 
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
-LOCAL_TIMEZONE = "Europe/Copenhagen"
 
 WALK_BIKE_TIME_RATIO = config["walk_bike_time_ratio"]
 

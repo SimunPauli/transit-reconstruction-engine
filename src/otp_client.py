@@ -7,7 +7,6 @@ import pandas as pd
 import numpy as np
 from typing import Optional, Any
 from .otp_parser import json_to_df, deduplicate_itineraries
-from .constant import LOCAL_TIMEZONE
 
 # Per-thread trace ID (e.g. "TurId=123"), sent as X-Correlation-ID so OTP's log lines name their trip.
 # Requires server.traceParameters in router-config.json.
@@ -307,7 +306,6 @@ def _candidate_start_bounds(otp_candidates_df: pd.DataFrame):
 
 	start_times = (
 		pd.to_datetime(otp_candidates_df["start_trip"], utc=True, errors="coerce")
-		.dt.tz_convert(LOCAL_TIMEZONE)
 		.dropna()
 		.drop_duplicates()
 	)
@@ -489,7 +487,7 @@ def load_all_candidates(origin: dict,
 	# OTP widens a sparse page's window (pagingSearchWindowAdjustments, up to +4h per page),
 	# so pages can reach hours from depart_dt. Keep only itineraries starting inside it.
 	if not otp_candidates_df.empty:
-		start = pd.to_datetime(otp_candidates_df["start_trip"], utc=True).dt.tz_convert(LOCAL_TIMEZONE)
+		start = pd.to_datetime(otp_candidates_df["start_trip"], utc=True)  # compared tz-aware, so any depart_dt zone works
 		in_window = start.between(window_start, window_end)
 		if not in_window.all():
 			n_dropped = otp_candidates_df.loc[~in_window, "iteration_id"].nunique()
