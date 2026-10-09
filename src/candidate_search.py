@@ -2,7 +2,7 @@ import pandas as pd
 from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
-from src.otp.client import load_all_candidates, coordinate_location, stop_location
+from . import otp
 from .route_matching_utils import (
 	resolve_route_short_names,
 	get_via_stops,
@@ -37,8 +37,8 @@ class SearchSettings:
 
 def tu_endpoints(tu_tur_row, origin_stop_id=None, destination_stop_id=None):
 	"""OTP origin/destination locations: the given GTFS stop, else the TU trip's own coordinate."""
-	origin = stop_location(origin_stop_id) if origin_stop_id else coordinate_location(tu_tur_row["orig_lat"], tu_tur_row["orig_lon"])
-	destination = stop_location(destination_stop_id) if destination_stop_id else coordinate_location(tu_tur_row["tiladrlat"], tu_tur_row["tiladrlon"])
+	origin = otp.client.stop_location(origin_stop_id) if origin_stop_id else otp.client.coordinate_location(tu_tur_row["orig_lat"], tu_tur_row["orig_lon"])
+	destination = otp.client.stop_location(destination_stop_id) if destination_stop_id else otp.client.coordinate_location(tu_tur_row["tiladrlat"], tu_tur_row["tiladrlon"])
 	return origin, destination
 
 
@@ -217,7 +217,7 @@ def _load_add_and_filter_candidates(
 		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
 ):
-	otp_candidates_df = load_all_candidates(
+	otp_candidates_df = otp.client.load_all_candidates(
 		origin=origin,
 		destination=destination,
 		depart_dt=depart_dt,

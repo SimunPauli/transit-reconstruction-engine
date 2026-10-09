@@ -1,6 +1,6 @@
 import pandas as pd
 import utm
-from src.otp.client import get_stops_by_bbox_query
+from . import otp
 import re
 from rapidfuzz import fuzz
 import numpy as np
@@ -218,7 +218,7 @@ def find_gtfs_stations_for_tu_station(
 
 	# 2. Fetch nearby GTFS stops if not provided
 	if gtfs_df is None or gtfs_df.empty:
-		response = get_stops_by_bbox_query(
+		response = otp.client.get_stops_by_bbox_query(
 			lat=tu_station["lat"],
 			lon=tu_station["lon"],
 			bbox_buffer_m=bbox_buffer_m,

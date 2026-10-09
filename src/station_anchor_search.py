@@ -6,7 +6,7 @@ from .candidate_search import (
 	load_candidates_with_reluctance_retries,
 	tu_endpoints,
 )
-from src.otp.client import request_direct_leg
+from . import otp
 from .route_matching_utils import drop_via_stations
 from .constant import (
 	DIRECT_ACCESS_MODE_MAP,
@@ -66,7 +66,7 @@ def try_station_anchored_fallback(
 	if first_stop_id:
 		access_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[0]), "WALK")
 		origin, destination = tu_endpoints(tu_tur_row, destination_stop_id=first_stop_id)
-		access_leg_df = _fastest_itinerary(request_direct_leg(
+		access_leg_df = _fastest_itinerary(otp.client.request_direct_leg(
 			origin=origin,
 			destination=destination,
 			direct_mode=access_mode,
@@ -82,7 +82,7 @@ def try_station_anchored_fallback(
 	if last_stop_id:
 		egress_mode = DIRECT_ACCESS_MODE_MAP.get(int(tu_deltur_sorted["StageMode"].iloc[-1]), "WALK")
 		origin, destination = tu_endpoints(tu_tur_row, origin_stop_id=last_stop_id)
-		egress_leg_df = _fastest_itinerary(request_direct_leg(
+		egress_leg_df = _fastest_itinerary(otp.client.request_direct_leg(
 			origin=origin,
 			destination=destination,
 			direct_mode=egress_mode,
@@ -150,7 +150,7 @@ def _query_direct_segment(tu_tur_row, segment, settings):
 	legs = segment["legs"].sort_values("Delturnr")
 	direct_mode = DIRECT_ACCESS_MODE_MAP.get(int(legs["StageMode"].iloc[0]), "WALK")
 	origin, destination = tu_endpoints(tu_tur_row, segment["origin_stop_id"], segment["destination_stop_id"])
-	return _fastest_itinerary(request_direct_leg(
+	return _fastest_itinerary(otp.client.request_direct_leg(
 		origin=origin,
 		destination=destination,
 		direct_mode=direct_mode,

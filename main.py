@@ -8,8 +8,7 @@ import pandas as pd
 from src import load_TU_data
 from src.tu_otp_matching import match_tu_trip_to_otp
 from src.candidate_search import SearchSettings
-from src.otp import client
-from src.otp.client import get_all_routes_for_mode
+from src import otp
 from src.route_matching_utils import build_route_name_index
 from src.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.station_anchor_fallback import build_anchor_station_lookup
@@ -106,14 +105,14 @@ def _run(config, tee):
 	# So taking all routes for these modes. Which will be used when modes
 	# that do include route name in TU only can access those routes, but for
 	# those that do not, all routes will be used.
-	otp_mode_routes_cache = {mode: get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
+	otp_mode_routes_cache = {mode: otp.client.get_all_routes_for_mode(mode) for mode in ["RAIL", "TRAM", "SUBWAY", "FERRY"]}
 
 	# BUS and S_TRAIN do carry a route name in TU, but respondents free-text the bus
 	# ones and spell them inconsistently ('102 A' for '102A') or drop the trailing
 	# letter ('150' for '150S'). Index the real GTFS names so TU's spelling can be
 	# translated into one OTP will actually match.
 	otp_route_name_index = {
-		mode: build_route_name_index(get_all_routes_for_mode(mode))
+		mode: build_route_name_index(otp.client.get_all_routes_for_mode(mode))
 		for mode in ["BUS", "S_TRAIN"]
 	}
 
@@ -134,7 +133,7 @@ def _run(config, tee):
 	def match_one(tu_tur_row):
 		"""Match one TU trip, buffering its prints. Returns (output, match, summary)."""
 		tee.local.buffer = io.StringIO()
-		otp_client.trace.id = f"TurId={tu_tur_row['TurId']}"
+		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
 			match_result = match_tu_trip_to_otp(
 				tu_tur_row=tu_tur_row,
@@ -178,7 +177,7 @@ def _run(config, tee):
 		finally:
 			output = tee.local.buffer.getvalue()
 			tee.local.buffer = None
-			otp_client.trace.id = None
+			otp.client.trace.id = None
 		return output, rmse_based_match, trip_matching_summary
 
 	# Trips are independent and I/O-bound on OTP, hence threads. map() yields in TU order.
