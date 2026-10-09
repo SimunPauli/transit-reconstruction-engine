@@ -3,15 +3,16 @@ from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from src import otp
-from .route_matching_utils import (
-	resolve_route_short_names,
-	get_via_stops,
-	drop_via_stations,
-	filter_candidates_by_requirements,
-)
+from .route_matching_utils import resolve_route_short_names
+from src.stations.tu_gtfs_stations_match import get_via_stations, drop_via_stations
 from src.constant import (
 	ACCESS_EGRESS_MODE_MAP,
+	STREET_MODES,
 	REASON_NO_OTP_CANDIDATES,
+	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,
+	REASON_MISSING_MODE_COLUMN,
+	REASON_NO_REQUIRED_ROUTES,
+	REASON_NO_REQUIRED_MODES,
 	REASON_NO_MATCHING_LEG_SEQUENCE,
 	ROUTE_MATCH_EXACT,
 	ROUTE_MATCH_IGNORED,
@@ -108,7 +109,7 @@ def resolve_segment_search_params(
 		route_name_groups_for_search = route_name_groups
 
 	if (tu_deltur_sub["StageMode"].isin([32, 33, 34])).any(): #Station only stated for RAIL, S_TRAIN and SUBWAY
-		via_stopids = get_via_stops(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
+		via_stopids = get_via_stations(tu_deltur_sub=tu_deltur_sub, tu_gtfs_station_df=tu_gtfs_station_df)
 	else:
 		via_stopids = None
 	if exclude_via_stopids:
@@ -155,6 +156,135 @@ def _build_reluctance_attempts(modes_list, settings):
 					attempts.append(({mode: reluctance for mode in modes}, None))
 
 	return attempts
+
+
+def filter_candidates_by_requirements(
+		otp_candidates_df,
+		tu_deltur_sub,
+		route_name_groups: list = None,
+		modes_list: list = None,
+		tur_id: int = None
+) -> tuple[pd.DataFrame, str]:
+	"""
+	Filter OTP candidates to ensure all required routes and modes are present and TU transit deltur
+	is matched.
+
+	Args:
+		otp_candidates_df: DataFrame with OTP candidate trips
+		tu_deltur_sub: DataFrame with TU deltur legs
+		route_name_groups: List of frozensets, one per required TU route leg, each
+			holding that leg's acceptable spelling(s) (from resolve_route_short_names).
+			An itinerary must contain at least one name from every group — the
+			members within a group are alternatives for the same leg (e.g.
+			{'114', '114N'}), not routes that must all appear together.
+		modes_list: List of required transit modes (optional)
+		tur_id: Trip ID for logging purposes
+	"""
+	filtered_df = otp_candidates_df.copy()
+
+	# Filter by required routes (for BUS/S_TRAIN)
+	if route_name_groups:
+		if "route_short_name" not in filtered_df.columns:
+			return pd.DataFrame(), REASON_MISSING_ROUTE_SHORT_NAME_COLUMN
+
+		# A collapsed interlined leg carries the boarding route in route_short_name and
+		# the continuation's route alongside it, so TU recording either line still matches.
+		def _has_every_required_route(legs):
+			present = set(legs["route_short_name"].dropna().astype(str))
+			if "interlined_route_short_names" in legs.columns:
+				for names in legs["interlined_route_short_names"]:
+					if isinstance(names, (list, tuple)):   # NaN when frames are concatenated
+						present.update(str(name) for name in names)
+			return all(present & group for group in route_name_groups)
+
+		route_cols = ["route_short_name"]
+		if "interlined_route_short_names" in filtered_df.columns:
+			route_cols.append("interlined_route_short_names")
+
+		iteration_ids_with_required_routes = (
+			filtered_df.groupby("iteration_id")[route_cols]
+			.apply(_has_every_required_route)
+		)
+
+		filtered_df = filtered_df[
+			filtered_df["iteration_id"].isin(
+				iteration_ids_with_required_routes[
+					iteration_ids_with_required_routes
+				].index
+			)
+		].reset_index(drop=True)
+
+		if filtered_df.empty:
+			return pd.DataFrame(), REASON_NO_REQUIRED_ROUTES
+
+	# Filter by required transit modes
+	if modes_list:
+		if "mode" not in filtered_df.columns:
+			return pd.DataFrame(), REASON_MISSING_MODE_COLUMN
+
+		required_modes = set(modes_list)
+
+		iteration_ids_with_required_modes = (
+			filtered_df.groupby("iteration_id")["mode"]
+			.apply(lambda modes: required_modes.issubset(set(modes)))
+		)
+
+		filtered_df = filtered_df[
+			filtered_df["iteration_id"].isin(
+				iteration_ids_with_required_modes[
+					iteration_ids_with_required_modes
+				].index
+			)
+		].reset_index(drop=True)
+
+		if filtered_df.empty:
+			return pd.DataFrame(), REASON_NO_REQUIRED_MODES
+
+	# Filter by TU transit leg order, and reject itineraries with unmatched non-street legs
+	if tu_deltur_sub is not None and "tu_Delturnr" in otp_candidates_df.columns:
+		transit_modes = ["SUBWAY", "BUS", "RAIL", "S_TRAIN", "TRAM"]
+
+		tu_transit_delturnrs = (
+			tu_deltur_sub
+			.loc[
+				tu_deltur_sub["otp_mode"].notna()
+				& tu_deltur_sub["otp_mode"].isin(transit_modes)
+			].sort_values("Delturnr")["Delturnr"]
+			.tolist()
+		)
+
+		valid_ids = (
+			otp_candidates_df
+			.groupby("iteration_id")
+			.filter(lambda g: _tu_transit_legs_matched_in_order(g, tu_transit_delturnrs))
+			["iteration_id"]
+			.unique()
+		)
+		filtered_df = filtered_df[filtered_df["iteration_id"].isin(valid_ids)].reset_index(drop=True)
+
+		if filtered_df.empty:
+			return pd.DataFrame(), REASON_NO_MATCHING_LEG_SEQUENCE
+
+	return filtered_df, ""
+
+def _tu_transit_legs_matched_in_order(otp_candidates_sub, tu_transit_delturnrs):
+    """
+    Check that all TU transit Delturnrs appear in this OTP iteration's
+    matched Delturnrs, in order (as a subsequence), and that every
+    unmatched OTP leg is a street mode.
+    """
+    unmatched = otp_candidates_sub["tu_Delturnr"].isna()
+    if (~otp_candidates_sub.loc[unmatched, "mode"].isin(STREET_MODES)).any():
+        return False
+
+    matched = (
+        otp_candidates_sub.loc[otp_candidates_sub["tu_Delturnr"].notna(), "tu_Delturnr"]
+        .tolist()
+    )
+    # Check subsequence
+    it = iter(matched)
+    return all(delturnr in it for delturnr in tu_transit_delturnrs)
+
 
 
 def align_and_filter_candidates(

@@ -7,7 +7,7 @@ from src.matching.candidate_search import (
 	tu_endpoints,
 )
 from src import otp
-from src.matching.route_matching_utils import drop_via_stations
+from .tu_gtfs_stations_match import drop_via_stations
 from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	LOCAL_TIMEZONE,
