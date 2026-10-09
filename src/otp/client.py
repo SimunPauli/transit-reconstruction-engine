@@ -8,6 +8,9 @@ import numpy as np
 from typing import Optional, Any
 from .parser import json_to_df, deduplicate_itineraries
 
+# Transit modes queried when the caller gives no modes_json
+DEFAULT_TRANSIT_MODES = ("SUBWAY", "BUS", "TRAM", "RAIL", "S_TRAIN")
+
 # Per-thread trace ID (e.g. "TurId=123"), sent as X-Correlation-ID so OTP's log lines name their trip.
 # Requires server.traceParameters in router-config.json.
 trace = threading.local()
@@ -66,11 +69,7 @@ def graphql_json_request(
 		depart_dt: pd.Timestamp,
 		access_mode: Optional[Any] = None,
 		egress_mode: Optional[Any] = None,
-		metro_reluctance: float = 1,
-		bus_reluctance: float = 1,
-		tram_reluctance: float = 1,
-		rail_reluctance: float = 1,
-		s_train_reluctance: float = 1,
+		transit_reluctances: Optional[dict] = None,
 		walk_reluctance: float = 2,
 		car_reluctance: float = 2,
 		direct_only: bool = False,
@@ -103,6 +102,10 @@ def graphql_json_request(
 		include_via=has_via,
 	)
 
+	# Reluctance per OTP transit mode name; modes left out get 1, OTP's default
+	transit_reluctances = transit_reluctances or {}
+	transit_modes = modes_json if modes_json is not None else [{"mode": mode} for mode in DEFAULT_TRANSIT_MODES]
+
 	# Build variables dict
 	variables = {
 		"origin": {"location": origin},
@@ -115,11 +118,8 @@ def graphql_json_request(
 			"transitOnly": transit_only,
 			"transit": {
 				"transit": [
-					{"mode": "SUBWAY", "cost": {"reluctance": metro_reluctance}},
-					{"mode": "BUS", "cost": {"reluctance": bus_reluctance}},
-					{"mode": "TRAM", "cost": {"reluctance": tram_reluctance}},
-					{"mode": "RAIL", "cost": {"reluctance": rail_reluctance}},
-					{"mode": "S_TRAIN", "cost": {"reluctance": s_train_reluctance}},
+					{**m, "cost": {"reluctance": transit_reluctances.get(m["mode"], 1)}}
+					for m in transit_modes
 				],
 			},
 		},
@@ -170,20 +170,6 @@ def graphql_json_request(
 		# One visit per station; any one of its stop_ids satisfies it
 		variables["via"] = [{"visit": {"stopLocationIds": stop_ids}} for stop_ids in via_stopids]
 
-	if modes_json is not None:
-		transit_cost_map = {
-			"SUBWAY": metro_reluctance,
-			"BUS": bus_reluctance,
-			"TRAM": tram_reluctance,
-			"RAIL": rail_reluctance,
-			"S_TRAIN": s_train_reluctance,
-		}
-		modes_json_with_cost = [
-			{**m, "cost": {"reluctance": transit_cost_map[m["mode"]]}}
-			if m["mode"] in transit_cost_map else m
-			for m in modes_json
-		]
-		variables["modes"].setdefault("transit", {})["transit"] = modes_json_with_cost
 	if print_query:
 		print_for_graphiql(query, variables)
 
@@ -344,9 +330,8 @@ def load_all_candidates(origin: dict,
 		DataFrame with columns: iteration_id, leg_id, start_trip, end_trip, mode,
 		route_short_name, distance_km, duration_min, and other leg attributes.
 	"""
-	transit_reluctances = transit_reluctances or {}
-
-	response = graphql_json_request(
+	# Same query for every page; only the pagination cursor/count differs
+	request_kwargs = dict(
 		origin=origin,
 		destination=destination,
 		depart_dt=depart_dt,
@@ -355,22 +340,19 @@ def load_all_candidates(origin: dict,
 		modes_json=modes_json,
 		route_short_name_json=route_short_name,
 		via_stopids=via_stopids,
-		first=max_itinerary_candidates,
+		transit_reluctances=transit_reluctances,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,
-		metro_reluctance=transit_reluctances.get("SUBWAY", 1),
-		bus_reluctance=transit_reluctances.get("BUS", 1),
-		tram_reluctance=transit_reluctances.get("TRAM", 1),
-		rail_reluctance=transit_reluctances.get("RAIL", 1),
-		s_train_reluctance=transit_reluctances.get("S_TRAIN", 1),
 		direct_only=False,
 		transit_only=True,
 		search_window=search_window,
 		url=otp_url,
 		print_query=print_query,
 		timeout=request_timeout,
-		debug_profile=debug_profile
+		debug_profile=debug_profile,
 	)
+
+	response = graphql_json_request(**request_kwargs, first=max_itinerary_candidates)
 
 	otp_candidates_df = json_to_df(response)
 	response_data = response.json()
@@ -390,32 +372,7 @@ def load_all_candidates(origin: dict,
 		if not endCursor:
 			break
 		# Send forward request to OTP
-		response = graphql_json_request(
-			origin=origin,
-			destination=destination,
-			depart_dt=depart_dt,
-			access_mode=access_mode,
-			egress_mode=egress_mode,
-			modes_json=modes_json,
-			route_short_name_json=route_short_name,
-			via_stopids=via_stopids,
-			after=endCursor,
-			first=max_itinerary_candidates - n_forward,
-			walk_reluctance=walk_reluctance,
-			car_reluctance=car_reluctance,
-			metro_reluctance=transit_reluctances.get("SUBWAY", 1),
-			bus_reluctance=transit_reluctances.get("BUS", 1),
-			tram_reluctance=transit_reluctances.get("TRAM", 1),
-			rail_reluctance=transit_reluctances.get("RAIL", 1),
-			s_train_reluctance=transit_reluctances.get("S_TRAIN", 1),
-			direct_only=False,
-			transit_only=True,
-			search_window=search_window,
-			url=otp_url,
-			print_query=print_query,
-			timeout=request_timeout,
-			debug_profile=debug_profile
-		)
+		response = graphql_json_request(**request_kwargs, after=endCursor, first=max_itinerary_candidates - n_forward)
 
 		otp_candidates_forward_df = json_to_df(response)
 		if otp_candidates_forward_df.empty:
@@ -443,32 +400,7 @@ def load_all_candidates(origin: dict,
 			break
 
 		# Send backward request to OTP
-		response = graphql_json_request(
-			origin=origin,
-			destination=destination,
-			depart_dt=depart_dt,
-			access_mode=access_mode,
-			egress_mode=egress_mode,
-			modes_json=modes_json,
-			route_short_name_json=route_short_name,
-			via_stopids=via_stopids,
-			before=startCursor,
-			last=max_itinerary_candidates - n_backward,
-			walk_reluctance=walk_reluctance,
-			car_reluctance=car_reluctance,
-			metro_reluctance=transit_reluctances.get("SUBWAY", 1),
-			bus_reluctance=transit_reluctances.get("BUS", 1),
-			tram_reluctance=transit_reluctances.get("TRAM", 1),
-			rail_reluctance=transit_reluctances.get("RAIL", 1),
-			s_train_reluctance=transit_reluctances.get("S_TRAIN", 1),
-			direct_only=False,
-			transit_only=True,
-			search_window=search_window,
-			url=otp_url,
-			print_query=print_query,
-			timeout=request_timeout,
-			debug_profile=debug_profile
-		)
+		response = graphql_json_request(**request_kwargs, before=startCursor, last=max_itinerary_candidates - n_backward)
 
 		otp_candidates_backward_df = json_to_df(response)
 		if otp_candidates_backward_df.empty:
