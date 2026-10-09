@@ -44,6 +44,13 @@ def load_tu(data_dir,
 
 	tu_stations["id"] = tu_stations.index
 
+	#Add station Lat/Lon, dropping stations without valid coordinates
+	invalid_stations = _add_lat_lon(tu_stations, "e", "n", "lat", "lon")
+	if invalid_stations.any():
+		print(f"Note: dropping {invalid_stations.sum()} TU stations with missing/invalid UTM coordinates: "
+		      f"{', '.join(tu_stations.loc[invalid_stations, 'statnavn'].astype(str))}")
+		tu_stations = tu_stations[~invalid_stations].copy()
+
 	#Sort tu_session
 	tu_session = tu_session.sort_values(by="SessionId")
 

@@ -229,3 +229,25 @@ def deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
 	# deduped["iteration_id"] = deduped["iteration_id"].map(id_map)
 
 	return deduped.reset_index(drop=True)
+
+
+def stops_json_to_df(response):
+	"""One row per stop in a stopsByBbox response; modes/routes as comma-joined strings."""
+	stops = response.json().get("data", {}).get("stopsByBbox", [])
+
+	rows = []
+	for stop in stops:
+		routes = stop.get("routes", [])
+		route_modes = [r.get("mode") for r in routes if r.get("mode")]
+		route_names = [r.get("shortName") for r in routes if r.get("shortName")]
+
+		rows.append({
+			"stop_gtfsId": stop.get("gtfsId"),
+			"name": stop.get("name"),
+			"lat": stop.get("lat"),
+			"lon": stop.get("lon"),
+			"modes": ", ".join(set(route_modes)),
+			"routes": ", ".join(route_names)
+		})
+
+	return pd.DataFrame(rows, columns=["stop_gtfsId", "name", "lat", "lon", "modes", "routes"])

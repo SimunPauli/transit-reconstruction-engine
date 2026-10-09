@@ -1,5 +1,4 @@
 import pandas as pd
-import utm
 from src import otp
 import re
 from rapidfuzz import fuzz
@@ -16,7 +15,7 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
                            bbox_buffer_m=400,
                            period=None,
                            name_match_threshold = 0.7):
-	tu_stations["id"] = tu_stations.index
+	"""tu_stations as returned by load_tu (with id, lat, lon)."""
 	# period should be: period = (int(tu_tur["DiaryDate"].min()), int(tu_tur["DiaryDate"].max()))
 	if period is None:
 		print("Warning: No period specified. Matching all stations. Also station not open this period will be matched.")
@@ -27,17 +26,6 @@ def match_tu_gtfs_stations(tu_stations: pd.DataFrame,
 			period_start=period_start, period_end=period_end
 		)
 		tu_stations = tu_stations[mask].copy()
-
-	# --- Add Lat/Lon (destination) ---
-	lat_lon = [
-		utm.to_latlon(e, n, zone_number=32, northern=True)
-		for e, n in zip(tu_stations["e"], tu_stations["n"])
-	]
-
-	tu_stations[["lat", "lon"]] = pd.DataFrame(
-		lat_lon,
-		index=tu_stations.index,
-	)
 
 	# Collect results
 	matches_list = []
@@ -168,7 +156,8 @@ def find_gtfs_stations_for_tu_station(
 	tu_station : pd.Series
 		One row from tu_stations with 'lat', 'lon', mode flags, and 'statnavn'.
 	gtfs_df : pd.DataFrame, optional
-		Candidate GTFS stops (from parse_stops_to_df). If None, fetches from OTP.
+		Candidate GTFS stops (columns as otp.parser.stops_json_to_df, plus distance_degree).
+		If None, fetches from OTP.
 	bbox_buffer_m : int
 		Search radius in metres.
 	otp_url : str
@@ -224,7 +213,10 @@ def find_gtfs_stations_for_tu_station(
 			bbox_buffer_m=bbox_buffer_m,
 			otp_url=otp_url,
 		)
-		gtfs_df = parse_stops_to_df(response, tu_station["lat"], tu_station["lon"])
+		gtfs_df = otp.parser.stops_json_to_df(response)
+		# Approximate distance to station
+		gtfs_df["distance_degree"] = np.sqrt((gtfs_df["lat"] - tu_station["lat"])**2 + (gtfs_df["lon"] - tu_station["lon"])**2)
+		gtfs_df = gtfs_df.sort_values(by="distance_degree")
 	# 3. Keep only stops that serve at least one relevant mode
 	def stop_serves_mode(modes_str: str, mode: str) -> bool:
 		return mode in [m.strip() for m in modes_str.split(",")]
@@ -345,35 +337,3 @@ def _station_active_in_period(row, period_start, period_end):
 	# Overlap condition: station interval [effective_open, effective_close]
 	# overlaps [period_start, period_end]
 	return effective_open <= period_end and effective_close >= period_start
-
-def parse_stops_to_df(response_data, station_lat: float, station_lon: float):
-	response_data = response_data.json()
-	# Retrieve the list of edges
-	data = response_data.get("data", {})
-
-	rows = []
-	stops = data.get("stopsByBbox", [])
-
-	for stop in stops:
-		routes = stop.get("routes", [])
-		route_modes = [r.get("mode") for r in routes if r.get("mode")]
-		route_names = [r.get("shortName") for r in routes if r.get("shortName")]
-
-		rows.append({
-			"distance_degree": None,  # No distance in bbox response
-			"stop_gtfsId": stop.get("gtfsId"),
-			"name": stop.get("name"),
-			"lat": stop.get("lat"),
-			"lon": stop.get("lon"),
-			"modes": ", ".join(set(route_modes)),
-			"routes": ", ".join(route_names)
-		})
-
-	df = pd.DataFrame(rows)
-	if df.empty:
-		df = pd.DataFrame(columns=["distance_degree", "stop_gtfsId", "name", "lat", "lon", "modes", "routes"])
-	if not df.empty:
-		# Approximate distance to station
-		df["distance_degree"] = np.sqrt((df["lat"] - station_lat)**2 + (df["lon"] - station_lon)**2)
-	df = df.sort_values(by="distance_degree")
-	return pd.DataFrame(df)
