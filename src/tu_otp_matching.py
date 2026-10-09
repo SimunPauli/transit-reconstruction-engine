@@ -4,7 +4,7 @@ from .candidate_search import (
 	resolve_segment_search_params,
 	load_candidates_with_reluctance_retries,
 )
-from .otp_utils import (
+from .route_matching_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 )

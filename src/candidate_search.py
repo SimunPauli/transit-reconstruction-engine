@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from .otp_client import load_all_candidates, coordinate_location, stop_location
-from .otp_utils import (
+from .route_matching_utils import (
 	resolve_route_short_names,
 	get_via_stops,
 	drop_via_stations,
