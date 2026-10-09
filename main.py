@@ -14,7 +14,7 @@ from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.matching.anchor_stitching import build_anchor_station_lookup
 from src.config_loader import get_config, start_run
 from src.constant import MODE_MAP
-from src.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
+from src.matching.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
 
 
 class _Tee:

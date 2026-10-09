@@ -157,7 +157,7 @@ Create it based on the template below:
 | `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
 | `reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `reluctance_retries.walk.enabled` is true |
 | `paths.data_dir` | Directory containing the TU input files (Excel, or csv from `read_write_TU_linux`) |
-| `paths.output_dir` | Base directory for output files; each run writes into `output_dir/<tu_subset.year>/<run_id>/`, where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated at startup |
+| `paths.output_dir` | Base directory for output files; each run writes into `output_dir/<tu_subset.year>/<run_id>/`, where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated at startup. Every `paths` key ending in `_file` is a file name inside that run folder, so only output files may use that suffix |
 | `paths.log_file` | Log file name (relative to `output_dir`) |
 | `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
 | `paths.trip_matching_summaries_file` | Output file for per-trip match summaries |

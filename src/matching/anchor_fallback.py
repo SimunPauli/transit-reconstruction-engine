@@ -4,10 +4,10 @@ from .candidate_search import (
 	resolve_segment_search_params,
 	align_and_filter_candidates,
 	load_candidates_with_reluctance_retries,
-	tu_endpoints,
 	drop_via_stations,
 )
 from src import otp
+from src.tu.tu_utils import tu_endpoints
 from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	LOCAL_TIMEZONE,

@@ -74,7 +74,7 @@ TU_NAME_ALIASES = {
 # Stops tied with the best match on mode and name score within this radius are one station
 # under several stop_ids (a stop Rejseplan renumbered or moved, which the GTFS merger keeps
 # apart), each serving only part of the year. All are kept, so a via can accept any of them.
-STATION_TWIN_RADIUS_M = 150
+STATION_TWIN_RADIUS_M = 500
 
 # Stations where a mode was added to an already-existing station later than the
 # station row's own OpenDate reflects. tu_stations only has one OpenDate/ClosedDate

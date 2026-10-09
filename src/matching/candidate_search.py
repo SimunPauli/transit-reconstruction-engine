@@ -4,8 +4,8 @@ from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
 from src import otp
 from .route_matching_utils import resolve_route_short_names
+from src.tu.tu_utils import tu_endpoints, get_access_egress
 from src.constant import (
-	ACCESS_EGRESS_MODE_MAP,
 	STREET_MODES,
 	REASON_NO_OTP_CANDIDATES,
 	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,
@@ -33,37 +33,6 @@ class SearchSettings:
 	walk_retry_enabled: bool = True
 	walk_reluctance_sequence: tuple = (3, 4, 6)
 	station_anchor_wait_min: float = 0
-
-
-def tu_endpoints(tu_tur_row, origin_stop_id=None, destination_stop_id=None):
-	"""OTP origin/destination locations: the given GTFS stop, else the TU trip's own coordinate."""
-	origin = otp.client.stop_location(origin_stop_id) if origin_stop_id else otp.client.coordinate_location(tu_tur_row["orig_lat"], tu_tur_row["orig_lon"])
-	destination = otp.client.stop_location(destination_stop_id) if destination_stop_id else otp.client.coordinate_location(tu_tur_row["tiladrlat"], tu_tur_row["tiladrlon"])
-	return origin, destination
-
-
-def _get_access_egress(tu_deltur_sub: pd.DataFrame):
-	first_mode = int(tu_deltur_sub["StageMode"].iloc[0])
-	last_mode = int(tu_deltur_sub["StageMode"].iloc[-1])
-
-	def _normalise_access_egress_mode(stage_mode: int, side: str):
-		if stage_mode < 27:  # Street modes are less than 27 in TU StageMode
-			mode = ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
-		else:
-			mode = "WALK"  # fallback
-
-		if mode == "CAR_DROP_OFF":
-			if side == "access":
-				return ["WALK", "CAR_DROP_OFF"]
-			if side == "egress":
-				return ["WALK", "CAR_PICKUP"]
-
-		return mode
-
-	tu_access = _normalise_access_egress_mode(first_mode, "access")
-	tu_egress = _normalise_access_egress_mode(last_mode, "egress")
-
-	return tu_access, tu_egress
 
 
 def get_via_stations(tu_deltur_sub, tu_gtfs_station_df):
@@ -465,7 +434,7 @@ def load_candidates_with_reluctance_retries(
 	last_msg = ""
 
 	origin, destination = tu_endpoints(tu_tur_row, origin_stop_id, destination_stop_id)
-	tu_access, tu_egress = _get_access_egress(tu_deltur_sub)
+	tu_access, tu_egress = get_access_egress(tu_deltur_sub)
 	access_mode = "WALK" if origin_stop_id else tu_access
 	egress_mode = "WALK" if destination_stop_id else tu_egress
 	if depart_dt is None:

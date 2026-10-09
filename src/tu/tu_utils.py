@@ -1,5 +1,38 @@
 import pandas as pd
-from src.constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM
+from src import otp
+from src.constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM, ACCESS_EGRESS_MODE_MAP
+
+
+def tu_endpoints(tu_tur_row, origin_stop_id=None, destination_stop_id=None):
+	"""OTP origin/destination locations: the given GTFS stop, else the TU trip's own coordinate."""
+	origin = otp.client.stop_location(origin_stop_id) if origin_stop_id else otp.client.coordinate_location(tu_tur_row["orig_lat"], tu_tur_row["orig_lon"])
+	destination = otp.client.stop_location(destination_stop_id) if destination_stop_id else otp.client.coordinate_location(tu_tur_row["tiladrlat"], tu_tur_row["tiladrlon"])
+	return origin, destination
+
+
+def get_access_egress(tu_deltur_sub: pd.DataFrame):
+	first_mode = int(tu_deltur_sub["StageMode"].iloc[0])
+	last_mode = int(tu_deltur_sub["StageMode"].iloc[-1])
+
+	def _normalise_access_egress_mode(stage_mode: int, side: str):
+		if stage_mode < 27:  # Street modes are less than 27 in TU StageMode
+			mode = ACCESS_EGRESS_MODE_MAP.get(stage_mode, "WALK")
+		else:
+			mode = "WALK"  # fallback
+
+		if mode == "CAR_DROP_OFF":
+			if side == "access":
+				return ["WALK", "CAR_DROP_OFF"]
+			if side == "egress":
+				return ["WALK", "CAR_PICKUP"]
+
+		return mode
+
+	tu_access = _normalise_access_egress_mode(first_mode, "access")
+	tu_egress = _normalise_access_egress_mode(last_mode, "egress")
+
+	return tu_access, tu_egress
+
 
 def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM, verbose=True):
 	"""

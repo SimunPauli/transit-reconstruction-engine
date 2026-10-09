@@ -144,7 +144,7 @@ def _match_once(
 		print(f"[TurId={i_TurId}] {stage}: {status}{suffix}")
 
 	if is_car_access or is_car_egress:
-		# CAR access/egress has no reliable direct request to OTP (see candidate_search._get_access_egress):
+		# CAR access/egress has no reliable direct request to OTP (see tu_utils.get_access_egress):
 		# access bundles ["WALK", "CAR_DROP_OFF"] and OTP is free to silently return WALK instead. So
 		# CAR trips are anchored at a known rail/S-train/subway station and stitched with an
 		# unambiguous single-mode CAR direct leg (anchor_fallback.py) instead of relying on
