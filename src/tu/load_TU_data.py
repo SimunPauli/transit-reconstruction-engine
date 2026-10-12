@@ -33,7 +33,8 @@ def load_tu(data_dir,
             tur_secret_file,
             deltur_file,
             stations_file,
-            transit_code_tu = [31, 32, 33, 34, 37]):
+            prim_mode_filter,
+            ):
 
 	data_dir = Path(data_dir)
 	tu_session = _read_tu_table(data_dir / session_file)
@@ -120,7 +121,7 @@ def load_tu(data_dir,
 		~tu_tur["DestMuncode"].isin(outside_dk_code) & ~tu_tur["OrigMuncode"].isin(outside_dk_code)
 	]
 
-	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(transit_code_tu)].copy() #Not ferry
+	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(prim_mode_filter)].copy()
 
 	#Add Lat/Lon (destination, origin), dropping trips without valid coordinates
 	invalid = (
@@ -134,7 +135,7 @@ def load_tu(data_dir,
 	tu_deltur =tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
 
 	public_driver_TurId = tu_deltur[
-		(tu_deltur["StageMode"].isin(transit_code_tu)) & (tu_deltur["StageDrivPass"]==1) #is driver
+		(tu_deltur["StageMode"].isin([31, 32, 33, 34, 37, 41, 51])) & (tu_deltur["StageDrivPass"]==1) #is driver
 	]["TurId"] #remove drive of public transport (busdriver, train driver..)
 	tu_deltur = tu_deltur[~tu_deltur["TurId"].isin(public_driver_TurId)] #exclude driver
 	tu_tur = tu_tur[~tu_tur["TurId"].isin(public_driver_TurId)]
