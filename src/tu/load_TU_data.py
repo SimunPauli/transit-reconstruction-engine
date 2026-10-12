@@ -121,7 +121,7 @@ def load_tu(data_dir,
 		~tu_tur["DestMuncode"].isin(outside_dk_code) & ~tu_tur["OrigMuncode"].isin(outside_dk_code)
 	]
 
-	tu_tur = tu_tur[tu_tur["PtPrimMode"].isin(prim_mode_filter)].copy()
+	tu_tur = tu_tur[tu_tur["PrimMode"].isin(prim_mode_filter)].copy()
 
 	#Add Lat/Lon (destination, origin), dropping trips without valid coordinates
 	invalid = (
