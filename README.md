@@ -114,8 +114,7 @@ Create it based on the template below:
     "stations_file": "Stationer_tudatabase.xlsx"
   },
   "tu_subset": {
-    "year": 2024,
-    "tu_PtPrimMode": [31, 32, 33, 34, 37]
+    "year": 2024
   },
   "station_matching": {
     "bbox_buffer_m": 1000,
@@ -199,7 +198,7 @@ kept. Together they must provide:
 |--------|-------------|
 | `TurId` | |
 | `SessionId` | |
-| `PtPrimMode` | Primary public transport mode code |
+| `PrimMode` | Primary transport mode code |
 | `DepartHH` | Departure hour |
 | `DepartMM` | Departure minute |
 | `ArrivalHH` | Arrival hour (may exceed 24 for trips crossing midnight) |

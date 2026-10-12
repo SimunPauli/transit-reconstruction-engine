@@ -62,7 +62,7 @@ def load_tu(data_dir,
 		"TurId", "SessionId",
 		"DepartHH", "DepartMM", "ArrivalHH", "ArrivalMM",
 		"orig_e", "orig_n", "tiladre", "tiladrn",
-		"OrigMuncode", "DestMuncode", "PtPrimMode",
+		"OrigMuncode", "DestMuncode", "PrimMode",
 	]]
 
 	#Join tu_tur + tu_deltur
