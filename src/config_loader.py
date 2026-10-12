@@ -3,6 +3,9 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+RUN_ID_FORMAT = "%Y%m%d_%H%M%S"
+
+
 def load_config(config_path="config.json"):
 	"""Reads config.json. No side effects, so importing modules that read it creates nothing."""
 	with open(config_path, "r", encoding="utf-8") as file:
@@ -19,7 +22,7 @@ def start_run(config, stage=None, config_path="config.json"):
 	# TU years) don't overwrite each other. run_id is a sortable timestamp, same convention
 	# tools like Hydra/MLflow use for per-run output folders.
 	year = config["tu_subset"]["year"]
-	run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+	run_id = datetime.now().strftime(RUN_ID_FORMAT)
 	output_dir = Path(config["paths"]["output_dir"]).expanduser() / str(year)
 	if stage:
 		output_dir = output_dir / stage
