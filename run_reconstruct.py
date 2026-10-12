@@ -1,7 +1,5 @@
 import io
 import sys
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import pandas as pd
@@ -13,39 +11,8 @@ from src.matching.route_matching_utils import build_route_name_index
 from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.matching.anchor_stitching import build_anchor_station_lookup
 from src.config_loader import get_config, start_run
-from src.constant import MODE_MAP
 from src.matching.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
-
-
-class _Tee:
-	"""Writes to multiple files at once, so print() can go to both the console and log_file.
-	Worker threads print into their own thread-local buffer instead, so concurrent trips don't interleave."""
-	def __init__(self, *files):
-		self.files = files
-		self.local = threading.local()
-
-	def _targets(self):
-		buffer = getattr(self.local, "buffer", None)
-		return (buffer,) if buffer is not None else self.files
-
-	def write(self, data): [file.write(data) for file in self._targets()]
-	def flush(self): [file.flush() for file in self._targets()]
-
-
-def _wait_for_output_dir(output_dir, retry_s=60):
-	"""Block until output_dir (a network share) is reachable, so a dropped mount doesn't lose the results held in memory."""
-	while True:
-		try:
-			if output_dir.is_dir():
-				return
-			error = "directory missing"
-		except OSError as exc:
-			error = exc
-		# Straight to the console: the log file lives on the same share.
-		print(f"Output dir unreachable ({error}): {output_dir}\n"
-			  f"Results are kept in memory. Re-mount / re-authenticate the share; retrying in {retry_s}s...",
-			  file=sys.__stdout__, flush=True)
-		time.sleep(retry_s)
+from src.run_utils import Tee, wait_for_output_dir
 
 
 def main():
@@ -55,7 +22,7 @@ def main():
 	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
 	# this module and calls main() directly, without ever executing the __main__ guard below.
 	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
-		tee = _Tee(sys.stdout, log_file)
+		tee = Tee(sys.stdout, log_file)
 		with redirect_stdout(tee):
 			_run(config, tee)
 
@@ -76,8 +43,6 @@ def _run(config, tee):
 		walk_reluctance_sequence=tuple(walk_retry_cfg.get("sequence", [3, 4, 6])),
 		station_anchor_wait_min=config.get("matching", {}).get("station_anchor_wait_min", 0),
 	)
-	data_dir = config["paths"]["data_dir"]
-	YEAR = config["tu_subset"]["year"]
 	# Concurrent OTP requests. The ceiling is OTP's own parallelism, not Python's.
 	max_workers = config.get("run", {}).get("max_workers", 8)
 
@@ -85,18 +50,7 @@ def _run(config, tee):
 
 
 	print("Loading TU data...")
-	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu(
-		data_dir=str(data_dir),
-		YEAR = YEAR,
-		session_file=config["tu_files"]["session_file"],
-		tur_file=config["tu_files"]["tur_file"],
-		tur_secret_file=config["tu_files"]["tur_secret_file"],
-		deltur_file=config["tu_files"]["deltur_file"],
-		stations_file=config["tu_files"]["stations_file"],
-		transit_code_tu = [31, 32, 33, 34, 37],
-	)
-
-	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
+	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu_from_config(config)
 	print("TU data loaded")
 
 
@@ -190,7 +144,7 @@ def _run(config, tee):
 			if trip_matching_summary is not None:
 				trip_matching_summaries.append(trip_matching_summary)
 
-	_wait_for_output_dir(config["paths"]["output_dir"])
+	wait_for_output_dir(config["paths"]["output_dir"])
 
 	if not rmse_based_matches:
 		print("No rmse-based matches found.")

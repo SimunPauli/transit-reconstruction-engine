@@ -2,6 +2,7 @@ import pandas as pd
 import utm
 from pathlib import Path
 from datetime import datetime
+from src.constant import MODE_MAP
 
 # Access column types, as listed in read_write_TU_linux's <table>_types.csv.
 # Integer types are left to pandas: int64, or float64 (NaN) if values are missing, as with read_excel.
@@ -140,6 +141,22 @@ def load_tu(data_dir,
 	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])]
 
 	return [tu_session, tu_tur, tu_deltur, tu_stations]
+
+
+def load_tu_from_config(config):
+	"""load_tu with the year and files from config.json, plus each leg's OTP mode (tu_deltur["otp_mode"])."""
+	tu_files = config["tu_files"]
+	tu_session, tu_tur, tu_deltur, tu_stations = load_tu(
+		data_dir=str(config["paths"]["data_dir"]),
+		YEAR=config["tu_subset"]["year"],
+		session_file=tu_files["session_file"],
+		tur_file=tu_files["tur_file"],
+		tur_secret_file=tu_files["tur_secret_file"],
+		deltur_file=tu_files["deltur_file"],
+		stations_file=tu_files["stations_file"],
+	)
+	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
+	return tu_session, tu_tur, tu_deltur, tu_stations
 
 def _add_lat_lon(df, e_col, n_col, lat_col, lon_col):
 	"""Adds lat/lon from UTM zone 32N; returns mask of rows with missing/out-of-range coordinates (left NaN)."""

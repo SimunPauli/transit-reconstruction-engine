@@ -248,7 +248,7 @@ Ensure OTP is running and accessible at the configured `otp_url`, then:
 > handles stops, loading multiple overlapping feeds for the same region will
 > break this program.
 
-bash python main.py
+bash python run_reconstruct.py
 
 All console output is mirrored to the log file defined in `config.json`.
 
