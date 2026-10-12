@@ -32,9 +32,7 @@ def load_tu(data_dir,
             tur_file,
             tur_secret_file,
             deltur_file,
-            stations_file,
-            prim_mode_filter,
-            ):
+            stations_file):
 
 	data_dir = Path(data_dir)
 	tu_session = _read_tu_table(data_dir / session_file)
@@ -121,7 +119,7 @@ def load_tu(data_dir,
 		~tu_tur["DestMuncode"].isin(outside_dk_code) & ~tu_tur["OrigMuncode"].isin(outside_dk_code)
 	]
 
-	tu_tur = tu_tur[tu_tur["PrimMode"].isin(prim_mode_filter)].copy()
+	tu_tur = tu_tur.copy()  # own frame, not a slice: _add_lat_lon adds columns
 
 	#Add Lat/Lon (destination, origin), dropping trips without valid coordinates
 	invalid = (
@@ -158,6 +156,14 @@ def load_tu_from_config(config):
 	)
 	tu_deltur["otp_mode"] = tu_deltur["StageMode"].map(MODE_MAP)
 	return tu_session, tu_tur, tu_deltur, tu_stations
+
+
+def select_trips(tu_session, tu_tur, tu_deltur, keep):
+	"""Keeps the trips whose TurId is in keep, with their legs and sessions."""
+	tu_tur = tu_tur[tu_tur["TurId"].isin(keep)].copy()
+	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(keep)].copy()
+	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])]
+	return tu_session, tu_tur, tu_deltur
 
 def _add_lat_lon(df, e_col, n_col, lat_col, lon_col):
 	"""Adds lat/lon from UTM zone 32N; returns mask of rows with missing/out-of-range coordinates (left NaN)."""

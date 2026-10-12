@@ -11,6 +11,7 @@ from src.matching.route_matching_utils import build_route_name_index
 from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.matching.anchor_stitching import build_anchor_station_lookup
 from src.config_loader import get_config, start_run
+from src.constant import TRANSIT_STAGE_MODES
 from src.matching.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
 from src.run_utils import Tee, wait_for_output_dir
 
@@ -51,6 +52,9 @@ def _run(config, tee):
 
 	print("Loading TU data...")
 	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu_from_config(config)
+	# Public transport trips only
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur,
+	                                                          tu_tur["PrimMode"].isin(TRANSIT_STAGE_MODES))
 	print("TU data loaded")
 
 
