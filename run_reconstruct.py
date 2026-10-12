@@ -54,7 +54,7 @@ def _run(config, tee):
 	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu_from_config(config)
 	# Public transport trips only
 	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur,
-	                                                          tu_tur["PrimMode"].isin(TRANSIT_STAGE_MODES))
+	                                                          tu_tur.loc[tu_tur["PrimMode"].isin(TRANSIT_STAGE_MODES), "TurId"])
 	print("TU data loaded")
 
 
