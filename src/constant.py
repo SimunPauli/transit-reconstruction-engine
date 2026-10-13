@@ -110,6 +110,8 @@ ROUTE_MATCH_IGNORED = "ignored"   # route name dropped, mode + leg order only
 #Respondents mix up S-train lines sharing track. Keys/values are normalized names ('Bx' -> 'BX').
 S_TRAIN_SIBLING_LINES_ENABLED = config["reconstruct"]["matching"]["s_train_sibling_lines"]
 S_TRAIN_SIBLING_LINES = {"A": "E", "E": "A", "B": "BX", "BX": "B", "C": "H", "H": "C"}
+#Metro lines sharing track; the choice set counts them as one route.
+METRO_SIBLING_LINES = {"M1": "M2", "M2": "M1", "M3": "M4", "M4": "M3"}
 
 ROUTE_MATCH_LEVELS = (
 	ROUTE_MATCH_EXACT,

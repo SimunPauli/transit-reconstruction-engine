@@ -1,6 +1,6 @@
 import pandas as pd
 from src import otp
-from src.constant import STREET_MODES
+from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_SIBLING_LINES
 from src.tu.tu_utils import tu_endpoints, get_access_egress, absorb_short_walk_into_car
 
 # Transit-leg columns that make two itineraries the same alternative (choice_set.alternative_key).
@@ -35,9 +35,24 @@ CHOICE_SET_COLUMNS = [
 ]
 
 
+# Lines sharing track count as one route
+SIBLING_LINES = {"SUBWAY": METRO_SIBLING_LINES, "S_TRAIN": S_TRAIN_SIBLING_LINES}
+
+
+def _sibling_route(mode, name):
+	"""The route name shared by name and its sibling line: the lower of the two (M2 -> M1, Bx -> B)."""
+	siblings = SIBLING_LINES.get(mode, {})
+	if not isinstance(name, str) or name.upper() not in siblings:
+		return name
+	return min(name.upper(), siblings[name.upper()])
+
+
 def _itinerary_keys(legs, key_columns):
 	"""{iteration_id: tuple of its transit legs' key_columns, in leg order}."""
 	transit = legs[~legs["mode"].isin(STREET_MODES)].sort_values("leg_id")
+	transit = transit.assign(route_short_name=[
+		_sibling_route(mode, name) for mode, name in zip(transit["mode"], transit["route_short_name"])
+	])
 	keys = transit[key_columns].fillna("").astype(str)
 	return {
 		iteration_id: tuple(map(tuple, rows.to_numpy()))
