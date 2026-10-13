@@ -35,8 +35,15 @@ def find_chosen_trips_file(config):
 	raise FileNotFoundError(f"No run in {year_dir} contains {matches_file}")
 
 
-def read_chosen_trips(matches_path):
-	"""The reconstructed (chosen) itineraries, one row per leg."""
+def read_chosen_trips(matches_path, summaries_file):
+	"""
+	The reconstructed (chosen) itineraries, one row per leg. Trips only found by ignoring the
+	TU route (trip_wrong_route, per the run's summaries_file) are dropped: their route isn't the chosen one.
+	"""
 	# Logged, as the run's config.json can't tell which run reconstruct_run_dir: null picked
 	print(f"Chosen trips from: {matches_path}")
-	return pd.read_csv(matches_path)
+	chosen_trips = pd.read_csv(matches_path)
+	summaries = pd.read_excel(matches_path.parent / summaries_file)
+	wrong_route = summaries.loc[summaries["trip_wrong_route"] == 1, "TurId"]
+	print(f"Dropped {wrong_route.isin(chosen_trips['TurId']).sum()} wrong-route trip(s)")
+	return chosen_trips[~chosen_trips["TurId"].isin(wrong_route)]

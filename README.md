@@ -146,8 +146,11 @@ Create it based on the template below:
 
   "choice_set": {
     "reconstruct_run_dir": null,
+    "search_window": "PT1H",
+    "alternative_key": "routes_stops",
     "paths": {
-      "log_file": "choice_set.log"
+      "log_file": "choice_set.log",
+      "choice_set_file": "choice_set.csv"
     }
   }
 }
@@ -184,7 +187,9 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `reconstruct.walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
 | `reconstruct.paths.*` | Output file names, written into the run folder (see "Output" below) |
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
-| `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder |
+| `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
+| `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
+| `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (`choice_set_file`: one row per leg, with `TurId`, `alt_id`, `is_chosen`; `alt_id` 0 is the chosen) |
 
 ---
 
