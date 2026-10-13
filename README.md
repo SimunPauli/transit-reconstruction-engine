@@ -70,42 +70,9 @@ The project is configured via a `config.json` file in the project root.
 Create it based on the template below:
 ```
 {
-  "request": {
-    "otp_url": "http://localhost:8080/otp/gtfs/v1",
-    "search_window": "PT1H",
-    "max_itinerary_candidates": 50,
-    "request_timeout": 30
+  "tu_subset": {
+    "year": 2024
   },
-
-  "matching": {
-    "return_trip_summary": true,
-    "print_deviation": true,
-    "station_anchor_wait_min": 0,
-    "walk_car_absorb_max_km": 0.5,
-    "s_train_sibling_lines": true
-  },
-  "reluctance_retries": {
-    "transit": {
-      "enabled": true,
-      "sequence": [0.5, 0.25, 0.1]
-    },
-    "walk": {
-      "enabled": true,
-      "sequence": [3, 4, 6]
-    }
-  },
-  "paths": {
-    "data_dir": "/home/user/Reproducing/Data/TU/",
-    "output_dir": "/home/user/Reproducing/Output/",
-    "log_file": "rmse_based_matches.log",
-    "rmse_based_matches_file": "rmse_based_matches.csv",
-    "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
-    "failures_file": "trip_failures.tsv",
-    "summary_stats_file": "trip_matching_summary_stats.xlsx",
-    "tu_gtfs_station_file": "tu_gtfs_station_df.csv",
-    "map_file": "map.htmlz"
-  },
-
   "tu_files": {
     "session_file": "dataset_session.csv",
     "tur_file": "dataset_tur.csv",
@@ -113,61 +80,111 @@ Create it based on the template below:
     "deltur_file": "dataset_deltur.csv",
     "stations_file": "Stationer_tudatabase.xlsx"
   },
-  "tu_subset": {
-    "year": 2024
+  "paths": {
+    "data_dir": "/home/user/Reproducing/Data/TU/",
+    "output_dir": "/home/user/Reproducing/Output/"
+  },
+  "run": {
+    "max_workers": 8
+  },
+  "request": {
+    "otp_url": "http://localhost:8080/otp/gtfs/v1",
+    "max_itinerary_candidates": 50,
+    "request_timeout": 30
+  },
+  "tu_prep": {
+    "walk_car_absorb_max_km": 0.5
   },
   "station_matching": {
     "bbox_buffer_m": 1000,
     "station_name_threshold": 0.7
   },
-  "squared_error_weights": {
-    "w_departure_min": 1.0,
-    "w_trip_duration_min": 1.0,
-    "w_street_mode_min": 0.0,
-    "w_street_mode_km_by_length": [
-      {"below_km": 0.5, "w": 1800.0},
-      {"below_km": 1, "w": 800.0},
-      {"below_km": 2, "w": 200.0},
-      {"below_km": 5, "w": 60.0},
-      {"below_km": null, "w": 10.0}
-    ],
-    "w_transit_min": 1.0,
-    "w_transit_km": 0.0
+
+  "reconstruct": {
+    "search_window": "PT1H",
+    "matching": {
+      "return_trip_summary": true,
+      "anchor_timeout_min": 10,
+      "station_anchor_wait_min": 0,
+      "s_train_sibling_lines": true
+    },
+    "reluctance_retries": {
+      "transit": {
+        "enabled": true,
+        "sequence": [0.5, 0.25, 0.1]
+      },
+      "walk": {
+        "enabled": true,
+        "sequence": [3, 4, 6]
+      }
+    },
+    "squared_error_weights": {
+      "w_departure_min": 1.0,
+      "w_trip_duration_min": 1.0,
+      "w_street_mode_min": 0.0,
+      "w_street_mode_km_by_length": [
+        {"below_km": 0.5, "w": 1800.0},
+        {"below_km": 1, "w": 800.0},
+        {"below_km": 2, "w": 200.0},
+        {"below_km": 5, "w": 60.0},
+        {"below_km": null, "w": 10.0}
+      ],
+      "w_transit_min": 1.0,
+      "w_transit_km": 0.0
+    },
+    "walk_bike_time_ratio": 0.266,
+    "paths": {
+      "log_file": "rmse_based_matches.log",
+      "rmse_based_matches_file": "rmse_based_matches.csv",
+      "trip_matching_summaries_file": "trip_matching_summaries.xlsx",
+      "failures_file": "trip_failures.tsv",
+      "summary_stats_file": "trip_matching_summary_stats.xlsx",
+      "tu_gtfs_station_file": "tu_gtfs_station_df.csv",
+      "map_file": "map.htmlz"
+    }
   },
-  "walk_bike_time_ratio": 0.266
+
+  "choice_set": {
+    "reconstruct_run_dir": null,
+    "paths": {
+      "log_file": "choice_set.log"
+    }
+  }
 }
 ```
+
+Top-level sections are shared by both entry points; `reconstruct` is read only by `run_reconstruct.py`,
+`choice_set` only by `run_choice_set.py`.
 
 ### Configuration reference
 
 | Key | Description |
 |-----|-------------|
+| `tu_subset.year` | TU survey year to process; also names the year folder under `paths.output_dir` |
+| `tu_files.*` | File names of the TU input files in `paths.data_dir` (see "Input data" below) |
+| `paths.data_dir` | Directory containing the TU input files (Excel, or csv from `read_write_TU_linux`) |
+| `paths.output_dir` | Base directory for output files; each run writes into its own run folder (see "Output" below) |
+| `run.max_workers` | Number of trips matched concurrently (concurrent OTP requests) |
 | `request.otp_url` | GraphQL endpoint of the running OTP instance |
-| `request.search_window` | ISO 8601 duration — time window searched around departure time |
 | `request.max_itinerary_candidates` | Maximum number of OTP itineraries to fetch per trip |
 | `request.request_timeout` | HTTP timeout in seconds for OTP requests |
-| `matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
-| `matching.print_deviation` | Whether to print RMSE deviation details per trip |
-| `matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
-| `matching.walk_car_absorb_max_km` | A WALK leg shorter than this (km), adjacent to a CAR-family leg (e.g. walking to/from a parked car), is merged into that CAR leg before matching, so the CAR leg is correctly detected as the trip's access/egress mode instead of being hidden behind the short walk |
-| `matching.s_train_sibling_lines` | Whether to try the `sibling` route-match level, accepting the S-train line sharing the TU line's track (A↔E, B↔Bx, C↔H) before dropping the route name (see "Trip outcomes" below) |
-| `reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
-| `reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `reluctance_retries.transit.enabled` is true |
-| `reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
-| `reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `reluctance_retries.walk.enabled` is true |
-| `paths.data_dir` | Directory containing the TU input files (Excel, or csv from `read_write_TU_linux`) |
-| `paths.output_dir` | Base directory for output files; each run writes into `output_dir/<tu_subset.year>/<run_id>/`, where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated at startup. Every `paths` key ending in `_file` is a file name inside that run folder, so only output files may use that suffix |
-| `paths.log_file` | Log file name (relative to `output_dir`) |
-| `paths.rmse_based_matches_file` | Output file for the best-matched itineraries |
-| `paths.trip_matching_summaries_file` | Output file for per-trip match summaries |
-| `paths.failures_file` | Output file listing TurId + failure reason code for trips that weren't reconstructed (see "Failure reasons" below); contains no coordinates, station names, or other survey data |
-| `paths.summary_stats_file` | Output file for run-level summary statistics (success rate, failure reason breakdown) |
-| `paths.tu_gtfs_station_file` | Output file for the TU–GTFS station mapping |
-| `paths.map_file` | Output file name for optional map visualisation |
+| `tu_prep.walk_car_absorb_max_km` | A WALK leg shorter than this (km), adjacent to a CAR-family leg (e.g. walking to/from a parked car), is merged into that CAR leg before matching, so the CAR leg is correctly detected as the trip's access/egress mode instead of being hidden behind the short walk |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
 | `station_matching.station_name_threshold` | Minimum name-similarity score (0–1, rapidfuzz WRatio) for a station name match; stations with no candidate above this are left unmatched for that mode rather than guessed by distance |
-| `squared_error_weights` | Weights applied to each component of the RMSE score; street distance per TU leg length bin (see "Selecting the best match — weighted RMSE") |
-| `walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
+| `reconstruct.search_window` | ISO 8601 duration — time window searched around departure time |
+| `reconstruct.matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
+| `reconstruct.matching.anchor_timeout_min` | Wall-clock limit in minutes for one trip's station-anchored fallback (see below). `0` = unlimited. |
+| `reconstruct.matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
+| `reconstruct.matching.s_train_sibling_lines` | Whether to try the `sibling` route-match level, accepting the S-train line sharing the TU line's track (A↔E, B↔Bx, C↔H) before dropping the route name (see "Trip outcomes" below) |
+| `reconstruct.reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
+| `reconstruct.reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `transit.enabled` is true |
+| `reconstruct.reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
+| `reconstruct.reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `walk.enabled` is true |
+| `reconstruct.squared_error_weights` | Weights applied to each component of the RMSE score; street distance per TU leg length bin (see "Selecting the best match — weighted RMSE") |
+| `reconstruct.walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
+| `reconstruct.paths.*` | Output file names, written into the run folder (see "Output" below) |
+| `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
+| `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder |
 
 ---
 
@@ -255,9 +272,11 @@ All console output is mirrored to the log file defined in `config.json`.
 
 ## Output
 
-All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (created if it doesn't exist), where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated when the run starts — so re-running for the same year never overwrites a previous run's output, and different years never mix in the same folder.
+All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (created if it doesn't exist), where `run_id` is a `YYYYMMDD_HHMMSS` timestamp generated when the run starts — so re-running for the same year never overwrites a previous run's output, and different years never mix in the same folder. Choice-set runs go in `paths.output_dir/<tu_subset.year>/choice_set/<run_id>/`.
 
-| File | Description |
+`reconstruct.paths` (and `choice_set.paths`) holds only the run's output file names; each is placed in the run folder when the run starts.
+
+| `reconstruct.paths` key | Description |
 |------|-------------|
 | `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
 | `trip_matching_summaries_file` | Per-trip summary including the trip's outcome (see "Trip outcomes" below), RMSE score and deviation metrics |
@@ -290,7 +309,7 @@ and for trips not found):
 | `route_match` | Route accepted | Outcome |
 |---|---|---|
 | `exact` | As TU wrote it (`150`) | `trip_found` |
-| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `matching.s_train_sibling_lines` | `trip_near_route` |
+| `sibling` | + the S-train line sharing its track (`A` ↔ `E`, `B` ↔ `Bx`, `C` ↔ `H`); only if `reconstruct.matching.s_train_sibling_lines` | `trip_near_route` |
 | `letter` | + a missing letter suffix (`150` → `150S`) | `trip_near_route` |
 | `digit` | + ONE digit moved by 1, no carry (`192` → `191`, `171` → `161`, not `199` → `200`) | `trip_near_route` |
 | `ignored` | Any route — mode + leg order only | `trip_wrong_route` |
@@ -335,7 +354,7 @@ be found in `log_file` with a plain text search.
 | `no_direct_egress_route` | Station-anchored fallback: no direct (walk/car) route found from the anchor station to the true destination |
 | `anchored_no_otp_candidates` | Station-anchored fallback: the direct access/egress leg(s) were found, but OTP returned zero transit itineraries from/to the anchor station |
 | `anchored_no_required_routes` / `anchored_no_required_modes` / `anchored_no_matching_leg_sequence` | Station-anchored fallback: transit itineraries were found from/to the anchor station, but none passed the same route/mode/sequence checks as the full-route search |
-| `duration_outside_search_window` | Candidates passed all filters, but every one's total duration differs from the TU trip's by more than `search_window` |
+| `duration_outside_search_window` | Candidates passed all filters, but every one's total duration differs from the TU trip's by more than `reconstruct.search_window` |
 | `no_best_match` | Candidates passed all filters, but RMSE ranking found no best trip |
 | *(exception class name, e.g. `TimeoutError`)* | An unexpected error was raised while processing the trip; see `log_file` for the message |
 
@@ -461,15 +480,15 @@ boundary is reached. Duplicate itineraries from pagination overlap are removed, 
 itineraries starting outside `search_window`, which OTP's page widening can reach.
 
 If the initial query returns no valid candidates after filtering, the tool retries with two
-independent, configurable mechanisms (`reluctance_retries` in `config.json`), each of which
+independent, configurable mechanisms (`reconstruct.reluctance_retries` in `config.json`), each of which
 can be toggled on/off and has a configurable value sequence:
 
-- **Walk retries** (`reluctance_retries.walk`) — increases `walk_reluctance` (default `[3, 4,
+- **Walk retries** (`reconstruct.reluctance_retries.walk`) — increases `walk_reluctance` (default `[3, 4,
   6]`, above the baseline of `2`), one value per attempt. This targets cases where OTP's own
   cost model prefers walking further to reach a different, "cheaper" stop/route than the one
   the respondent actually used — TU respondents often go to greater lengths to avoid walking
   than OTP's default cost function assumes, so this makes OTP itself avoid extra walking more.
-- **Transit retries** (`reluctance_retries.transit`) — reduces reluctance for the trip's
+- **Transit retries** (`reconstruct.reluctance_retries.transit`) — reduces reluctance for the trip's
   transit mode(s) (default `[0.5, 0.25, 0.1]`, below the baseline of `1`), first for
   individual modes and then for combinations. This targets cases where OTP's search found
   nothing at all in the search window, by making transit relatively cheaper against other
@@ -502,7 +521,7 @@ using a greedy forward pass:
   (e.g. a transfer walk) and left unmatched — the TU leg position is not advanced.
 - Due to OTP router requiring both access and egress to be bicycle if one is bicycle;
   they are matched to OTP walk legs, and the OTP walk duration is then scaled by
-  `walk_bike_time_ratio` to approximate cycling time.
+  `reconstruct.walk_bike_time_ratio` to approximate cycling time.
 
 After alignment, each OTP leg carries the `Delturnr` of its matched TU leg, or
 `NA` if unmatched.
@@ -541,7 +560,7 @@ each OTP itinerary against the TU record across four dimensions:
 | Transit duration | Per matched transit leg |
 | Street distance | Per matched street leg |
 
-Each dimension has a configurable weight (`squared_error_weights` in `config.json`).
+Each dimension has a configurable weight (`reconstruct.squared_error_weights` in `config.json`).
 Unmatched OTP legs, such as extra transfer walks, incur no penalty, as they are 
 treated as unknown. The current
 weights set the street-duration and transit-distance terms to `0`, because
@@ -605,7 +624,7 @@ a real transit leg without breaking the route/mode/leg-order checks in step 5:
 2. A transit-only itinerary is queried from/to the known station instead of the true
    origin/destination, using the same mode/route/via filters as the normal query.
 3. The two are stitched into a single itinerary per transit candidate, with the
-   street-only leg placed `matching.station_anchor_wait_min` minutes before/after the
+   street-only leg placed `reconstruct.matching.station_anchor_wait_min` minutes before/after the
    transit leg (`0` = back-to-back, the default).
 4. The stitched itinerary is run through the same leg alignment (step 4) and
    candidate filtering (step 5) as any other candidate.

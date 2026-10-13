@@ -17,32 +17,34 @@ from src.run_utils import Tee, wait_for_output_dir
 
 
 def main():
-	config = start_run(get_config())
+	config = start_run(get_config(), "reconstruct", subfolder=False)
 
 	# Opened here (not just under `if __name__ == "__main__"`) so the log file is written
 	# regardless of how main() is invoked - e.g. PyCharm's "Run 'main'" gutter action imports
 	# this module and calls main() directly, without ever executing the __main__ guard below.
-	with open(config["paths"]["log_file"], "w", encoding="utf-8") as log_file:
+	with open(config["reconstruct"]["paths"]["log_file"], "w", encoding="utf-8") as log_file:
 		tee = Tee(sys.stdout, log_file)
 		with redirect_stdout(tee):
 			_run(config, tee)
 
 
 def _run(config, tee):
-	return_trip_summary = config.get("matching", {}).get("return_trip_summary", True)
-	transit_retry_cfg = config.get("reluctance_retries", {}).get("transit", {})
-	walk_retry_cfg = config.get("reluctance_retries", {}).get("walk", {})
+	reconstruct = config["reconstruct"]
+	paths = reconstruct["paths"]
+	return_trip_summary = reconstruct.get("matching", {}).get("return_trip_summary", True)
+	transit_retry_cfg = reconstruct.get("reluctance_retries", {}).get("transit", {})
+	walk_retry_cfg = reconstruct.get("reluctance_retries", {}).get("walk", {})
 	config_request = config.get("request")
 	settings = SearchSettings(
 		otp_url=config_request["otp_url"],
-		search_window=config_request["search_window"],
+		search_window=reconstruct["search_window"],
 		max_itinerary_candidates=config_request["max_itinerary_candidates"],
 		request_timeout=config_request["request_timeout"],
 		transit_retry_enabled=transit_retry_cfg.get("enabled", True),
 		transit_reluctance_sequence=tuple(transit_retry_cfg.get("sequence", [0.5, 0.25, 0.1])),
 		walk_retry_enabled=walk_retry_cfg.get("enabled", True),
 		walk_reluctance_sequence=tuple(walk_retry_cfg.get("sequence", [3, 4, 6])),
-		station_anchor_wait_min=config.get("matching", {}).get("station_anchor_wait_min", 0),
+		station_anchor_wait_min=reconstruct.get("matching", {}).get("station_anchor_wait_min", 0),
 	)
 	# Concurrent OTP requests. The ceiling is OTP's own parallelism, not Python's.
 	max_workers = config.get("run", {}).get("max_workers", 8)
@@ -78,11 +80,11 @@ def _run(config, tee):
 	tu_gtfs_station_df = match_tu_gtfs_stations(
 		tu_stations,
 		period=(tu_tur["DiaryDate"].min(), tu_tur["DiaryDate"].max()),
-		bbox_buffer_m=1000,
-		name_match_threshold=0.7
+		bbox_buffer_m=config["station_matching"]["bbox_buffer_m"],
+		name_match_threshold=config["station_matching"]["station_name_threshold"]
 	)
-	print("Mapping of TU and GTFS station has been exported to", config["paths"]["tu_gtfs_station_file"])
-	tu_gtfs_station_df.to_csv(config["paths"]["tu_gtfs_station_file"], index=False, sep=",", decimal=".")
+	print("Mapping of TU and GTFS station has been exported to", paths["tu_gtfs_station_file"])
+	tu_gtfs_station_df.to_csv(paths["tu_gtfs_station_file"], index=False, sep=",", decimal=".")
 	anchor_station_lookup = build_anchor_station_lookup(tu_gtfs_station_df)
 
 	rmse_based_matches = []
@@ -154,26 +156,26 @@ def _run(config, tee):
 		print("No rmse-based matches found.")
 		if trip_matching_summaries:
 			trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
-			trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
-			_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
+			trip_matching_summaries.to_excel(paths["trip_matching_summaries_file"], index=False)
+			_write_failures_file(trip_matching_summaries, paths["failures_file"])
 			_print_and_export_summary_stats(
-				trip_matching_summaries, config["paths"]["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+				trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df
 			)
 		return
 
 	all_rmse_based_matches = pd.concat(rmse_based_matches, ignore_index=True)
 	all_rmse_based_matches = _reorder_rmse_columns(all_rmse_based_matches)
-	all_rmse_based_matches.to_csv(config["paths"]["rmse_based_matches_file"], sep = ",", decimal = ".", index=False)
+	all_rmse_based_matches.to_csv(paths["rmse_based_matches_file"], sep = ",", decimal = ".", index=False)
 	if return_trip_summary:
 		trip_matching_summaries = pd.DataFrame(trip_matching_summaries)
-		trip_matching_summaries.to_excel(config["paths"]["trip_matching_summaries_file"], index=False)
-		_write_failures_file(trip_matching_summaries, config["paths"]["failures_file"])
+		trip_matching_summaries.to_excel(paths["trip_matching_summaries_file"], index=False)
+		_write_failures_file(trip_matching_summaries, paths["failures_file"])
 		_print_and_export_summary_stats(
-			trip_matching_summaries, config["paths"]["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+			trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df
 		)
 	print(f"\n\n\n____________________________________________________________________________________________")
-	print(f"\n\n\nall_rmse_based_matches has been exported to {config['paths']['rmse_based_matches_file']}")
-	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {config['paths']['rmse_based_matches_file'].name}")
+	print(f"\n\n\nall_rmse_based_matches has been exported to {paths['rmse_based_matches_file']}")
+	print(f"Saved {len(all_rmse_based_matches)} rmse-based matches to {paths['rmse_based_matches_file'].name}")
 
 if __name__ == "__main__":
 	main()

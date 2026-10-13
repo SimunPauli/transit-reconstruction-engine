@@ -14,12 +14,14 @@ that differ only in weights; any are listed, as they point to e.g. OTP timeouts 
 Run from tu_reconstruct_trips/:  .venv/bin/python weight_calibration/compare_runs.py <run_dir_a> <run_dir_b>
 Writes compare_<run_id_a>_vs_<run_id_b>.xlsx into run_dir_b.
 """
-import json
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src import config_loader
 
 TZ = "Europe/Copenhagen"
 PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
@@ -42,8 +44,7 @@ def run_file(run_dir, key):
 	config_path = run_dir / "config.json"
 	if not config_path.is_file():
 		config_path = Path("config.json")
-	with open(config_path, encoding="utf-8") as file:
-		return run_dir / json.load(file)["paths"][key]
+	return run_dir / config_loader.load_config(config_path)["reconstruct"]["paths"][key]
 
 
 def load_run(run_dir):

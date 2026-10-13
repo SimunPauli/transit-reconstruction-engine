@@ -24,7 +24,7 @@ def find_best_match_by_rmse(
 	Parameters "w_" are weights for each of the metrics.
 	"""
 	config = get_config()
-	config_weights = config["squared_error_weights"]
+	config_weights = config["reconstruct"]["squared_error_weights"]
 	w_departure_min   = config_weights["w_departure_min"]
 	w_trip_duration_min = config_weights["w_trip_duration_min"]
 	w_street_mode_min = config_weights["w_street_mode_min"]

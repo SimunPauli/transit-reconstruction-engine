@@ -16,9 +16,9 @@ def find_chosen_trips_file(config):
 	"""
 	Path to a reconstruction run's matches file: in choice_set.reconstruct_run_dir, or if that is null,
 	in the newest output_dir/<year>/<run_id>/ that has one (crashed or running runs have none).
-	Call before start_run, which repoints paths.output_dir and paths.*_file into the choice-set run.
+	Call before start_run, which repoints paths.output_dir into the choice-set run.
 	"""
-	matches_file = config["paths"]["rmse_based_matches_file"]
+	matches_file = config["reconstruct"]["paths"]["rmse_based_matches_file"]
 	run_dir = config["choice_set"]["reconstruct_run_dir"]
 	if run_dir:
 		return Path(run_dir).expanduser() / matches_file

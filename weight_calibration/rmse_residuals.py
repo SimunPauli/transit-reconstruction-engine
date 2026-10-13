@@ -11,7 +11,6 @@ The spreads are optimistic: the matches were picked by minimising these same dev
 Run from tu_reconstruct_trips/:  .venv/bin/python weight_calibration/rmse_residuals.py <output_dir>/<year>/<run_id>
 Writes rmse_residuals.xlsx into that run directory.
 """
-import json
 import sys
 from pathlib import Path
 
@@ -77,8 +76,7 @@ def street_km_length_bins(weights):
 	"""The run's street length bins; older runs had one w_street_mode_km, shown against the current config's bins."""
 	if "w_street_mode_km_by_length" in weights:
 		return weights["w_street_mode_km_by_length"]
-	with open("config.json", encoding="utf-8") as file:
-		current_bins = json.load(file)["squared_error_weights"]["w_street_mode_km_by_length"]
+	current_bins = config_loader.load_config()["reconstruct"]["squared_error_weights"]["w_street_mode_km_by_length"]
 	return [{**length_bin, "w": weights["w_street_mode_km"]} for length_bin in current_bins]
 
 
@@ -206,6 +204,7 @@ def analyse(matches, summaries, tu_deltur, weights):
 def main(run_dir):
 	config = config_loader.get_config()
 	paths = config["paths"]
+	run_files = config["reconstruct"]["paths"]
 	run_dir = Path(run_dir)
 	# The run's TU year, from <output_dir>/<year>/<run_id>
 	year_dir = run_dir.resolve().parent.name
@@ -221,8 +220,8 @@ def main(run_dir):
 
 	# Run files first: they're small, so a wrong path or dropped share fails before the slow TU load
 	print(f"Reading run files from {run_dir}...", flush=True)
-	matches = pd.read_csv(run_dir / paths["rmse_based_matches_file"])
-	summaries = pd.read_excel(run_dir / paths["trip_matching_summaries_file"])
+	matches = pd.read_csv(run_dir / run_files["rmse_based_matches_file"])
+	summaries = pd.read_excel(run_dir / run_files["trip_matching_summaries_file"])
 
 	print(f"Loading TU data for {year} from {paths['data_dir']}...", flush=True)
 	_, _, tu_deltur, _ = load_TU_data.load_tu(
@@ -237,7 +236,7 @@ def main(run_dir):
 	summaries = summaries.astype({"TurId": turid_dtype})
 
 	print(f"Comparing {int((summaries['trip_found'] == 1).sum())} found trips...", flush=True)
-	tables = analyse(matches, summaries, tu_deltur, config["squared_error_weights"])
+	tables = analyse(matches, summaries, tu_deltur, config["reconstruct"]["squared_error_weights"])
 	if CONFIG_PATH != RUN_CONFIG:
 		# The current config's weights aren't necessarily the ones the run was matched with
 		tables["implied_weights"]["configured_weight"] = np.nan

@@ -1,7 +1,7 @@
 # Weight calibration
 
 `rmse_residuals.py` measures how far a finished run's best matches deviate from TU on each RMSE
-component, and suggests `squared_error_weights` from those deviations. See the main README's
+component, and suggests `reconstruct.squared_error_weights` from those deviations. See the main README's
 "Selecting the best match — weighted RMSE" section for how the weights are used.
 
 ## Running
