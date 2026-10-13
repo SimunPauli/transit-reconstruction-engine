@@ -310,6 +310,7 @@ def _match_once(
 		"trip_not_found": 0,
 		"route_match": route_match if is_bus_s_train else pd.NA,
 		"last_print_if_not_found": "",
+		"failure_reason": pd.NA,
 		"used_anchor_fallback": used_anchor_fallback,
 		"rmse": round(best_trip_summary["rmse"],3),
 		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"],0),
