@@ -7,7 +7,7 @@ from src.tu import load_TU_data
 from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.choice_set.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
-from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, query_candidates, build_choice_set
+from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, query_candidates, build_choice_set_with_chosen
 from src import otp
 
 def main():
@@ -54,7 +54,7 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		try:
 			candidates = query_candidates(tu_tur_row, tu_deltur, settings)
 			chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
-			trip_choice_set = build_choice_set(chosen_legs, candidates, key_columns)
+			trip_choice_set = build_choice_set_with_chosen(chosen_legs, candidates, key_columns)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")

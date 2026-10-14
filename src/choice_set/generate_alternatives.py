@@ -76,7 +76,7 @@ def query_candidates(tu_tur_row, tu_deltur, settings):
 	)
 
 
-def build_choice_set(chosen_legs, candidates, key_columns):
+def build_choice_set_with_chosen(chosen_legs, candidates, key_columns):
 	"""
 	The chosen itinerary (alt_id 0) plus one itinerary per other alternative: per key, the
 	candidate departing closest to the chosen one. Alternatives are ordered by that closeness.
