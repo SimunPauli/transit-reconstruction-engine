@@ -76,27 +76,25 @@ def query_candidates(tu_tur_row, tu_deltur, settings):
 	)
 
 
-def build_choice_set(chosen_legs, candidates, key_columns):
+def build_choice_set(tur_id, candidates, key_columns, depart_dt, chosen_legs=None):
 	"""
-	The chosen itinerary (alt_id 0) plus one itinerary per other alternative: per key, the
-	candidate departing closest to the chosen one. Alternatives are ordered by that closeness.
+	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by
+	that closeness. chosen_legs (a reconstructed itinerary), if given, is alt_id 0 and replaces the
+	candidates sharing its key; without it, alt_ids start at 1, so alt_id 0 is always the chosen.
 	"""
-	chosen_key = next(iter(_itinerary_keys(chosen_legs, key_columns).values()))
-	# TODO: Should alternatives time gap from chosen be the gap from TU respondent or reconstructed trip?
-	#  currently using "chosen_start" to be start of reconstructed trip.
-	#  For TU trip with chosen mode being car chosen start needs to be TU respondent answer.
-	chosen_start = pd.to_datetime(chosen_legs["start_trip"].iloc[0], utc=True)
+	alternatives = [] if chosen_legs is None else [chosen_legs]
+	chosen_keys = [next(iter(_itinerary_keys(legs, key_columns).values())) for legs in alternatives]
 
-	alternatives = [chosen_legs]
 	if not candidates.empty:
 		starts = pd.to_datetime(candidates.groupby("iteration_id")["start_trip"].first(), utc=True)
 		itineraries = pd.DataFrame({"key": pd.Series(_itinerary_keys(candidates, key_columns))})
-		itineraries["gap"] = (starts - chosen_start).abs()
-		itineraries = itineraries[itineraries["key"].map(lambda key: key != chosen_key)]
+		itineraries["gap"] = (starts - pd.to_datetime(depart_dt, utc=True)).abs()
+		itineraries = itineraries[itineraries["key"].map(lambda key: key not in chosen_keys)]
 		keep = itineraries.sort_values("gap").drop_duplicates("key").index
 		alternatives += [candidates[candidates["iteration_id"] == iteration_id] for iteration_id in keep]
 
+	first_alt_id = 0 if chosen_legs is not None else 1
 	return pd.concat(
-		[legs.assign(TurId=chosen_legs["TurId"].iloc[0], alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives)],
+		[legs.assign(TurId=tur_id, alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives, start=first_alt_id)],
 		ignore_index=True,
 	)[CHOICE_SET_COLUMNS]

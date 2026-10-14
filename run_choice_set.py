@@ -54,7 +54,9 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		try:
 			candidates = query_candidates(tu_tur_row, tu_deltur, settings)
 			chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
-			trip_choice_set = build_choice_set(chosen_legs, candidates, key_columns)
+			# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
+			chosen_start = chosen_legs["start_trip"].iloc[0]
+			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
