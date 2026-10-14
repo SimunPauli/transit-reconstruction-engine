@@ -82,6 +82,9 @@ def build_choice_set(chosen_legs, candidates, key_columns):
 	candidate departing closest to the chosen one. Alternatives are ordered by that closeness.
 	"""
 	chosen_key = next(iter(_itinerary_keys(chosen_legs, key_columns).values()))
+	# TODO: Should alternatives time gap from chosen be the gap from TU respondent or reconstructed trip?
+	#  currently using "chosen_start" to be start of reconstructed trip.
+	#  For TU trip with chosen mode being car chosen start needs to be TU respondent answer.
 	chosen_start = pd.to_datetime(chosen_legs["start_trip"].iloc[0], utc=True)
 
 	alternatives = [chosen_legs]
