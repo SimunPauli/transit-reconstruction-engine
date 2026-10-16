@@ -79,6 +79,8 @@ def graphql_json_request(
 		modes_json: Optional[list] = None,
 		route_short_name_json: Optional[list] = None,
 		via_stopids: Optional[list] = None,
+		exclude_stopids: Optional[list] = None,
+		exclude_tripids: Optional[list] = None,
 		before: Optional[str] = None,
 		last: Optional[int] = None,
 		after: Optional[str] = None,
@@ -169,6 +171,13 @@ def graphql_json_request(
 	if via_stopids is not None:
 		# One visit per station; any one of its stop_ids satisfies it
 		variables["via"] = [{"visit": {"stopLocationIds": stop_ids}} for stop_ids in via_stopids]
+
+	# Fork-only (see OpenTripPlanner/): no boarding/alighting at these stops, passing through allowed
+	if exclude_stopids:
+		variables["preferences"]["transit"]["excludeStops"] = list(exclude_stopids)
+	# Fork-only: these trips are not used at all
+	if exclude_tripids:
+		variables["preferences"]["transit"]["excludeTrips"] = list(exclude_tripids)
 
 	if print_query:
 		print_for_graphiql(query, variables)
@@ -271,7 +280,7 @@ def build_graphql_query(
               from { name stop { gtfsId id parentStation { gtfsId id name } } }
               to { name stop { gtfsId id parentStation { id name } } }
               route { shortName gtfsId}
-              trip { tripShortName semanticHash }
+              trip { gtfsId tripShortName semanticHash }
               generalizedCost
               legGeometry { length points }
             }
@@ -310,6 +319,8 @@ def load_all_candidates(origin: dict,
                         modes_json: list | None = None,
                         route_short_name: list | None = None,
                         via_stopids: list | None = None,
+                        exclude_stopids: list | None = None,
+                        exclude_tripids: list | None = None,
                         walk_reluctance: float = 2,
                         car_reluctance: float = 2,
                         transit_reluctances: dict | None = None,
@@ -340,6 +351,8 @@ def load_all_candidates(origin: dict,
 		modes_json=modes_json,
 		route_short_name_json=route_short_name,
 		via_stopids=via_stopids,
+		exclude_stopids=exclude_stopids,
+		exclude_tripids=exclude_tripids,
 		transit_reluctances=transit_reluctances,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,

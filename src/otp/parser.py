@@ -77,6 +77,7 @@ def json_to_df(response):
 		"to_gtfs_id",
 
 		"trip_short_name",
+		"trip_gtfs_id",
 		"generalized_cost",
 		"leg_geometry",
 		"system_notice_tag",
@@ -117,6 +118,7 @@ def json_to_df(response):
 				"to_gtfs_id": to_stop.get("gtfsId"),
 
 				"trip_short_name": trip.get("tripShortName"),
+				"trip_gtfs_id": trip.get("gtfsId"),
 				"generalized_cost": leg["generalizedCost"],
 				"leg_geometry": decode_polyline(leg["legGeometry"]["points"]),
 				"system_notice_tag": system_notice_tag,
@@ -137,13 +139,14 @@ def _collapse_interlined_legs(df):
 
 	The merged leg keeps the boarding leg's route and trip; the continuation's are kept
 	in interlined_route_short_names (so the route filter still recognises either line)
-	and interlined_trip_short_names (the continuation's train number, for the export).
+	and interlined_trip_short_names (the continuation's train number, for the export), and
+	interlined_trip_gtfs_ids (its trip id).
 	"""
 	if "interline_with_previous" not in df.columns:
 		return df
 
 	if df.empty or not df["interline_with_previous"].any():
-		for column in ("interlined_route_short_names", "interlined_trip_short_names"):
+		for column in ("interlined_route_short_names", "interlined_trip_short_names", "interlined_trip_gtfs_ids"):
 			df[column] = [[] for _ in range(len(df))]
 		return df
 
@@ -166,17 +169,19 @@ def _collapse_interlined_legs(df):
 			previous["leg_geometry"] = list(previous["leg_geometry"]) + list(row["leg_geometry"])
 			previous["interlined_route_short_names"].append(row["route_short_name"])
 			previous["interlined_trip_short_names"].append(row["trip_short_name"])
+			previous["interlined_trip_gtfs_ids"].append(row["trip_gtfs_id"])
 
 			print(f"OTP iteration_id={row["iteration_id"]} original leg_id={row["leg_id"]} collapsed with leg={previous['leg_id']}")
 			continue
 
 		row["interlined_route_short_names"] = []
 		row["interlined_trip_short_names"] = []
+		row["interlined_trip_gtfs_ids"] = []
 		rows.append(row)
 
 	return pd.DataFrame(
 		rows,
-		columns=list(df.columns) + ["interlined_route_short_names", "interlined_trip_short_names"],
+		columns=list(df.columns) + ["interlined_route_short_names", "interlined_trip_short_names", "interlined_trip_gtfs_ids"],
 	)
 
 

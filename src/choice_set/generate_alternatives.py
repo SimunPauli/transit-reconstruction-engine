@@ -22,6 +22,7 @@ CHOICE_SET_COLUMNS = [
 	"route_short_name",
 	"route_gtfs_id",
 	"trip_short_name",
+	"trip_gtfs_id",
 	"from",
 	"to",
 	"from_gtfs_id",
