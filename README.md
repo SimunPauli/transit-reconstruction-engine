@@ -283,7 +283,7 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 
 | `reconstruct.paths` key | Description |
 |------|-------------|
-| `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg |
+| `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg. Transit legs carry the OTP trip id (`trip_gtfs_id`; a stay-seated continuation's in `interlined_trip_gtfs_ids`) |
 | `trip_matching_summaries_file` | Per-trip summary including the trip's outcome (see "Trip outcomes" below), RMSE score and deviation metrics |
 | `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
 | `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. A `sessions` sheet gives the outcome per `SessionId`, flagging sessions with 2+ near-route/wrong-route/not-found trips (likely respondent reporting errors). Also printed to console/`log_file` at the end of the run. |
@@ -510,6 +510,12 @@ reluctance and should be looked at separately.
 time spent walking on street networks more expensive than in-vehicle time. This
 value is somewhat arbitrary, but it stays within OTP’s recommended range for
 walking reluctance, which is roughly between `2` and `4`.
+
+**Excluding stops and trips** — `otp.client.load_all_candidates` also takes `exclude_stopids`
+(no boarding/alighting at those stops; trips may still pass through) and `exclude_tripids`
+(those trips are not used), sent as the modified OTP's `excludeStops`/`excludeTrips`. Ids are
+feed-scoped as in the merged feed (e.g. a leg's `trip_gtfs_id`). To exclude a station, pass all
+its stop ids, and don't exclude a stop that is also a via stop. Reconstruction doesn't use them yet.
 
 ---
 
