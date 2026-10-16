@@ -76,6 +76,14 @@ def absorb_short_walk_into_car(tu_deltur_sub, max_walk_km=WALK_CAR_ABSORB_MAX_KM
 
 	return pd.DataFrame(rows, columns=tu_deltur_sub.columns).reset_index(drop=True)
 
+def tu_trip_query(tu_tur_row, tu_deltur):
+	"""The TU trip as otp.client.load_all_candidates arguments: origin, destination, depart_dt, access/egress mode."""
+	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
+	access_mode, egress_mode = get_access_egress(absorb_short_walk_into_car(tu_deltur_sub, verbose=False))
+	origin, destination = tu_endpoints(tu_tur_row)
+	return dict(origin=origin, destination=destination, depart_dt=tu_tur_row["depart_dt"],
+		access_mode=access_mode, egress_mode=egress_mode)
+
 def add_tu_deltur_depart_times(tu_deltur_sub, depart_dt):
 	"""
 	Computes each TU leg's departure/arrival time as local HH:MM strings.

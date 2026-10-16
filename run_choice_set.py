@@ -6,8 +6,9 @@ import pandas as pd
 from src.tu import load_TU_data
 from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
-from src.choice_set.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
-from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, query_candidates, build_choice_set
+from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
+from src.tu.tu_utils import tu_trip_query
+from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set
 from src import otp
 
 def main():
@@ -52,7 +53,7 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		tee.local.buffer = io.StringIO()
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
-			candidates = query_candidates(tu_tur_row, tu_deltur, settings)
+			candidates = otp.client.load_all_candidates(**tu_trip_query(tu_tur_row, tu_deltur), **settings)
 			chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
 			# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
 			chosen_start = chosen_legs["start_trip"].iloc[0]
@@ -81,7 +82,7 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 	if not choice_sets:
 		print("No choice sets generated.")
 		return
-	pd.concat(choice_sets, ignore_index=True).to_csv(config_choice_set["paths"]["choice_set_file"], sep=",", decimal=".", index=False)
+	pd.concat(choice_sets, ignore_index=True).rename(columns={"trip_id": "TurId"}).to_csv(config_choice_set["paths"]["choice_set_file"], sep=",", decimal=".", index=False)
 	print(f"Saved {len(choice_sets)} choice sets to {config_choice_set['paths']['choice_set_file']}")
 
 
