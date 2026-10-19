@@ -21,32 +21,21 @@ def main():
 		with redirect_stdout(tee):
 			_run(config, tee, chosen_trips_path)
 
-def otp_settings(config):
-	"""OTP query settings shared by every choice-set mode."""
+def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport, choice_set_file):
+	"""
+	Choice sets for every trip in tu_tur, written to choice_set_file. chosen(tu_tur_row) returns the
+	trip's (chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set.
+	"""
+	config_choice_set = config["choice_set"]
+	key_columns = ALTERNATIVE_KEYS[config_choice_set["alternative_key"]]
 	request = config["request"]
-	return dict(
-		search_window=config["choice_set"]["search_window"],
+	settings = dict(
+		search_window=config_choice_set["search_window"],
 		max_itinerary_candidates=request["max_itinerary_candidates"],
 		otp_url=request["otp_url"],
 		request_timeout=request["request_timeout"],
 	)
-
-
-def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path):
-	"""
-	---- Choice set for public transport ----
-
-	Reconstructed trips are the "chosen trips". Alternatives are OTP itineraries for the same
-	origin, destination, departure and access/egress on any route, collapsed per
-	choice_set.alternative_key (what makes two itineraries the same alternative).
-	"""
-	config_choice_set = config["choice_set"]
-	key_columns = ALTERNATIVE_KEYS[config_choice_set["alternative_key"]]
-	settings = otp_settings(config)
 	max_workers = config["run"]["max_workers"]
-
-	chosen_trips = read_chosen_trips(chosen_trips_path, config["reconstruct"]["paths"]["trip_matching_summaries_file"])
-	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, chosen_trips["TurId"])
 
 	def choice_set_one(tu_tur_row):
 		"""One trip's choice set, buffering its prints. Returns (output, choice set or None)."""
@@ -54,10 +43,8 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
 			candidates = otp.client.load_all_candidates(**tu_trip_query(tu_tur_row, tu_deltur), **settings)
-			chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
-			# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
-			chosen_start = chosen_legs["start_trip"].iloc[0]
-			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs)
+			chosen_start, chosen_legs = chosen(tu_tur_row)
+			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs, chosen_public_transport)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
@@ -82,9 +69,58 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 	if not choice_sets:
 		print("No choice sets generated.")
 		return
-	pd.concat(choice_sets, ignore_index=True).rename(columns={"trip_id": "TurId"}).to_csv(config_choice_set["paths"]["choice_set_file"], sep=",", decimal=".", index=False)
-	print(f"Saved {len(choice_sets)} choice sets to {config_choice_set['paths']['choice_set_file']}")
+	pd.concat(choice_sets, ignore_index=True).rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
+	print(f"Saved {len(choice_sets)} choice sets to {choice_set_file}")
 
+
+def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path):
+	"""
+	---- Public transport choice-set for public transport trips ----
+
+	Reconstructed trips are the "chosen trips". Alternatives are OTP itineraries for the same
+	origin, destination, departure (within window) and access/egress mode on any route, collapsed
+	per	choice_set.alternative_key (what makes two itineraries the same alternative).
+	"""
+	chosen_trips = read_chosen_trips(chosen_trips_path, config["reconstruct"]["paths"]["trip_matching_summaries_file"])
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, chosen_trips["TurId"])
+
+	def chosen(tu_tur_row):
+		chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
+		# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
+		return chosen_legs["start_trip"].iloc[0], chosen_legs
+
+	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
+		choice_set_file=config["choice_set"]["paths"]["choice_set_file"])
+
+def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
+	"""
+	---- Public transport choice-set for car trip ----
+
+	Chosen trips are with car. Alternatives are OTP itineraries for the same
+	origin, destination, departure and access/egress on any route, collapsed per
+	choice_set.alternative_key (what makes two itineraries the same alternative).
+	"""
+	turid_car = tu_tur.loc[tu_tur["PrimMode"] == 11,"TurId"] #primary mode is car
+	legs = tu_deltur[tu_deltur["TurId"].isin(turid_car)]
+	only_car_walk = legs["StageMode"].isin([1,11]).groupby(legs["TurId"]).all()
+	turid_car = only_car_walk[only_car_walk].index
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_car)
+
+	def chosen(tu_tur_row):
+		# The TU car legs as the chosen, in the choice-set columns TU has
+		tu_legs = tu_deltur[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
+		chosen_legs = pd.DataFrame({
+			"leg_id": tu_legs["Delturnr"] - 1,
+			"start_trip": tu_tur_row["depart_dt"],
+			"end_trip": tu_tur_row["arrival_dt"],
+			"mode": tu_legs["otp_mode"],
+			"distance_km": tu_legs["StageLength"],
+			"duration_min": tu_legs["StageDurationMin"],
+		})
+		return tu_tur_row["depart_dt"], chosen_legs
+
+	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=False,
+		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"])
 
 def _run(config, tee, chosen_trips_path):
 	print("Loading TU data...")
@@ -92,7 +128,7 @@ def _run(config, tee, chosen_trips_path):
 	print("TU data loaded")
 
 	public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path)
-	# car_choice_set(config, tee, tu_session, tu_tur, tu_deltur)
+	car_choice_set(config, tee, tu_session, tu_tur, tu_deltur)
 
 
 if __name__ == "__main__":

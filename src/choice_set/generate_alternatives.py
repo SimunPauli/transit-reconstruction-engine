@@ -59,14 +59,14 @@ def _itinerary_keys(legs, key_columns):
 	}
 
 
-def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs=None):
+def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, chosen_public_transport):
 	"""
 	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by
-	that closeness. chosen_legs (a reconstructed itinerary), if given, is alt_id 0 and replaces the
-	candidates sharing its key; without it, alt_ids start at 1, so alt_id 0 is always the chosen.
+	that closeness. chosen_legs is alt_id 0; if chosen_public_transport, it replaces the candidates
+	sharing its key. Columns chosen_legs lacks (e.g. a car trip's routes/stops) are left empty.
 	"""
-	alternatives = [] if chosen_legs is None else [chosen_legs]
-	chosen_keys = [next(iter(_itinerary_keys(legs, key_columns).values())) for legs in alternatives]
+	alternatives = [chosen_legs]
+	chosen_keys = list(_itinerary_keys(chosen_legs, key_columns).values()) if chosen_public_transport else []
 
 	if not candidates.empty:
 		starts = pd.to_datetime(candidates.groupby("iteration_id")["start_trip"].first(), utc=True)
@@ -76,8 +76,7 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs=No
 		keep = itineraries.sort_values("gap").drop_duplicates("key").index
 		alternatives += [candidates[candidates["iteration_id"] == iteration_id] for iteration_id in keep]
 
-	first_alt_id = 0 if chosen_legs is not None else 1
 	return pd.concat(
-		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives, start=first_alt_id)],
+		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
-	)[CHOICE_SET_COLUMNS]
+	).reindex(columns=CHOICE_SET_COLUMNS)
