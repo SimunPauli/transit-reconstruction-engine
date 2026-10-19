@@ -21,10 +21,11 @@ def main():
 		with redirect_stdout(tee):
 			_run(config, tee, chosen_trips_path)
 
-def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport, choice_set_file):
+def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport, choice_set_file, access_egress_mode=None):
 	"""
 	Choice sets for every trip in tu_tur, written to choice_set_file. chosen(tu_tur_row) returns the
 	trip's (chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set.
+	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	"""
 	config_choice_set = config["choice_set"]
 	key_columns = ALTERNATIVE_KEYS[config_choice_set["alternative_key"]]
@@ -43,7 +44,10 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
 			tu_trip_legs(tu_tur_row, tu_deltur)
-			candidates = otp.client.load_all_candidates(**tu_trip_query(tu_tur_row, tu_deltur), **settings)
+			query = tu_trip_query(tu_tur_row, tu_deltur)
+			if access_egress_mode:
+				query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
+			candidates = otp.client.load_all_candidates(**query, **settings)
 			chosen_start, chosen_legs = chosen(tu_tur_row)
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs, chosen_public_transport)
 			print_choice_set(trip_choice_set)
@@ -99,7 +103,7 @@ def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	---- Public transport choice-set for car trip ----
 
 	Chosen trips are with car. Alternatives are OTP itineraries for the same
-	origin, destination, departure and access/egress on any route, collapsed per
+	origin, destination and departure with WALK access/egress on any route, collapsed per
 	choice_set.alternative_key (what makes two itineraries the same alternative).
 	"""
 	turid_car = tu_tur.loc[tu_tur["PrimMode"] == 11,"TurId"] #primary mode is car
@@ -122,7 +126,7 @@ def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 		return tu_tur_row["depart_dt"], chosen_legs
 
 	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=False,
-		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"])
+		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
 
 def _run(config, tee, chosen_trips_path):
 	print("Loading TU data...")
