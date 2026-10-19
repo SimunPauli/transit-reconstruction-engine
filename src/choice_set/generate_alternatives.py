@@ -23,7 +23,7 @@ CHOICE_SET_COLUMNS = [
 	"route_short_name",
 	"route_gtfs_id",
 	"trip_short_name",
-	"bikes_allowed"
+	"bikes_allowed",
 	"trip_gtfs_id",
 	"from",
 	"to",
@@ -32,6 +32,7 @@ CHOICE_SET_COLUMNS = [
 	"distance_km",
 	"duration_min",
 	"generalized_cost",
+	"system_notice_tag",
 	"leg_geometry",
 ]
 
