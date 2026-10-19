@@ -93,7 +93,8 @@ Create it based on the template below:
     "request_timeout": 30
   },
   "tu_prep": {
-    "walk_car_absorb_max_km": 0.5
+    "walk_car_absorb_max_km": 0.5,
+    "walk_bike_time_ratio": 0.266
   },
   "station_matching": {
     "bbox_buffer_m": 1000,
@@ -132,7 +133,6 @@ Create it based on the template below:
       "w_transit_min": 1.0,
       "w_transit_km": 0.0
     },
-    "walk_bike_time_ratio": 0.266,
     "paths": {
       "log_file": "rmse_based_matches.log",
       "rmse_based_matches_file": "rmse_based_matches.csv",
@@ -173,6 +173,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `request.max_itinerary_candidates` | Maximum number of OTP itineraries to fetch per trip |
 | `request.request_timeout` | HTTP timeout in seconds for OTP requests |
 | `tu_prep.walk_car_absorb_max_km` | A WALK leg shorter than this (km), adjacent to a CAR-family leg (e.g. walking to/from a parked car), is merged into that CAR leg before matching, so the CAR leg is correctly detected as the trip's access/egress mode instead of being hidden behind the short walk |
+| `tu_prep.walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time, for TU bike legs queried as WALK (reconstruction and choice set) |
 | `station_matching.bbox_buffer_m` | Search radius in metres when matching TU stations to GTFS stops |
 | `station_matching.station_name_threshold` | Minimum name-similarity score (0–1, rapidfuzz WRatio) for a station name match; stations with no candidate above this are left unmatched for that mode rather than guessed by distance |
 | `reconstruct.search_window` | ISO 8601 duration — time window searched around departure time |
@@ -185,12 +186,11 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `reconstruct.reluctance_retries.walk.enabled` | Whether to retry with increased `walk_reluctance` when no candidate survives filtering |
 | `reconstruct.reluctance_retries.walk.sequence` | `walk_reluctance` values tried, in order, when `walk.enabled` is true |
 | `reconstruct.squared_error_weights` | Weights applied to each component of the RMSE score; street distance per TU leg length bin (see "Selecting the best match — weighted RMSE") |
-| `reconstruct.walk_bike_time_ratio` | Factor applied to OTP walk time to approximate bicycle travel time |
 | `reconstruct.paths.*` | Output file names, written into the run folder (see "Output" below) |
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
 | `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
 | `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Sibling lines sharing track count as the same route: metro M1/M2, M3/M4 and S-train A/E, B/Bx, C/H (`METRO_SIBLING_LINES`, `S_TRAIN_SIBLING_LINES` in `src/constant.py`). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
-| `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (`public_choice_set_file`: public transport trips, chosen is the reconstructed itinerary; `car_choice_set_file`: car trips, alternatives use WALK access/egress, chosen is the TU car legs, with only `leg_id`, `start_trip`, `end_trip`, `mode`, `distance_km`, `duration_min` filled. Both one row per leg, with `TurId`, `alt_id`, `is_chosen`; `alt_id` 0 is the chosen) |
+| `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (`public_choice_set_file`: public transport trips, chosen is the reconstructed itinerary, alternatives' bike access/egress WALK legs are relabelled `BICYCLE` and scaled by `tu_prep.walk_bike_time_ratio` as in reconstruction; `car_choice_set_file`: car trips, alternatives use WALK access/egress, chosen is the TU car legs, with only `leg_id`, `start_trip`, `end_trip`, `mode`, `distance_km`, `duration_min` filled. Both one row per leg, with `TurId`, `alt_id`, `is_chosen`; `alt_id` 0 is the chosen) |
 
 ---
 
@@ -533,7 +533,7 @@ using a greedy forward pass:
   (e.g. a transfer walk) and left unmatched — the TU leg position is not advanced.
 - Due to OTP router requiring both access and egress to be bicycle if one is bicycle;
   they are matched to OTP walk legs, and the OTP walk duration is then scaled by
-  `reconstruct.walk_bike_time_ratio` to approximate cycling time.
+  `tu_prep.walk_bike_time_ratio` to approximate cycling time.
 
 After alignment, each OTP leg carries the `Delturnr` of its matched TU leg, or
 `NA` if unmatched.

@@ -60,6 +60,27 @@ def _itinerary_keys(legs, key_columns):
 	}
 
 
+def walk_to_bicycle(candidates, bike_access, bike_egress, walk_bike_time_ratio):
+	"""
+	Bike access/egress is queried as WALK (OTP's BICYCLE needs both ends): each itinerary's first
+	(bike_access) / last (bike_egress) WALK leg becomes BICYCLE, duration scaled by walk_bike_time_ratio.
+	"""
+	if candidates.empty or not (bike_access or bike_egress):
+		return candidates
+	leg_id = candidates["leg_id"]
+	itinerary_legs = leg_id.groupby(candidates["iteration_id"])
+	end_leg = pd.Series(False, index=candidates.index)
+	if bike_access:
+		end_leg |= leg_id == itinerary_legs.transform("min")
+	if bike_egress:
+		end_leg |= leg_id == itinerary_legs.transform("max")
+	bike = end_leg & (candidates["mode"] == "WALK")
+	candidates = candidates.copy()
+	candidates.loc[bike, "duration_min"] = (candidates.loc[bike, "duration_min"] * walk_bike_time_ratio).round().astype(int)
+	candidates.loc[bike, "mode"] = "BICYCLE"
+	return candidates
+
+
 def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, chosen_public_transport):
 	"""
 	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by

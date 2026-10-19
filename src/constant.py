@@ -63,7 +63,7 @@ STREET_MODES = {
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 
-WALK_BIKE_TIME_RATIO = config["reconstruct"]["walk_bike_time_ratio"]
+WALK_BIKE_TIME_RATIO = config["tu_prep"]["walk_bike_time_ratio"]
 
 #Plain walk only (not the BIKE stage modes, which have their own placeholder handling) and the
 #CAR-family stage modes, for tu_utils.absorb_short_walk_into_car.

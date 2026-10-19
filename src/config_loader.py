@@ -13,21 +13,22 @@ def load_config(config_path="config.json"):
 
 
 def _upgrade_layout(config):
-	"""Config was restructured on 13-10-2026. This moves an older run's saved config.json
-	into the current layout."""
-	if "reconstruct" in config:
-		return config
-	matching = config.pop("matching")
-	paths = config["paths"]
-	config["tu_prep"] = {"walk_car_absorb_max_km": matching.pop("walk_car_absorb_max_km")}
-	config["reconstruct"] = {
-		"search_window": config["request"].pop("search_window"),
-		"matching": matching,
-		"reluctance_retries": config.pop("reluctance_retries", {}),
-		"squared_error_weights": config.pop("squared_error_weights"),
-		"walk_bike_time_ratio": config.pop("walk_bike_time_ratio"),
-		"paths": {key: paths.pop(key) for key in list(paths) if key.endswith("_file")},
-	}
+	"""Config was restructured on 13-10-2026, and walk_bike_time_ratio moved from reconstruct to
+	tu_prep on 19-10-2026. This moves an older run's saved config.json into the current layout."""
+	if "reconstruct" not in config:
+		matching = config.pop("matching")
+		paths = config["paths"]
+		config["tu_prep"] = {"walk_car_absorb_max_km": matching.pop("walk_car_absorb_max_km")}
+		config["reconstruct"] = {
+			"search_window": config["request"].pop("search_window"),
+			"matching": matching,
+			"reluctance_retries": config.pop("reluctance_retries", {}),
+			"squared_error_weights": config.pop("squared_error_weights"),
+			"walk_bike_time_ratio": config.pop("walk_bike_time_ratio"),
+			"paths": {key: paths.pop(key) for key in list(paths) if key.endswith("_file")},
+		}
+	if "walk_bike_time_ratio" in config["reconstruct"]:
+		config["tu_prep"]["walk_bike_time_ratio"] = config["reconstruct"].pop("walk_bike_time_ratio")
 	return config
 
 
