@@ -280,7 +280,7 @@ def build_graphql_query(
               from { name stop { gtfsId id parentStation { gtfsId id name } } }
               to { name stop { gtfsId id parentStation { id name } } }
               route { shortName gtfsId}
-              trip { gtfsId tripShortName semanticHash }
+              trip { gtfsId tripShortName bikesAllowed semanticHash }
               generalizedCost
               legGeometry { length points }
             }

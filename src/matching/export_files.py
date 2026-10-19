@@ -20,6 +20,7 @@ RMSE_MATCH_COLUMN_ORDER = [
 	"route_gtfs_id",
 	"trip_short_name",
 	"interlined_trip_short_names",
+	"bikes_allowed",
 	"trip_gtfs_id",
 	"interlined_trip_gtfs_ids",
 	"from",

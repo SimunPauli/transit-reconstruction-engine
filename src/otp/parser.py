@@ -77,6 +77,7 @@ def json_to_df(response):
 		"to_gtfs_id",
 
 		"trip_short_name",
+		"bikes_allowed",
 		"trip_gtfs_id",
 		"generalized_cost",
 		"leg_geometry",
@@ -118,6 +119,7 @@ def json_to_df(response):
 				"to_gtfs_id": to_stop.get("gtfsId"),
 
 				"trip_short_name": trip.get("tripShortName"),
+				"bikes_allowed": trip.get("bikesAllowed"),
 				"trip_gtfs_id": trip.get("gtfsId"),
 				"generalized_cost": leg["generalizedCost"],
 				"leg_geometry": decode_polyline(leg["legGeometry"]["points"]),
