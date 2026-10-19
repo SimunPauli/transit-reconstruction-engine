@@ -1,4 +1,5 @@
 import pandas as pd
+from src import otp
 from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_SIBLING_LINES
 
 # Transit-leg columns that make two itineraries the same alternative (choice_set.alternative_key).
@@ -80,3 +81,14 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
+
+
+PRINT_COLUMNS = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "otp_leg_depart_time"]
+
+
+def print_choice_set(trip_choice_set):
+	"""Prints each alternative's legs, one at a time, as the reconstruction prints its match."""
+	legs = otp.parser.add_leg_times(trip_choice_set.sort_values(["alt_id", "leg_id"]), itinerary_column="alt_id")
+	for alt_id, alt_legs in legs.groupby("alt_id"):
+		print(f"alt_id {alt_id}{' (chosen)' if alt_id == 0 else ''}:")
+		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))

@@ -7,8 +7,8 @@ from src.tu import load_TU_data
 from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
-from src.tu.tu_utils import tu_trip_query
-from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set
+from src.tu.tu_utils import tu_trip_query, tu_trip_legs
+from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set, print_choice_set
 from src import otp
 
 def main():
@@ -42,9 +42,11 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 		tee.local.buffer = io.StringIO()
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
+			tu_trip_legs(tu_tur_row, tu_deltur)
 			candidates = otp.client.load_all_candidates(**tu_trip_query(tu_tur_row, tu_deltur), **settings)
 			chosen_start, chosen_legs = chosen(tu_tur_row)
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs, chosen_public_transport)
+			print_choice_set(trip_choice_set)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
@@ -90,7 +92,7 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		return chosen_legs["start_trip"].iloc[0], chosen_legs
 
 	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
-		choice_set_file=config["choice_set"]["paths"]["choice_set_file"])
+		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"])
 
 def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	"""

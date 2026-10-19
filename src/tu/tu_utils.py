@@ -102,3 +102,24 @@ def add_tu_deltur_depart_times(tu_deltur_sub, depart_dt):
 	tu_deltur_sub["tu_deltur_arrival_time"] = arrival_time.dt.strftime("%H:%M")
 	return tu_deltur_sub
 
+def tu_trip_legs(tu_tur_row, tu_deltur, verbose=True):
+	"""The TU trip's legs, short car walks absorbed, with depart times. verbose prints the trip header and legs."""
+	if verbose:
+		print("\n\n____________________________________________________________________________________________")
+		print(f"TurId: {tu_tur_row['TurId']}. With SessionId: {tu_tur_row['SessionId']}.")
+		print(f"Tur coordinates origin (lat lon) :     {round(tu_tur_row['orig_lat'],5)} {round(tu_tur_row['orig_lon'],5)}")
+		print(f"Tur coordinates destination (lat lon): {round(tu_tur_row['tiladrlat'],5)} {round(tu_tur_row['tiladrlon'],5)}")
+		print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
+
+	# After the header, so WALK_CAR_ABSORBED prints inside its own trip's block.
+	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == tu_tur_row["TurId"]]
+	tu_deltur_sub = absorb_short_walk_into_car(tu_deltur_sub, verbose=verbose)
+	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
+
+	if verbose:
+		tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
+		                           "StageDurationMin", "Route", "FromStation", "ToStation"]
+		print("tu_deltur_sub:")
+		print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
+	return tu_deltur_sub
+

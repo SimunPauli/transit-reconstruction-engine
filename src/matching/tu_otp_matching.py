@@ -8,7 +8,8 @@ from .route_matching_utils import (
 	has_invalid_route_name,
 	resolve_route_short_names,
 )
-from src.tu.tu_utils import add_tu_deltur_depart_times, absorb_short_walk_into_car
+from src.tu.tu_utils import tu_trip_legs
+from src import otp
 from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,
@@ -71,24 +72,7 @@ def _match_once(
 		print(last_print_if_not_found)
 		return None, _empty_trip_summary(last_print_if_not_found, failure_reason or last_print_if_not_found)
 
-	if print_trip_header:
-		print("\n\n____________________________________________________________________________________________")
-		print(f"TurId: {i_TurId}. With SessionId: {tu_tur_row['SessionId']}.")
-		print(f"Tur coordinates origin (lat lon) :     {round(tu_tur_row['orig_lat'],5)} {round(tu_tur_row['orig_lon'],5)}")
-		print(f"Tur coordinates destination (lat lon): {round(tu_tur_row['tiladrlat'],5)} {round(tu_tur_row['tiladrlon'],5)}")
-		print(f"Depart: {tu_tur_row['depart_dt_str']}. Arrival: {tu_tur_row['arrival_dt_str']}.")
-
-	# After the header, so WALK_CAR_ABSORBED prints inside its own trip's block.
-	tu_deltur_sub = tu_deltur.loc[tu_deltur["TurId"] == i_TurId]
-	tu_deltur_sub = absorb_short_walk_into_car(tu_deltur_sub, verbose=print_trip_header)
-	tu_deltur_sub = add_tu_deltur_depart_times(tu_deltur_sub, tu_tur_row["depart_dt"])
-
-	if print_trip_header:
-		# Print for debugging
-		tu_deltur_sub_print_col = ["Delturnr", "tu_deltur_depart_time", "StageMode", "StageLength", "StageWaitMin",
-		                           "StageDurationMin", "Route", "FromStation", "ToStation"]
-		print("tu_deltur_sub:")
-		print(tu_deltur_sub[tu_deltur_sub_print_col].to_string(index=False, max_colwidth=None))
+	tu_deltur_sub = tu_trip_legs(tu_tur_row, tu_deltur, verbose=print_trip_header)
 
 	modes_json, modes_list, is_bus_s_train, route_names, route_names_ext, route_short_name_for_loading, route_name_groups_for_search, via_stopids = resolve_segment_search_params(
 		tu_deltur_sub, tu_gtfs_station_df, otp_mode_routes_cache, otp_route_name_index,
@@ -244,18 +228,8 @@ def _match_once(
 		_log_stage("STATION_ANCHOR_FALLBACK", "SUCCEEDED")
 
 	# calculate waiting time
-	otp_candidates_df = otp_candidates_df.sort_values(
-		["iteration_id", "start_leg"]
-	).reset_index(drop=True)
-
-	otp_candidates_df["waitingtime"] = (
-			(otp_candidates_df["start_leg"] - otp_candidates_df.groupby("iteration_id")["end_leg"].shift()) / 60 / 1000)
-	otp_candidates_df["waitingtime"] = otp_candidates_df["waitingtime"].fillna(0)
-
-	otp_candidates_df["otp_leg_depart_time"] = (
-		pd.to_datetime(otp_candidates_df["start_leg"], unit="ms", utc=True)
-		.dt.tz_convert("Europe/Copenhagen")
-		.dt.strftime("%H:%M")
+	otp_candidates_df = otp.parser.add_leg_times(
+		otp_candidates_df.sort_values(["iteration_id", "start_leg"]).reset_index(drop=True)
 	)
 
 	# Arrival check as OTP departure + TU trip duration, so a departure shift isn't counted twice.

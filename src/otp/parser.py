@@ -236,6 +236,22 @@ def deduplicate_itineraries(otp_candidates_df: pd.DataFrame) -> pd.DataFrame:
 	return deduped.reset_index(drop=True)
 
 
+def add_leg_times(legs, itinerary_column="iteration_id", timezone="Europe/Copenhagen"):
+	"""
+	Adds waitingtime (min since the itinerary's previous leg, 0 for the first) and
+	otp_leg_depart_time (local HH:MM). legs must be sorted by leg order within each itinerary.
+	"""
+	legs = legs.copy()
+	legs["waitingtime"] = round((legs["start_leg"] - legs.groupby(itinerary_column)["end_leg"].shift()) / 60 / 1000,1)
+	legs["waitingtime"] = legs["waitingtime"].fillna(0)
+	legs["otp_leg_depart_time"] = (
+		pd.to_datetime(legs["start_leg"], unit="ms", utc=True)
+		.dt.tz_convert(timezone)
+		.dt.strftime("%H:%M")
+	)
+	return legs
+
+
 def stops_json_to_df(response):
 	"""One row per stop in a stopsByBbox response; modes/routes as comma-joined strings."""
 	stops = response.json().get("data", {}).get("stopsByBbox", [])
