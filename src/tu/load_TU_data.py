@@ -162,7 +162,7 @@ def select_trips(tu_session, tu_tur, tu_deltur, keep):
 	"""Keeps the trips whose TurId is in keep, with their legs and sessions."""
 	tu_tur = tu_tur[tu_tur["TurId"].isin(keep)].copy()
 	tu_deltur = tu_deltur[tu_deltur["TurId"].isin(keep)].copy()
-	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])]
+	tu_session = tu_session[tu_session["SessionId"].isin(tu_tur["SessionId"])].copy()
 	return tu_session, tu_tur, tu_deltur
 
 def _add_lat_lon(df, e_col, n_col, lat_col, lon_col):
