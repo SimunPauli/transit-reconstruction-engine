@@ -8,7 +8,7 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
-from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set, print_choice_set, walk_to_bicycle
+from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set, print_choice_set, print_coverage, walk_to_bicycle
 from src.constant import WALK_BIKE_TIME_RATIO
 from src import otp
 
@@ -89,8 +89,11 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 	if not choice_sets:
 		print("No choice sets generated.")
 		return
-	pd.concat(choice_sets, ignore_index=True).rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
-	print(f"Saved {len(choice_sets)} choice sets to {choice_set_file}")
+	choice_sets = pd.concat(choice_sets, ignore_index=True)
+	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
+	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
+	if chosen_public_transport:
+		print_coverage(choice_sets, config["choice_set"]["alternative_key"])
 
 
 def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path):

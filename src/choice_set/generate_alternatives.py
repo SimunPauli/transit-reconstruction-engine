@@ -124,3 +124,13 @@ def print_choice_set(trip_choice_set):
 	for alt_id, alt_legs in legs.groupby("alt_id"):
 		print(f"alt_id {alt_id}{' (chosen)' if alt_id == 0 else ''}:")
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
+
+
+def print_coverage(choice_sets, alternative_key):
+	"""Prints the share of trips whose candidates included the chosen alternative_key (coverage column)."""
+	trips = choice_sets.groupby("trip_id").agg(coverage=("coverage", "first"), alternatives=("alt_id", "max"))
+	covered = trips["coverage"].sum()
+	# Uncovered and nothing besides the chosen: OTP returned no transit itinerary
+	no_candidates = ((trips["coverage"] == 0) & (trips["alternatives"] == 0)).sum()
+	print(f"Coverage (alternative_key={alternative_key}): {covered} of {len(trips)} trips ({covered / len(trips):.1%}), "
+		f"{no_candidates} with no OTP transit itinerary")
