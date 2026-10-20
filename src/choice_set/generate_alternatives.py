@@ -87,23 +87,32 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 	"""
 	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by
 	that closeness. chosen_legs is alt_id 0; if chosen_public_transport, it replaces the candidates
-	sharing its key. Columns chosen_legs lacks (e.g. a car trip's routes/stops) are left empty.
+	sharing its key, and a coverage column is added. Columns chosen_legs lacks (e.g. a car trip's
+	routes/stops) are left empty.
 	"""
 	alternatives = [chosen_legs]
-	chosen_keys = list(_itinerary_keys(chosen_legs, key_columns).values()) if chosen_public_transport else []
+	chosen_keys = set(_itinerary_keys(chosen_legs, key_columns).values()) if chosen_public_transport else set()
+	coverage = 0
 
 	if not candidates.empty:
 		starts = pd.to_datetime(candidates.groupby("iteration_id")["start_trip"].first(), utc=True)
 		itineraries = pd.DataFrame({"key": pd.Series(_itinerary_keys(candidates, key_columns))})
 		itineraries["gap"] = (starts - pd.to_datetime(depart_dt, utc=True)).abs()
-		itineraries = itineraries[itineraries["key"].map(lambda key: key not in chosen_keys)]
+		in_chosen = itineraries["key"].map((lambda key: key in chosen_keys))
+		coverage = int(in_chosen.any())
+		itineraries = itineraries[~in_chosen]
 		keep = itineraries.sort_values("gap").drop_duplicates("key").index
 		alternatives += [candidates[candidates["iteration_id"] == iteration_id] for iteration_id in keep]
 
-	return pd.concat(
-		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen=alt_id == 0) for alt_id, legs in enumerate(alternatives)],
+	trip_choice_set = pd.concat(
+		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0)) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
+	if chosen_public_transport:
+		# 1 if the generated candidates included the chosen key, 0 otherwise
+		trip_choice_set.insert(trip_choice_set.columns.get_loc("is_chosen") + 1, "coverage", coverage)
+
+	return trip_choice_set
 
 
 PRINT_COLUMNS = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "otp_leg_depart_time"]
