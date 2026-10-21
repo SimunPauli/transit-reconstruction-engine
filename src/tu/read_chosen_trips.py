@@ -37,8 +37,9 @@ def find_chosen_trips_file(config):
 
 def read_chosen_trips(matches_path, summaries_file):
 	"""
-	The reconstructed (chosen) itineraries, one row per leg. Trips only found by ignoring the
-	TU route (trip_wrong_route, per the run's summaries_file) are dropped: their route isn't the chosen one.
+	The reconstructed (chosen) itineraries, one row per leg, with the trip's outcome column
+	(trip_found or trip_near_route). Trips only found by ignoring the TU route (trip_wrong_route,
+	per the run's summaries_file) are dropped: their route isn't the chosen one.
 	"""
 	# Logged, as the run's config.json can't tell which run reconstruct_run_dir: null picked
 	print(f"Chosen trips from: {matches_path}")
@@ -46,4 +47,6 @@ def read_chosen_trips(matches_path, summaries_file):
 	summaries = pd.read_excel(matches_path.parent / summaries_file)
 	wrong_route = summaries.loc[summaries["trip_wrong_route"] == 1, "TurId"]
 	print(f"Dropped {wrong_route.isin(chosen_trips['TurId']).sum()} wrong-route trip(s)")
-	return chosen_trips[~chosen_trips["TurId"].isin(wrong_route)]
+	chosen_trips = chosen_trips[~chosen_trips["TurId"].isin(wrong_route)]
+	outcome = summaries.set_index("TurId")["trip_near_route"].map({0: "trip_found", 1: "trip_near_route"})
+	return chosen_trips.assign(outcome=chosen_trips["TurId"].map(outcome))

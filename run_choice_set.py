@@ -48,9 +48,9 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, access_egress_mode=None):
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport, choice_set_file, access_egress_mode=None):
 	"""
-	Choice sets for every trip in tu_tur, written to choice_set_file. chosen(tu_tur_row) returns the
-	trip's (chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set,
-	access_egress_mode to trip_candidates.
+	Choice sets for every trip in tu_tur, written to choice_set_file and returned (None if there are
+	none). chosen(tu_tur_row) returns the trip's (chosen_start, chosen_legs); chosen_public_transport
+	is passed on to build_choice_set, access_egress_mode to trip_candidates.
 	"""
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
 	settings = otp_settings(config)
@@ -92,8 +92,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 	choice_sets = pd.concat(choice_sets, ignore_index=True)
 	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
 	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
-	if chosen_public_transport:
-		print_coverage(choice_sets, config["choice_set"]["alternative_key"])
+	return choice_sets
 
 
 def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path):
@@ -112,8 +111,11 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
 		return chosen_legs["start_trip"].iloc[0], chosen_legs
 
-	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
+	choice_sets = generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
 		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"])
+	if choice_sets is not None:
+		print_coverage(choice_sets, config["choice_set"]["alternative_key"],
+			groups=chosen_trips.groupby("TurId")["outcome"].first())
 
 def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	"""
