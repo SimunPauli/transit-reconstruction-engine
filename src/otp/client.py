@@ -277,8 +277,8 @@ def build_graphql_query(
             legs {
               mode startTime endTime distance duration
               interlineWithPreviousLeg
-              from { name stop { gtfsId id parentStation { gtfsId id name } } }
-              to { name stop { gtfsId id parentStation { id name } } }
+              from { name lat lon stop { gtfsId id parentStation { gtfsId id name } } }
+              to { name lat lon stop { gtfsId id parentStation { id name } } }
               route { shortName gtfsId}
               trip { gtfsId tripShortName bikesAllowed semanticHash }
               generalizedCost

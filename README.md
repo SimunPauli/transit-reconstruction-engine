@@ -284,7 +284,7 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 
 | `reconstruct.paths` key | Description |
 |------|-------------|
-| `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg. Transit legs carry the OTP trip id (`trip_gtfs_id`; a stay-seated continuation's in `interlined_trip_gtfs_ids`) |
+| `rmse_based_matches_file` | Best-matched OTP itinerary per TU trip, one row per leg. Transit legs carry the OTP trip id (`trip_gtfs_id`; a stay-seated continuation's in `interlined_trip_gtfs_ids`). `crow_distance_km` is the straight-line distance between the leg's from and to points (stop to stop; origin to first stop for access, last stop to destination for egress), also in the choice-set files |
 | `trip_matching_summaries_file` | Per-trip summary including the trip's outcome (see "Trip outcomes" below), RMSE score and deviation metrics |
 | `failures_file` | TurId + failure reason code for every trip that wasn't reconstructed (see "Failure reasons" below) |
 | `summary_stats_file` | Run-level summary: counts and success rates per outcome, plus a breakdown of how often each `failure_reason` code occurred, as % of all trips and % of failures. A `sessions` sheet gives the outcome per `SessionId`, flagging sessions with 2+ near-route/wrong-route/not-found trips (likely respondent reporting errors). Also printed to console/`log_file` at the end of the run. |

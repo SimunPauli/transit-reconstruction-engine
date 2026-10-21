@@ -1,4 +1,8 @@
+import numpy as np
 import pandas as pd
+
+WGS84_A_KM = 6378.137
+WGS84_F = 1 / 298.257223563
 
 def decode_polyline(encoded):
 	"""
@@ -75,6 +79,10 @@ def json_to_df(response):
 		"to",
 		"from_gtfs_id",
 		"to_gtfs_id",
+		"from_lat",
+		"from_lon",
+		"to_lat",
+		"to_lon",
 
 		"trip_short_name",
 		"bikes_allowed",
@@ -117,6 +125,10 @@ def json_to_df(response):
 				"to": to_location["name"],
 				"from_gtfs_id": from_stop.get("gtfsId"),
 				"to_gtfs_id": to_stop.get("gtfsId"),
+				"from_lat": from_location.get("lat"),
+				"from_lon": from_location.get("lon"),
+				"to_lat": to_location.get("lat"),
+				"to_lon": to_location.get("lon"),
 
 				"trip_short_name": trip.get("tripShortName"),
 				"bikes_allowed": trip.get("bikesAllowed"),
@@ -126,8 +138,24 @@ def json_to_df(response):
 				"system_notice_tag": system_notice_tag,
 				"system_notice_text": system_notice_text
 			})
-	df = pd.DataFrame(rows, columns=columns)
-	return _collapse_interlined_legs(df)
+	df = _collapse_interlined_legs(pd.DataFrame(rows, columns=columns))
+	df["crow_distance_km"] = crow_distance_km(df["from_lat"], df["from_lon"], df["to_lat"], df["to_lon"]).round(3)
+	return df
+
+
+def crow_distance_km(lat1, lon1, lat2, lon2):
+	"""Distance in km between two points on the WGS84 ellipsoid (Lambert's formula, within 1 m across Denmark)."""
+	lat1, lon1, lat2, lon2 = (np.radians(np.asarray(x, dtype=float)) for x in (lat1, lon1, lat2, lon2))
+	# Central angle between the reduced latitudes
+	b1, b2 = np.arctan((1 - WGS84_F) * np.tan(lat1)), np.arctan((1 - WGS84_F) * np.tan(lat2))
+	h = np.sin((b2 - b1) / 2) ** 2 + np.cos(b1) * np.cos(b2) * np.sin((lon2 - lon1) / 2) ** 2
+	s = 2 * np.arcsin(np.sqrt(h))
+	# Flattening correction; 0/0 for identical points
+	p, q = (b1 + b2) / 2, (b2 - b1) / 2
+	with np.errstate(divide="ignore", invalid="ignore"):
+		x = (s - np.sin(s)) * np.sin(p) ** 2 * np.cos(q) ** 2 / np.cos(s / 2) ** 2
+		y = (s + np.sin(s)) * np.cos(p) ** 2 * np.sin(q) ** 2 / np.sin(s / 2) ** 2
+	return np.where(s == 0, 0.0, WGS84_A_KM * (s - WGS84_F / 2 * (x + y)))
 
 
 def _collapse_interlined_legs(df):
@@ -164,6 +192,8 @@ def _collapse_interlined_legs(df):
 			previous["end_leg"] = row["end_leg"]
 			previous["to"] = row["to"]
 			previous["to_gtfs_id"] = row["to_gtfs_id"]
+			previous["to_lat"] = row["to_lat"]
+			previous["to_lon"] = row["to_lon"]
 			previous["duration_min"] += row["duration_min"]
 			previous["distance_km"] = round(previous["distance_km"] + row["distance_km"], 3)
 			if previous["generalized_cost"] is not None and row["generalized_cost"] is not None:

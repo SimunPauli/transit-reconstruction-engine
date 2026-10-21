@@ -28,6 +28,7 @@ RMSE_MATCH_COLUMN_ORDER = [
 	"from_gtfs_id",
 	"to_gtfs_id",
 	"distance_km",
+	"crow_distance_km",
 	"is_bike_placeholder",
 	"generalized_cost",
 	"system_notice_tag",

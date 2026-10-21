@@ -30,6 +30,7 @@ CHOICE_SET_COLUMNS = [
 	"from_gtfs_id",
 	"to_gtfs_id",
 	"distance_km",
+	"crow_distance_km",
 	"duration_min",
 	"generalized_cost",
 	"system_notice_tag",
