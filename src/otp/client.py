@@ -163,6 +163,7 @@ def graphql_json_request(
 	if has_search_window:
 		variables["searchWindow"] = search_window
 
+	# Fork-only: only include determined set of routes:
 	if route_short_name_json is not None:
 		variables["preferences"].setdefault("transit", {}).setdefault("filters", []).append({
 			"include": {"routeShortNames": route_short_name_json}

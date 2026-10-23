@@ -88,7 +88,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 	wait_for_output_dir(config["paths"]["output_dir"])
 	if not choice_sets:
 		print("No choice sets generated.")
-		return
+		return None
 	choice_sets = pd.concat(choice_sets, ignore_index=True)
 	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
 	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
