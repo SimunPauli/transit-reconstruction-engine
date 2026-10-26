@@ -1,4 +1,5 @@
 import io
+import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
@@ -8,7 +9,8 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
-from src.choice_set.generate_alternatives import ALTERNATIVE_KEYS, build_choice_set, print_choice_set, print_coverage, walk_to_bicycle
+from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_stop_rounds,
+	print_choice_set, print_coverage, walk_to_bicycle)
 from src.constant import WALK_BIKE_TIME_RATIO
 from src import otp
 
@@ -33,26 +35,37 @@ def otp_settings(config):
 		#TODO: decide on debug_profile. Currently default ("LIST_ALL")
 	)
 
-def trip_candidates(tu_tur_row, tu_deltur, settings, access_egress_mode=None):
+def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
+                    exclude_stops, access_egress_mode=None):
 	"""
-	The TU trip's OTP itineraries, bike access/egress relabelled BICYCLE.
+	The TU trip's OTP itineraries plus those of the exclude_stops rounds (exclude_stop_rounds, seeded
+	per trip by exclude_stops["seed"] and TurId), bike access/egress relabelled BICYCLE.
 	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	"""
 	tu_legs = tu_trip_legs(tu_tur_row, tu_deltur)
-	query = tu_trip_query(tu_tur_row, tu_deltur)
+	trip_query = tu_trip_query(tu_tur_row, tu_deltur)
 	if access_egress_mode:
-		query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
-	candidates = otp.client.load_all_candidates(**query, **settings)
+		trip_query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
+
+	def query(exclude_stopids=None):
+		return otp.client.load_all_candidates(**trip_query, **settings, exclude_stopids=exclude_stopids)
+
+	# Seeded per trip, so draws don't depend on thread order
+	rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
+	candidates = exclude_stop_rounds(query, query(), chosen_legs, key_columns,
+		exclude_stops["rounds"], exclude_stops["stops_per_round"], rng)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 
-def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport, choice_set_file, access_egress_mode=None):
+def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
+                         chosen_public_transport, choice_set_file, access_egress_mode=None):
 	"""
 	Choice sets for every trip in tu_tur, written to choice_set_file and returned (None if there are
 	none). chosen(tu_tur_row) returns the trip's (chosen_start, chosen_legs); chosen_public_transport
 	is passed on to build_choice_set, access_egress_mode to trip_candidates.
 	"""
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
+	exclude_stops = config["choice_set"]["exclude_stops"]
 	settings = otp_settings(config)
 	max_workers = config["run"]["max_workers"]
 
@@ -61,9 +74,11 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_t
 		tee.local.buffer = io.StringIO()
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
-			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, access_egress_mode)
 			chosen_start, chosen_legs = chosen(tu_tur_row)
-			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns, chosen_start, chosen_legs, chosen_public_transport)
+			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
+			                             exclude_stops, access_egress_mode)
+			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
+			                                   chosen_start, chosen_legs, chosen_public_transport)
 			print_choice_set(trip_choice_set)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:

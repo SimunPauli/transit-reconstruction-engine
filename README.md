@@ -148,6 +148,11 @@ Create it based on the template below:
     "reconstruct_run_dir": null,
     "search_window": "PT1H",
     "alternative_key": "routes_stops",
+    "exclude_stops": {
+      "rounds": 5,
+      "stops_per_round": 2,
+      "seed": 0
+    },
     "paths": {
       "log_file": "choice_set.log",
       "choice_set_file": "choice_set.csv",
@@ -190,6 +195,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
 | `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
 | `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Sibling lines sharing track count as the same route: metro M1/M2, M3/M4 and S-train A/E, B/Bx, C/H (`METRO_SIBLING_LINES`, `S_TRAIN_SIBLING_LINES` in `src/constant.py`). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
+| `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: up to `rounds` queries, each excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round. Stops early once a round finds no new `alternative_key`. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `rounds: 0` disables it |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (`public_choice_set_file`: public transport trips, chosen is the reconstructed itinerary, alternatives' bike access/egress WALK legs are relabelled `BICYCLE` and scaled by `tu_prep.walk_bike_time_ratio` as in reconstruction; `car_choice_set_file`: car trips, alternatives use WALK access/egress, chosen is the TU car legs, with only `leg_id`, `start_trip`, `end_trip`, `mode`, `distance_km`, `duration_min` filled. Both one row per leg, with `TurId`, `alt_id`, `is_chosen`; `alt_id` 0 is the chosen. `public_choice_set_file` also has `coverage`, per trip: 1 if the OTP alternatives search found the chosen itinerary's `alternative_key`, 0 if the chosen is in the set only as `alt_id` 0; the coverage rate is printed to console/`log_file` after the file is saved, overall and per reconstruction outcome, `trip_found`/`trip_near_route`) |
 
 ---
@@ -512,11 +518,20 @@ time spent walking on street networks more expensive than in-vehicle time. This
 value is somewhat arbitrary, but it stays within OTP’s recommended range for
 walking reluctance, which is roughly between `2` and `4`.
 
+**Transfer times** — the OTP graph is built with `discardMinTransferTimes: true`
+(`build-config.json`), so `min_transfer_time` in `transfers.txt` is ignored. Rejseplan's values are
+planning norms per station class (120–360 s at rail stations, 6 min almost everywhere in 2017), not
+walking times, and they removed connections respondents actually made. A transfer then needs walking
+time (from OSM) plus `transferSlack` (default 2 min, settable per query via `planConnection`'s
+`preferences.transit.transfer.slack`). Stay-seated (`transfer_type=4`) and timed (`transfer_type=1`)
+transfers are unaffected. Changing the setting requires rebuilding the graph.
+
 **Excluding stops and trips** — `otp.client.load_all_candidates` also takes `exclude_stopids`
 (no boarding/alighting at those stops; trips may still pass through) and `exclude_tripids`
 (those trips are not used), sent as the modified OTP's `excludeStops`/`excludeTrips`. Ids are
 feed-scoped as in the merged feed (e.g. a leg's `trip_gtfs_id`). To exclude a station, pass all
-its stop ids, and don't exclude a stop that is also a via stop. Reconstruction doesn't use them yet.
+its stop ids, and don't exclude a stop that is also a via stop. Choice-set generation uses
+`exclude_stopids` (`choice_set.exclude_stops`); reconstruction doesn't use them yet.
 
 ---
 

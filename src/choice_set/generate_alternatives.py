@@ -63,6 +63,32 @@ def _itinerary_keys(legs, key_columns):
 	}
 
 
+def _used_stops(legs):
+	"""Sorted boarding/alighting stop ids of legs' transit legs."""
+	transit = legs[~legs["mode"].isin(STREET_MODES)].reindex(columns=["from_gtfs_id", "to_gtfs_id"])
+	return sorted({stop for stop in transit.to_numpy().ravel() if isinstance(stop, str)})
+
+
+def exclude_stop_rounds(query, candidates, chosen_legs, key_columns, rounds, stops_per_round, rng):
+	"""
+	candidates plus up to `rounds` re-queries, each excluding stops_per_round stop ids drawn at random
+	(rng) from the boarding/alighting stops of chosen_legs and the candidates so far; draws are
+	independent per round. query(exclude_stopids) returns candidates. Stops once a round finds no new key.
+	"""
+	for _ in range(rounds):
+		stops = _used_stops(pd.concat([chosen_legs, candidates]))
+		if not stops:
+			break
+		round_candidates = query(rng.sample(stops, min(stops_per_round, len(stops))))
+		known_keys = set(_itinerary_keys(candidates, key_columns).values()) if not candidates.empty else set()
+		if round_candidates.empty or set(_itinerary_keys(round_candidates, key_columns).values()) <= known_keys:
+			break
+		offset = candidates["iteration_id"].max() + 1 if not candidates.empty else 0
+		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset)],
+			ignore_index=True)
+	return candidates
+
+
 def walk_to_bicycle(candidates, bike_access, bike_egress, walk_bike_time_ratio):
 	"""
 	Bike access/egress is queried as WALK (OTP's BICYCLE needs both ends): each itinerary's first
