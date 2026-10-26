@@ -14,6 +14,7 @@ CHOICE_SET_COLUMNS = [
 	"trip_id",
 	"alt_id",
 	"is_chosen",
+	"bus_line_group",
 	"leg_id",
 	"start_trip",
 	"end_trip",
@@ -116,6 +117,21 @@ def walk_to_bicycle(candidates, bike_access, bike_egress, walk_bike_time_ratio):
 	return candidates
 
 
+def _bus_line_groups(trip_choice_set, key_columns):
+	"""
+	Per row, the lowest alt_id of the alternatives the same as its alternative but for bus lines (e.g.
+	parallel buses 143/144 between the same stops): its own alt_id if there is none.
+	"""
+	bus_blind = trip_choice_set.assign(iteration_id=trip_choice_set["alt_id"],
+		route_short_name=trip_choice_set["route_short_name"].where(trip_choice_set["mode"] != "BUS"))
+	keys = _itinerary_keys(bus_blind, list(dict.fromkeys([*key_columns, "from", "to"])))
+	first_alt = {}
+	for alt_id in sorted(keys):
+		first_alt.setdefault(keys[alt_id], alt_id)
+	# Alternatives without transit legs (e.g. the chosen car trip) have no key
+	return trip_choice_set["alt_id"].map(lambda alt_id: first_alt[keys[alt_id]] if alt_id in keys else alt_id)
+
+
 def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, chosen_public_transport):
 	"""
 	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by
@@ -141,6 +157,7 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0)) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
+	trip_choice_set["bus_line_group"] = _bus_line_groups(trip_choice_set, key_columns)
 	if chosen_public_transport:
 		# 1 if the generated candidates included the chosen key, 0 otherwise
 		trip_choice_set.insert(trip_choice_set.columns.get_loc("is_chosen") + 1, "coverage", coverage)
