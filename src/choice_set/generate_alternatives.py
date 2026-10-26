@@ -71,21 +71,27 @@ def _used_stops(legs):
 
 def exclude_stop_rounds(query, candidates, chosen_legs, key_columns, rounds, stops_per_round, rng):
 	"""
-	candidates plus up to `rounds` re-queries, each excluding stops_per_round stop ids drawn at random
+	candidates plus `rounds` re-queries, each excluding stops_per_round stop ids drawn at random
 	(rng) from the boarding/alighting stops of chosen_legs and the candidates so far; draws are
-	independent per round. query(exclude_stopids) returns candidates. Stops once a round finds no new key.
+	independent per round. query(exclude_stopids) returns candidates. Each candidate is tagged with
+	its exclude_round (0 = candidates) and that round's excluded_stops.
 	"""
-	for _ in range(rounds):
+	candidates = candidates.assign(exclude_round=0, excluded_stops="")
+	for exclude_round in range(1, rounds + 1):
 		stops = _used_stops(pd.concat([chosen_legs, candidates]))
 		if not stops:
 			break
-		round_candidates = query(rng.sample(stops, min(stops_per_round, len(stops))))
-		known_keys = set(_itinerary_keys(candidates, key_columns).values()) if not candidates.empty else set()
-		if round_candidates.empty or set(_itinerary_keys(round_candidates, key_columns).values()) <= known_keys:
-			break
-		offset = candidates["iteration_id"].max() + 1 if not candidates.empty else 0
-		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset)],
-			ignore_index=True)
+		exclude_stopids = rng.sample(stops, min(stops_per_round, len(stops)))
+		round_candidates = query(exclude_stopids)
+		#known_keys = set(_itinerary_keys(candidates, key_columns).values()) if not candidates.empty else set()
+		#if round_candidates.empty or set(_itinerary_keys(round_candidates, key_columns).values()) <= known_keys:
+		#	break
+		if round_candidates.empty:
+			continue
+		# Past the ids so far; a query's ids go negative for backward pages
+		offset = candidates["iteration_id"].max() + 1 - round_candidates["iteration_id"].min() if not candidates.empty else 0
+		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset,
+			exclude_round=exclude_round, excluded_stops=" ".join(exclude_stopids))], ignore_index=True)
 	return candidates
 
 
