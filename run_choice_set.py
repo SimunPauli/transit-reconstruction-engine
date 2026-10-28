@@ -11,7 +11,7 @@ from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_stop_rounds,
 	print_choice_set, print_coverage, walk_to_bicycle)
-from src.constant import WALK_BIKE_TIME_RATIO
+from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES
 from src import otp
 
 def main():
@@ -75,8 +75,10 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
 			chosen_start, chosen_legs = chosen(tu_tur_row)
+			#Generated alternatives (many will be duplicated)
 			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
 			                             exclude_stops, access_egress_mode)
+			#Filter alternatives; drop duplicates only keeping one closest to departure
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
 			                                   chosen_start, chosen_legs, chosen_public_transport)
 			print_choice_set(trip_choice_set)
@@ -119,7 +121,10 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 	per	choice_set.alternative_key (what makes two itineraries the same alternative).
 	"""
 	chosen_trips = read_chosen_trips(chosen_trips_path, config["reconstruct"]["paths"]["trip_matching_summaries_file"])
-	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, chosen_trips["TurId"])
+	legs = tu_deltur[tu_deltur["TurId"].isin(chosen_trips["TurId"])]
+	only_transit_walk = legs["StageMode"].isin([1, *TRANSIT_STAGE_MODES]).groupby(legs["TurId"]).all()
+	turid_walk_transit = only_transit_walk[only_transit_walk].index #TODO: include trips with other street modes then WALK??
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_walk_transit)
 
 	def chosen(tu_tur_row):
 		chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
