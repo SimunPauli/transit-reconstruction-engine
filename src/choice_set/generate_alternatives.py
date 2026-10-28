@@ -144,6 +144,7 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 	coverage = 0
 
 	if not candidates.empty:
+		#Remove duplicates
 		starts = pd.to_datetime(candidates.groupby("iteration_id")["start_trip"].first(), utc=True)
 		itineraries = pd.DataFrame({"key": pd.Series(_itinerary_keys(candidates, key_columns))})
 		itineraries["gap"] = (starts - pd.to_datetime(depart_dt, utc=True)).abs()
