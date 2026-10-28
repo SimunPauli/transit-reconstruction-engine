@@ -11,7 +11,7 @@ from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_stop_rounds,
 	print_choice_set, print_coverage, walk_to_bicycle)
-from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES
+from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES, STREET_MODES
 from src import otp
 
 def main():
@@ -47,8 +47,16 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
 	if access_egress_mode:
 		trip_query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
 
+	direct = otp.client.request_direct_leg(trip_query["origin"], trip_query["destination"], "WALK",
+	                                       trip_query["depart_dt"], otp_url=settings["otp_url"],
+	                                       request_timeout=settings["request_timeout"])
+	direct_km = None if direct.empty else direct.groupby("iteration_id")["distance_km"].sum().min()
 	def query(exclude_stopids=None):
-		return otp.client.load_all_candidates(**trip_query, **settings, exclude_stopids=exclude_stopids)
+		otp.client.load_all_candidates(**trip_query, **settings, exclude_stopids=exclude_stopids)
+		if direct_km is None or candidates.empty:
+			return candidates
+		walk_km = candidates["distance_km"].where(candidates["mode"] == "WALK", 0).groupby(candidates["iteration_id"]).transform("sum")
+		return candidates[walk_km + 0.01 < direct_km].reset_index(drop=True)
 
 	# Seeded per trip, so draws don't depend on thread order
 	rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
