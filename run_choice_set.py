@@ -10,7 +10,7 @@ from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_stop_rounds,
-	coverage_summary, print_choice_set, print_coverage, walk_to_bicycle)
+	choice_set_summary, print_choice_set, walk_to_bicycle)
 from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES, STREET_MODES
 from src import otp
 
@@ -121,7 +121,10 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 	choice_sets = pd.concat(choice_sets, ignore_index=True)
 	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
 	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
-	return choice_sets
+	summary = choice_set_summary(choice_sets, groups)
+	print(f"Choice-set summary (alternative_key={config['choice_set']['alternative_key']}):")
+	print(summary.to_string(index=False))
+	return summary
 
 
 def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path):
@@ -143,11 +146,9 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
 		return chosen_legs["start_trip"].iloc[0], chosen_legs
 
-	choice_sets = generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
-		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"])
-	if choice_sets is not None:
-		print_coverage(choice_sets, config["choice_set"]["alternative_key"],
-			groups=chosen_trips.groupby("TurId")["outcome"].first())
+	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
+		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"],
+		groups=chosen_trips.groupby("TurId")["outcome"].first())
 
 def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	"""
@@ -176,7 +177,7 @@ def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 		})
 		return tu_tur_row["depart_dt"], chosen_legs
 
-	generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=False,
+	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=False,
 		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
 
 def _run(config, tee, chosen_trips_path):
@@ -184,8 +185,15 @@ def _run(config, tee, chosen_trips_path):
 	tu_session, tu_tur, tu_deltur, tu_stations = load_TU_data.load_tu_from_config(config)
 	print("TU data loaded")
 
-	public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path)
-	car_choice_set(config, tee, tu_session, tu_tur, tu_deltur)
+	summaries = {
+		"public": public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path),
+		"car": car_choice_set(config, tee, tu_session, tu_tur, tu_deltur),
+	}
+	if any(summary is not None for summary in summaries.values()):
+		summary_file = config["choice_set"]["paths"]["summary_file"]
+		pd.concat(summaries, names=["choice_set"]).reset_index(level="choice_set").convert_dtypes().to_csv(
+			summary_file, sep=",", decimal=".", index=False)
+		print(f"Saved choice-set summary to {summary_file}")
 
 
 if __name__ == "__main__":

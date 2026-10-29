@@ -177,30 +177,30 @@ def print_choice_set(trip_choice_set):
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
 
 
-def coverage_summary(choice_sets, groups=None):
+N_ALTERNATIVES_PERCENTILES = [0, 5, 10, 25, 50, 75, 90, 95, 100]
+
+
+def choice_set_summary(choice_sets, groups=None):
 	"""
-	Number of trips whose candidates included the chosen alternative_key (coverage column), its share and
-	the number with no OTP transit itinerary: row "all" and, if groups (Series trip_id -> label) is given,
-	one per label.
+	Row "all" plus, if groups (Series trip_id -> label) is given, one per label: trips, covered (coverage
+	column, NA without one) and its share, trips with no OTP transit itinerary, and the mean and
+	percentiles of n_alternatives (alternatives besides the chosen).
 	"""
-	trips = choice_sets.groupby("trip_id").agg(coverage=("coverage", "first"), alternatives=("alt_id", "max"))
-	# Uncovered and nothing besides the chosen: OTP returned no transit itinerary
-	trips["no_candidates"] = (trips["coverage"] == 0) & (trips["alternatives"] == 0)
+	trips = choice_sets.reindex(columns=["trip_id", "alt_id", "coverage"]).groupby("trip_id").agg(
+		n_alternatives=("alt_id", "max"), coverage=("coverage", "first"))
 
 	def summary(group, trips):
-		covered = trips["coverage"].sum()
-		return {"group": group, "trips": len(trips), "covered": covered, "coverage_share": covered / len(trips),
-			"no_candidates": trips["no_candidates"].sum()}
+		n = trips["n_alternatives"]
+		return {"group": group, "trips": len(trips),
+			"covered": trips["coverage"].sum(min_count=1), "coverage_share": trips["coverage"].mean(),
+			# Uncovered and nothing besides the chosen: OTP returned no transit itinerary
+			"no_otp_itinerary": ((trips["coverage"] != 1) & (n == 0)).sum(),
+			"n_alternatives_mean": n.mean(),
+			# "lower": an actual trip's value, not interpolated
+			**{f"n_alternatives_p{p}": n.quantile(p / 100, interpolation="lower") for p in N_ALTERNATIVES_PERCENTILES}
+		    }
 
 	rows = [summary("all", trips)]
 	if groups is not None:
 		rows += [summary(label, group_trips) for label, group_trips in trips.groupby(groups)]
 	return pd.DataFrame(rows)
-
-
-def print_coverage(summary, alternative_key):
-	"""Prints coverage_summary's rows, "all" first."""
-	for row in summary.itertuples():
-		text = (f"{row.covered} of {row.trips} trips ({row.coverage_share:.1%}), "
-			f"{row.no_candidates} with no OTP transit itinerary")
-		print(f"Coverage (alternative_key={alternative_key}): {text}" if row.group == "all" else f"  {row.group}: {text}")
