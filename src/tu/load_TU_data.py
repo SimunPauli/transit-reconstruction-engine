@@ -107,7 +107,7 @@ def load_tu(data_dir,
 	)
 
 	tu_tur["arrival_dt_str"] = tu_tur["arrival_dt"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
-	tu_tur.sort_values(by="DiaryDate")
+	tu_tur = tu_tur.sort_values(by=["DiaryDate", "depart_dt"])
 
 	#processing of TU data
 	if YEAR is not None:
