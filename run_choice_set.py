@@ -156,6 +156,19 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"],
 		groups=chosen_trips.groupby("TurId")["outcome"].first())
 
+def car_chosen(tu_tur_row, tu_deltur):
+	"""(depart_dt, chosen_legs) of a car trip: its TU legs, in the choice-set columns TU has."""
+	tu_legs = tu_deltur[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
+	chosen_legs = pd.DataFrame({
+		"leg_id": tu_legs["Delturnr"] - 1,
+		"start_trip": tu_tur_row["depart_dt"],
+		"end_trip": tu_tur_row["arrival_dt"],
+		"mode": tu_legs["otp_mode"],
+		"distance_km": tu_legs["StageLength"],
+		"duration_min": tu_legs["StageDurationMin"],
+	})
+	return tu_tur_row["depart_dt"], chosen_legs
+
 def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	"""
 	---- Public transport choice-set for car trip ----
@@ -170,20 +183,8 @@ def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
 	turid_car = only_car_walk[only_car_walk].index
 	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_car)
 
-	def chosen(tu_tur_row):
-		# The TU car legs as the chosen, in the choice-set columns TU has
-		tu_legs = tu_deltur[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
-		chosen_legs = pd.DataFrame({
-			"leg_id": tu_legs["Delturnr"] - 1,
-			"start_trip": tu_tur_row["depart_dt"],
-			"end_trip": tu_tur_row["arrival_dt"],
-			"mode": tu_legs["otp_mode"],
-			"distance_km": tu_legs["StageLength"],
-			"duration_min": tu_legs["StageDurationMin"],
-		})
-		return tu_tur_row["depart_dt"], chosen_legs
-
-	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=False,
+	return generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: car_chosen(tu_tur_row, tu_deltur),
+		chosen_public_transport=False,
 		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
 
 def _run(config, tee, chosen_trips_path):
