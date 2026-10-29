@@ -153,6 +153,13 @@ Create it based on the template below:
       "stops_per_round": 2,
       "seed": 0
     },
+    "exclude_routes": {
+      "steps": [
+        {"rounds": 5, "routes_per_round": 1},
+        {"rounds": 5, "routes_per_round": 2}
+      ],
+      "seed": 0
+    },
     "paths": {
       "log_file": "choice_set.log",
       "public_choice_set_file": "public_choice_set.csv",
@@ -196,7 +203,8 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
 | `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
 | `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
-| `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `rounds` queries, each excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round. All rounds always run. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `rounds: 0` disables it |
+| `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `rounds` queries, each excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded; a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `rounds: 0` disables it |
+| `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` run in order, each `rounds` queries excluding `routes_per_round` route ids (their trips are not used at all) drawn at random from the routes of the chosen itinerary and all candidates so far, drawn anew each round but never a set of routes an earlier round excluded (across steps); a round with no such set left is skipped. Seeded per trip by `seed` and `TurId`. `steps: []` disables it |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (`public_choice_set_file`: public transport trips, chosen is the reconstructed itinerary, alternatives' bike access/egress WALK legs are relabelled `BICYCLE` and scaled by `tu_prep.walk_bike_time_ratio` as in reconstruction; `car_choice_set_file`: car trips, alternatives use WALK access/egress, chosen is the TU car legs, with only `leg_id`, `start_trip`, `end_trip`, `mode`, `distance_km`, `duration_min` filled. Both one row per leg, with `TurId`, `alt_id`, `is_chosen`; `alt_id` 0 is the chosen. `line_group`: the lowest `alt_id` of the alternatives the same but for parallel lines between the same stops (compared on `alternative_key` plus boarding/alighting stop names): any bus lines, metro sibling lines M1/M2 and M3/M4 (`METRO_SIBLING_LINES` in `src/constant.py`), and any S-train lines but F (which crosses the others' track); its own `alt_id` if there is none; to merge or path-size such alternatives in the model. `public_choice_set_file` also has `coverage`, per trip: 1 if the OTP alternatives search found the chosen itinerary's `alternative_key` or another alternative of its `line_group`, 0 otherwise; the coverage rate is printed to console/`log_file` after the file is saved, overall and per reconstruction outcome, `trip_found`/`trip_near_route`; `summary_file`: the printed summary of both as csv, one row per `choice_set` (`public`/`car`) and `group` (`all`, then for `public` each outcome), with `trips`, `covered` and `coverage_share` (`public` only), `no_otp_itinerary` (trips with no OTP transit itinerary), `n_alternatives_mean` and `n_alternatives_p0`…`n_alternatives_p100`, the mean and 0/5/10/25/50/75/90/95/100th percentiles of the number of alternatives besides the chosen per trip, each an actual trip's value, not interpolated) |
 
 ---
@@ -531,8 +539,11 @@ transfers are unaffected. Changing the setting requires rebuilding the graph.
 (no boarding/alighting at those stops; trips may still pass through) and `exclude_tripids`
 (those trips are not used), sent as the modified OTP's `excludeStops`/`excludeTrips`. Ids are
 feed-scoped as in the merged feed (e.g. a leg's `trip_gtfs_id`). To exclude a station, pass all
-its stop ids, and don't exclude a stop that is also a via stop. Choice-set generation uses
-`exclude_stopids` (`choice_set.exclude_stops`); reconstruction doesn't use them yet.
+its stop ids, and don't exclude a stop that is also a via stop. `exclude_routeids` (route
+`gtfsId`s, e.g. a leg's `route_gtfs_id`; those routes' trips are not used) is sent as OTP's standard
+`filters` exclude, in the same filter as the `route_short_name` include so the two are ANDed.
+Choice-set generation uses `exclude_stopids` (`choice_set.exclude_stops`) and `exclude_routeids`
+(`choice_set.exclude_routes`); reconstruction doesn't use them yet.
 
 ---
 

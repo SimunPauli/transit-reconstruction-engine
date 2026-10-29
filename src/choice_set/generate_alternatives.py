@@ -1,3 +1,4 @@
+from itertools import combinations
 import pandas as pd
 from src import otp
 from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_UNGROUPED_LINES
@@ -68,35 +69,49 @@ def _itinerary_keys(legs, key_columns):
 	}
 
 
-def _used_stops(legs):
-	"""Sorted boarding/alighting stop ids of legs' transit legs."""
-	transit = legs[~legs["mode"].isin(STREET_MODES)].reindex(columns=["from_gtfs_id", "to_gtfs_id"])
-	return sorted({stop for stop in transit.to_numpy().ravel() if isinstance(stop, str)})
+def _used_ids(legs, columns):
+	"""Sorted ids in columns of legs' transit legs."""
+	transit = legs[~legs["mode"].isin(STREET_MODES)].reindex(columns=columns)
+	return sorted({value for value in transit.to_numpy().ravel() if isinstance(value, str)})
 
 
-def exclude_stop_rounds(query, candidates, chosen_legs, key_columns, rounds, stops_per_round, rng):
+# Per kind of exclude round: the transit-leg columns its ids are drawn from, and the query argument they go to
+EXCLUDE_KINDS = {
+	"stops": (["from_gtfs_id", "to_gtfs_id"], "exclude_stopids"),
+	"routes": (["route_gtfs_id"], "exclude_routeids"),
+}
+
+
+def exclude_rounds(query, candidates, chosen_legs, rounds):
 	"""
-	candidates plus `rounds` re-queries, each excluding stops_per_round stop ids drawn at random
-	(rng) from the boarding/alighting stops of chosen_legs and the candidates so far; draws are
-	independent per round. query(exclude_stopids) returns candidates. Each candidate is tagged with
-	its exclude_round (0 = candidates) and that round's excluded_stops.
+	candidates plus one re-query per round of rounds, a list of (kind, n_ids, rng) run in order: each
+	excludes a set of n_ids ids of kind (EXCLUDE_KINDS) drawn at random (rng) from chosen_legs' and the
+	candidates so far's transit legs, never a set an earlier round excluded; a round with no such set
+	left is skipped. query(**{argument: ids}) returns candidates. Each candidate is tagged with its
+	exclude_round (0 = candidates) and that round's excluded ids ("kind: ids").
 	"""
-	candidates = candidates.assign(exclude_round=0, excluded_stops="")
-	for exclude_round in range(1, rounds + 1):
-		stops = _used_stops(pd.concat([chosen_legs, candidates]))
-		if not stops:
+	candidates = candidates.assign(exclude_round=0, excluded="")
+	excluded_sets = set()
+	for exclude_round, (kind, n_ids, rng) in enumerate(rounds, start=1):
+		columns, argument = EXCLUDE_KINDS[kind]
+		ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
+		if not ids:
 			break
-		exclude_stopids = rng.sample(stops, min(stops_per_round, len(stops)))
-		round_candidates = query(exclude_stopids)
-		#known_keys = set(_itinerary_keys(candidates, key_columns).values()) if not candidates.empty else set()
-		#if round_candidates.empty or set(_itinerary_keys(round_candidates, key_columns).values()) <= known_keys:
-		#	break
+		# ids is sorted, so each set has one tuple
+		unused_sets = [ids_set for ids_set in combinations(ids, min(n_ids, len(ids)))
+			if (kind, ids_set) not in excluded_sets]
+		if not unused_sets:
+			continue
+		ids_set = rng.choice(unused_sets)
+		excluded_sets.add((kind, ids_set))
+		exclude_ids = list(ids_set)
+		round_candidates = query(**{argument: exclude_ids})
 		if round_candidates.empty:
 			continue
 		# Past the ids so far; a query's ids go negative for backward pages
 		offset = candidates["iteration_id"].max() + 1 - round_candidates["iteration_id"].min() if not candidates.empty else 0
 		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset,
-			exclude_round=exclude_round, excluded_stops=" ".join(exclude_stopids))], ignore_index=True)
+			exclude_round=exclude_round, excluded=f"{kind}: {' '.join(exclude_ids)}")], ignore_index=True)
 	return candidates
 
 
@@ -140,8 +155,8 @@ def _line_groups(trip_choice_set, key_columns):
 
 def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, chosen_public_transport):
 	"""
-	One itinerary per alternative: per key, the candidate departing closest to depart_dt, ordered by
-	that closeness. chosen_legs is alt_id 0; if chosen_public_transport, it replaces the candidates
+	One itinerary per alternative: per key, the candidate with the least gap to depart_dt plus waiting
+	(ties to less waiting), ordered by that score. chosen_legs is alt_id 0; if chosen_public_transport, it replaces the candidates
 	sharing its key, and a coverage column is added. Columns chosen_legs lacks (e.g. a car trip's
 	routes/stops) are left empty.
 	"""
@@ -152,12 +167,18 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 	if not candidates.empty:
 		#Remove duplicates
 		starts = pd.to_datetime(candidates.groupby("iteration_id")["start_trip"].first(), utc=True)
+		# Minutes between each leg and the previous one's end, summed per itinerary
+		legs = candidates.sort_values(["iteration_id", "leg_id"])
+		waits = (legs["start_leg"] - legs.groupby("iteration_id")["end_leg"].shift()).groupby(legs["iteration_id"]).sum() / 60000
 		itineraries = pd.DataFrame({"key": pd.Series(_itinerary_keys(candidates, key_columns))})
-		itineraries["gap"] = (starts - pd.to_datetime(depart_dt, utc=True)).abs()
+		itineraries["gap"] = (starts - pd.to_datetime(depart_dt, utc=True)).abs().dt.total_seconds() / 60
+		itineraries["wait"] = waits
+		itineraries["score"] = itineraries["gap"] + itineraries["wait"]
 		in_chosen = itineraries["key"].map((lambda key: key in chosen_keys))
 		coverage = int(in_chosen.any())
 		itineraries = itineraries[~in_chosen]
-		keep = itineraries.sort_values("gap").drop_duplicates("key").index
+		# Ties (same arrival, earlier start) go to the run waiting least
+		keep = itineraries.sort_values(["score", "wait"]).drop_duplicates("key").index
 		alternatives += [candidates[candidates["iteration_id"] == iteration_id] for iteration_id in keep]
 
 	trip_choice_set = pd.concat(

@@ -81,6 +81,7 @@ def graphql_json_request(
 		via_stopids: Optional[list] = None,
 		exclude_stopids: Optional[list] = None,
 		exclude_tripids: Optional[list] = None,
+		exclude_routeids: Optional[list] = None,
 		before: Optional[str] = None,
 		last: Optional[int] = None,
 		after: Optional[str] = None,
@@ -163,11 +164,16 @@ def graphql_json_request(
 	if has_search_window:
 		variables["searchWindow"] = search_window
 
+	# One filter, so the route include and exclude are ANDed
+	transit_filter = {}
 	# Fork-only: only include determined set of routes:
 	if route_short_name_json is not None:
-		variables["preferences"].setdefault("transit", {}).setdefault("filters", []).append({
-			"include": {"routeShortNames": route_short_name_json}
-		})
+		transit_filter["include"] = {"routeShortNames": route_short_name_json}
+	# These routes (`FeedId:RouteId`) are not used at all
+	if exclude_routeids:
+		transit_filter["exclude"] = {"routes": list(exclude_routeids)}
+	if transit_filter:
+		variables["preferences"]["transit"]["filters"] = [transit_filter]
 
 	if via_stopids is not None:
 		# One visit per station; any one of its stop_ids satisfies it
@@ -322,6 +328,7 @@ def load_all_candidates(origin: dict,
                         via_stopids: list | None = None,
                         exclude_stopids: list | None = None,
                         exclude_tripids: list | None = None,
+                        exclude_routeids: list | None = None,
                         walk_reluctance: float = 2,
                         car_reluctance: float = 2,
                         transit_reluctances: dict | None = None,
@@ -354,6 +361,7 @@ def load_all_candidates(origin: dict,
 		via_stopids=via_stopids,
 		exclude_stopids=exclude_stopids,
 		exclude_tripids=exclude_tripids,
+		exclude_routeids=exclude_routeids,
 		transit_reluctances=transit_reluctances,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,

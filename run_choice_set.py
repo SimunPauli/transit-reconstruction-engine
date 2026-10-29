@@ -9,7 +9,7 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
-from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_stop_rounds,
+from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_rounds,
 	choice_set_summary, print_choice_set, walk_to_bicycle)
 from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES, STREET_MODES
 from src import otp
@@ -35,12 +35,13 @@ def otp_settings(config):
 		#TODO: decide on debug_profile. Currently default ("LIST_ALL")
 	)
 
-def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
-                    exclude_stops, access_egress_mode=None):
+def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
+                    exclude_stops, exclude_routes, access_egress_mode=None):
 	"""
-	The TU trip's OTP itineraries plus those of the exclude_stops rounds (exclude_stop_rounds, seeded
-	per trip by exclude_stops["seed"] and TurId), bike access/egress relabelled BICYCLE.
-	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
+	The TU trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
+	steps' rounds (exclude_rounds, each kind seeded per trip by its "seed" and TurId), bike
+	access/egress relabelled BICYCLE. access_egress_mode, if given, replaces the access/egress mode
+	derived from the TU legs.
 	"""
 	tu_legs = tu_trip_legs(tu_tur_row, tu_deltur)
 	trip_query = tu_trip_query(tu_tur_row, tu_deltur)
@@ -51,8 +52,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
 	                                       trip_query["depart_dt"], otp_url=settings["otp_url"],
 	                                       request_timeout=settings["request_timeout"])
 	direct_km = None if direct.empty else direct.groupby("iteration_id")["distance_km"].sum().min()
-	def query(exclude_stopids=None):
-		candidates = otp.client.load_all_candidates(**trip_query, **settings, exclude_stopids=exclude_stopids)
+	def query(**exclude):
+		candidates = otp.client.load_all_candidates(**trip_query, **settings, **exclude)
 		if direct_km is None or candidates.empty:
 			return candidates
 		walk_km = candidates["distance_km"].where(candidates["mode"] == "WALK", 0).groupby(candidates["iteration_id"]).transform("sum")
@@ -63,9 +64,12 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
 		return candidates[keep].reset_index(drop=True)
 
 	# Seeded per trip, so draws don't depend on thread order
-	rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
-	candidates = exclude_stop_rounds(query, query(), chosen_legs, key_columns,
-		exclude_stops["rounds"], exclude_stops["stops_per_round"], rng)
+	stop_rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
+	route_rng = random.Random(f"{exclude_routes['seed']}:{tu_tur_row['TurId']}")
+	rounds = [("stops", exclude_stops["stops_per_round"], stop_rng)] * exclude_stops["rounds"]
+	for step in exclude_routes["steps"]:
+		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
+	candidates = exclude_rounds(query, query(), chosen_legs, rounds)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 
@@ -79,6 +83,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 	"""
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
 	exclude_stops = config["choice_set"]["exclude_stops"]
+	exclude_routes = config["choice_set"]["exclude_routes"]
 	settings = otp_settings(config)
 	max_workers = config["run"]["max_workers"]
 
@@ -89,8 +94,8 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		try:
 			chosen_start, chosen_legs = chosen(tu_tur_row)
 			#Generated alternatives (many will be duplicated)
-			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
-			                             exclude_stops, access_egress_mode)
+			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
+			                             exclude_stops, exclude_routes, access_egress_mode)
 			#Filter alternatives; drop duplicates only keeping one closest to departure
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
 			                                   chosen_start, chosen_legs, chosen_public_transport)
