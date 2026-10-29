@@ -177,21 +177,30 @@ def print_choice_set(trip_choice_set):
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
 
 
-def print_coverage(choice_sets, alternative_key, groups=None):
+def coverage_summary(choice_sets, groups=None):
 	"""
-	Prints the share of trips whose candidates included the chosen alternative_key (coverage column),
-	overall and, if groups (Series trip_id -> label) is given, per label.
+	Number of trips whose candidates included the chosen alternative_key (coverage column), its share and
+	the number with no OTP transit itinerary: row "all" and, if groups (Series trip_id -> label) is given,
+	one per label.
 	"""
 	trips = choice_sets.groupby("trip_id").agg(coverage=("coverage", "first"), alternatives=("alt_id", "max"))
 	# Uncovered and nothing besides the chosen: OTP returned no transit itinerary
 	trips["no_candidates"] = (trips["coverage"] == 0) & (trips["alternatives"] == 0)
 
-	def summary(trips):
+	def summary(group, trips):
 		covered = trips["coverage"].sum()
-		return (f"{covered} of {len(trips)} trips ({covered / len(trips):.1%}), "
-			f"{trips['no_candidates'].sum()} with no OTP transit itinerary")
+		return {"group": group, "trips": len(trips), "covered": covered, "coverage_share": covered / len(trips),
+			"no_candidates": trips["no_candidates"].sum()}
 
-	print(f"Coverage (alternative_key={alternative_key}): {summary(trips)}")
+	rows = [summary("all", trips)]
 	if groups is not None:
-		for label, group_trips in trips.groupby(groups):
-			print(f"  {label}: {summary(group_trips)}")
+		rows += [summary(label, group_trips) for label, group_trips in trips.groupby(groups)]
+	return pd.DataFrame(rows)
+
+
+def print_coverage(summary, alternative_key):
+	"""Prints coverage_summary's rows, "all" first."""
+	for row in summary.itertuples():
+		text = (f"{row.covered} of {row.trips} trips ({row.coverage_share:.1%}), "
+			f"{row.no_candidates} with no OTP transit itinerary")
+		print(f"Coverage (alternative_key={alternative_key}): {text}" if row.group == "all" else f"  {row.group}: {text}")
