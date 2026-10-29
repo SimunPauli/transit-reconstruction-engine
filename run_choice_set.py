@@ -66,7 +66,9 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	# Seeded per trip, so draws don't depend on thread order
 	stop_rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
 	route_rng = random.Random(f"{exclude_routes['seed']}:{tu_tur_row['TurId']}")
-	rounds = [("stops", exclude_stops["stops_per_round"], stop_rng)] * exclude_stops["rounds"]
+	rounds = []
+	for step in exclude_stops["steps"]:
+		rounds += [("stops", step["stops_per_round"], stop_rng)] * step["rounds"]
 	for step in exclude_routes["steps"]:
 		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
 	candidates = exclude_rounds(query, query(), chosen_legs, rounds)

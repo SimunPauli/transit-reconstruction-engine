@@ -149,8 +149,10 @@ Create it based on the template below:
     "search_window": "PT1H",
     "alternative_key": "routes_stops",
     "exclude_stops": {
-      "rounds": 5,
-      "stops_per_round": 2,
+      "steps": [
+        {"rounds": 5, "stops_per_round": 1},
+        {"rounds": 5, "stops_per_round": 2}
+      ],
       "seed": 0
     },
     "exclude_routes": {
