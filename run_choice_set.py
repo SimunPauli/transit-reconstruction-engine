@@ -70,11 +70,12 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs, key_columns,
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
-                         chosen_public_transport, choice_set_file, access_egress_mode=None):
+                         chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None):
 	"""
-	Choice sets for every trip in tu_tur, written to choice_set_file and returned (None if there are
-	none). chosen(tu_tur_row) returns the trip's (chosen_start, chosen_legs); chosen_public_transport
-	is passed on to build_choice_set, access_egress_mode to trip_candidates.
+	Choice sets for every trip in tu_tur, written to choice_set_file; prints and returns their
+	choice_set_summary per groups (None if there are none). chosen(tu_tur_row) returns the trip's
+	(chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set,
+	access_egress_mode to trip_candidates.
 	"""
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
 	exclude_stops = config["choice_set"]["exclude_stops"]

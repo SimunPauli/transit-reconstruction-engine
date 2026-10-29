@@ -1,6 +1,6 @@
 import pandas as pd
 from src import otp
-from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_SIBLING_LINES
+from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_UNGROUPED_LINES
 
 # Transit-leg columns that make two itineraries the same alternative (choice_set.alternative_key).
 # Stops by name, not stop_id, so the same route from another platform isn't a new alternative.
@@ -14,7 +14,7 @@ CHOICE_SET_COLUMNS = [
 	"trip_id",
 	"alt_id",
 	"is_chosen",
-	"bus_line_group",
+	"line_group",
 	"leg_id",
 	"start_trip",
 	"end_trip",
@@ -39,24 +39,28 @@ CHOICE_SET_COLUMNS = [
 ]
 
 
-# Lines sharing track count as one route
-SIBLING_LINES = {"SUBWAY": METRO_SIBLING_LINES, "S_TRAIN": S_TRAIN_SIBLING_LINES}
 
 
-def _sibling_route(mode, name):
-	"""The route name shared by name and its sibling line: the lower of the two (M2 -> M1, Bx -> B)."""
-	siblings = SIBLING_LINES.get(mode, {})
-	if not isinstance(name, str) or name.upper() not in siblings:
+
+def _line_group_route(mode, name):
+	"""
+	The route name line_group compares: none for BUS, the lower of metro sibling lines (M2 -> M1),
+	one name for S-train lines but F; name otherwise.
+	"""
+	if mode == "BUS":
+		return None
+	if not isinstance(name, str):
 		return name
-	return min(name.upper(), siblings[name.upper()])
+	if mode == "SUBWAY" and name.upper() in METRO_SIBLING_LINES:
+		return min(name.upper(), METRO_SIBLING_LINES[name.upper()])
+	if mode == "S_TRAIN" and name.upper() not in S_TRAIN_UNGROUPED_LINES:
+		return "S_TRAIN"
+	return name
 
 
 def _itinerary_keys(legs, key_columns):
 	"""{iteration_id: tuple of its transit legs' key_columns, in leg order}."""
 	transit = legs[~legs["mode"].isin(STREET_MODES)].sort_values("leg_id")
-	transit = transit.assign(route_short_name=[
-		_sibling_route(mode, name) for mode, name in zip(transit["mode"], transit["route_short_name"])
-	])
 	keys = transit[key_columns].fillna("").astype(str)
 	return {
 		iteration_id: tuple(map(tuple, rows.to_numpy()))
@@ -117,14 +121,16 @@ def walk_to_bicycle(candidates, bike_access, bike_egress, walk_bike_time_ratio):
 	return candidates
 
 
-def _bus_line_groups(trip_choice_set, key_columns):
+def _line_groups(trip_choice_set, key_columns):
 	"""
-	Per row, the lowest alt_id of the alternatives the same as its alternative but for bus lines (e.g.
-	parallel buses 143/144 between the same stops): its own alt_id if there is none.
+	Per row, the lowest alt_id of the alternatives the same as its alternative but for parallel lines
+	(e.g. buses 143/144, metro M1/M2 or S-train A/C between the same stops; see _line_group_route):
+	its own alt_id if there is none.
 	"""
-	bus_blind = trip_choice_set.assign(iteration_id=trip_choice_set["alt_id"],
-		route_short_name=trip_choice_set["route_short_name"].where(trip_choice_set["mode"] != "BUS"))
-	keys = _itinerary_keys(bus_blind, list(dict.fromkeys([*key_columns, "from", "to"])))
+	line_blind = trip_choice_set.assign(iteration_id=trip_choice_set["alt_id"], route_short_name=[
+		_line_group_route(mode, name) for mode, name in zip(trip_choice_set["mode"], trip_choice_set["route_short_name"])
+	])
+	keys = _itinerary_keys(line_blind, list(dict.fromkeys([*key_columns, "from", "to"])))
 	first_alt = {}
 	for alt_id in sorted(keys):
 		first_alt.setdefault(keys[alt_id], alt_id)
@@ -158,9 +164,10 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0)) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
-	trip_choice_set["bus_line_group"] = _bus_line_groups(trip_choice_set, key_columns)
+	trip_choice_set["line_group"] = _line_groups(trip_choice_set, key_columns)
 	if chosen_public_transport:
-		# 1 if the generated candidates included the chosen key, 0 otherwise
+		# 1 if the generated candidates included the chosen key or another alternative of its line_group, 0 otherwise
+		coverage = int(coverage or (trip_choice_set["line_group"].eq(0) & trip_choice_set["alt_id"].ne(0)).any())
 		trip_choice_set.insert(trip_choice_set.columns.get_loc("is_chosen") + 1, "coverage", coverage)
 
 	return trip_choice_set
