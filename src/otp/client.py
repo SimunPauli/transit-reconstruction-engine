@@ -445,7 +445,7 @@ def load_all_candidates(origin: dict,
 		in_window = start.between(window_start, window_end)
 		if not in_window.all():
 			n_dropped = otp_candidates_df.loc[~in_window, "iteration_id"].nunique()
-			print(f"Dropped {n_dropped} itinerary(ies) starting outside the search window [{window_start:%H:%M}, {window_end:%H:%M}]")
+			#print(f"Dropped {n_dropped} itinerary(ies) starting outside the search window [{window_start:%H:%M}, {window_end:%H:%M}]")
 			otp_candidates_df = otp_candidates_df[in_window].reset_index(drop=True)
 
 	return otp_candidates_df
