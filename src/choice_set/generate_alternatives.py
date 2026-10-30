@@ -1,4 +1,5 @@
 from itertools import combinations
+import math
 import pandas as pd
 from src import otp
 from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_UNGROUPED_LINES
@@ -82,36 +83,55 @@ EXCLUDE_KINDS = {
 }
 
 
+def draw_costs(ranges, rng):
+	"""
+	Query cost arguments drawn at random (rng) from ranges' [min, max]: walk, wait and per-mode transit
+	reluctance log-uniform (rounded to 0.01), transfer_cost uniform (whole seconds).
+	"""
+	def log_uniform(low, high):
+		return round(math.exp(rng.uniform(math.log(low), math.log(high))), 2)
+	return dict(
+		walk_reluctance=log_uniform(*ranges["walk_reluctance"]),
+		wait_reluctance=log_uniform(*ranges["wait_reluctance"]),
+		transit_reluctances={mode: log_uniform(*ranges["transit_reluctance"]) for mode in otp.client.DEFAULT_TRANSIT_MODES},
+		transfer_cost=round(rng.uniform(*ranges["transfer_cost"])),
+	)
+
+
 def exclude_rounds(query, candidates, chosen_legs, rounds):
 	"""
-	candidates plus one re-query per round of rounds, a list of (kind, n_ids, rng) run in order: each
-	excludes a set of n_ids ids of kind (EXCLUDE_KINDS) drawn at random (rng) from chosen_legs' and the
-	candidates so far's transit legs, never a set an earlier round excluded; a round with no such set
-	left is skipped. query(**{argument: ids}) returns candidates. Each candidate is tagged with its
-	exclude_round (0 = candidates) and that round's excluded ids ("kind: ids").
+	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
+	round queries with costs drawn by draw_costs(n, rng). Any other kind excludes a set of n ids of kind
+	(EXCLUDE_KINDS) drawn at random (rng) from chosen_legs' and the candidates so far's transit legs,
+	never a set an earlier round excluded; a round with no such set left is skipped. query(**arguments)
+	returns candidates. Each candidate is tagged with its exclude_round (0 = candidates) and that round's
+	excluded ids ("kind: ids") or drawn costs ("costs: {...}").
 	"""
 	candidates = candidates.assign(exclude_round=0, excluded="")
 	excluded_sets = set()
-	for exclude_round, (kind, n_ids, rng) in enumerate(rounds, start=1):
-		columns, argument = EXCLUDE_KINDS[kind]
-		ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
-		if not ids:
-			break
-		# ids is sorted, so each set has one tuple
-		unused_sets = [ids_set for ids_set in combinations(ids, min(n_ids, len(ids)))
-			if (kind, ids_set) not in excluded_sets]
-		if not unused_sets:
-			continue
-		ids_set = rng.choice(unused_sets)
-		excluded_sets.add((kind, ids_set))
-		exclude_ids = list(ids_set)
-		round_candidates = query(**{argument: exclude_ids})
+	for exclude_round, (kind, n, rng) in enumerate(rounds, start=1):
+		if kind == "costs":
+			arguments = draw_costs(n, rng)
+			label = f"costs: {arguments}"
+		else:
+			columns, argument = EXCLUDE_KINDS[kind]
+			ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
+			# ids is sorted, so each set has one tuple
+			unused_sets = [ids_set for ids_set in combinations(ids, min(n, len(ids)))
+				if (kind, ids_set) not in excluded_sets]
+			if not ids or not unused_sets:
+				continue
+			ids_set = rng.choice(unused_sets)
+			excluded_sets.add((kind, ids_set))
+			arguments = {argument: list(ids_set)}
+			label = f"{kind}: {' '.join(ids_set)}"
+		round_candidates = query(**arguments)
 		if round_candidates.empty:
 			continue
 		# Past the ids so far; a query's ids go negative for backward pages
 		offset = candidates["iteration_id"].max() + 1 - round_candidates["iteration_id"].min() if not candidates.empty else 0
 		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset,
-			exclude_round=exclude_round, excluded=f"{kind}: {' '.join(exclude_ids)}")], ignore_index=True)
+			exclude_round=exclude_round, excluded=label)], ignore_index=True)
 	return candidates
 
 

@@ -1,4 +1,4 @@
-# Choice-set check
+  # Choice-set check
 
 `synthetic_od_check.py` checks whether the choice-set generation misses real alternatives, in
 particular slower routes that a regular commuter might take out of habit but that OTP drops because

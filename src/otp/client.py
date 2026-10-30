@@ -72,6 +72,8 @@ def graphql_json_request(
 		transit_reluctances: Optional[dict] = None,
 		walk_reluctance: float = 2,
 		car_reluctance: float = 2,
+		wait_reluctance: Optional[float] = None,
+		transfer_cost: Optional[int] = None,
 		direct_only: bool = False,
 		transit_only: bool = False,
 		search_window: str = "PT30M",
@@ -185,6 +187,12 @@ def graphql_json_request(
 	# Fork-only: these trips are not used at all
 	if exclude_tripids:
 		variables["preferences"]["transit"]["excludeTrips"] = list(exclude_tripids)
+
+	# Left out: OTP's defaults (waitReluctance 1, transfer cost 0)
+	if wait_reluctance is not None:
+		variables["preferences"]["transit"]["board"] = {"waitReluctance": wait_reluctance}
+	if transfer_cost is not None:
+		variables["preferences"]["transit"]["transfer"] = {"cost": transfer_cost}
 
 	if print_query:
 		print_for_graphiql(query, variables)
@@ -332,6 +340,8 @@ def load_all_candidates(origin: dict,
                         walk_reluctance: float = 2,
                         car_reluctance: float = 2,
                         transit_reluctances: dict | None = None,
+                        wait_reluctance: float | None = None,
+                        transfer_cost: int | None = None,
                         search_window: str = "PT30M",
 						max_itinerary_candidates = 50,
                         otp_url: str = "http://localhost:8080/otp/gtfs/v1",
@@ -365,6 +375,8 @@ def load_all_candidates(origin: dict,
 		transit_reluctances=transit_reluctances,
 		walk_reluctance=walk_reluctance,
 		car_reluctance=car_reluctance,
+		wait_reluctance=wait_reluctance,
+		transfer_cost=transfer_cost,
 		direct_only=False,
 		transit_only=True,
 		search_window=search_window,

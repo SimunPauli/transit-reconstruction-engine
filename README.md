@@ -162,6 +162,14 @@ Create it based on the template below:
       ],
       "seed": 0
     },
+    "random_costs": {
+      "rounds": 10,
+      "walk_reluctance": [1, 4],
+      "wait_reluctance": [0.5, 2],
+      "transit_reluctance": [0.7, 1.4],
+      "transfer_cost": [0, 1800],
+      "seed": 0
+    },
     "paths": {
       "log_file": "choice_set.log",
       "public_choice_set_file": "public_choice_set.csv",
@@ -207,6 +215,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
 | `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `steps` run in order, each `rounds` queries excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded (across steps); a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `steps: []` disables it |
 | `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` of `rounds` queries, each excluding `routes_per_round` route ids (their trips are not used at all) drawn from the routes of the chosen itinerary and all candidates so far. `steps: []` disables it |
+| `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the exclude rounds: `rounds` queries (no exclusions), each with `walk_reluctance`, `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (see "Output" below) |
 
 ---
@@ -558,6 +567,12 @@ its stop ids, and don't exclude a stop that is also a via stop. `exclude_routeid
 `filters` exclude, in the same filter as the `route_short_name` include so the two are ANDed.
 Choice-set generation uses `exclude_stopids` (`choice_set.exclude_stops`) and `exclude_routeids`
 (`choice_set.exclude_routes`); reconstruction doesn't use them yet.
+
+**Wait reluctance and transfer cost** — `otp.client.load_all_candidates` also takes
+`wait_reluctance` (`preferences.transit.board.waitReluctance`) and `transfer_cost`
+(`preferences.transit.transfer.cost`, seconds added to every boarding after the first, on top of
+`boardCost`); left out, OTP's defaults apply (1 and 0). Only choice-set generation sets them
+(`choice_set.random_costs`).
 
 ---
 
