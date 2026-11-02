@@ -59,8 +59,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 		walk_km = candidates["distance_km"].where(candidates["mode"] == "WALK", 0).groupby(candidates["iteration_id"]).transform("sum")
 		keep = walk_km + 0.01 < direct_km
 		n_dropped = candidates.loc[~keep, "iteration_id"].nunique()
-		if n_dropped:
-			#print(f"Dropped {n_dropped} itierary(ies) walking at least as far as the direct walk ({direct_km:.3f} km)")
+#		if n_dropped:
+#			print(f"Dropped {n_dropped} itierary(ies) walking at least as far as the direct walk ({direct_km:.3f} km)")
 		return candidates[keep].reset_index(drop=True)
 
 	# Seeded per trip, so draws don't depend on thread order
