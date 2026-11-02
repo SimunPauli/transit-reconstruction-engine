@@ -83,7 +83,7 @@ def production(name, orig, dest, config):
 	try:
 		candidates = run_choice_set.trip_candidates(row, deltur, settings, chosen_legs,
 			config["choice_set"]["exclude_stops"], config["choice_set"]["exclude_routes"],
-			config["choice_set"]["random_costs"])
+			config["choice_set"]["random_costs"], config["choice_set"]["exclude_targeted"])
 	finally:
 		log = ThreadStdout.local.buffer.getvalue()
 		ThreadStdout.local.buffer = None

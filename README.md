@@ -164,11 +164,14 @@ Create it based on the template below:
     },
     "random_costs": {
       "rounds": 10,
-      "walk_reluctance": [1, 4],
-      "wait_reluctance": [0.5, 2],
-      "transit_reluctance": [0.7, 1.4],
+      "walk_reluctance": [1, 8],
+      "wait_reluctance": [0.25, 4],
+      "transit_reluctance": [0.2, 5],
       "transfer_cost": [0, 1800],
       "seed": 0
+    },
+    "exclude_targeted": {
+      "rounds": 4
     },
     "paths": {
       "log_file": "choice_set.log",
@@ -216,6 +219,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `steps` run in order, each `rounds` queries excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded (across steps); a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `steps: []` disables it |
 | `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` of `rounds` queries, each excluding `routes_per_round` route ids (their trips are not used at all) drawn from the routes of the chosen itinerary and all candidates so far. `steps: []` disables it |
 | `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the exclude rounds: `rounds` queries (no exclusions), each with `walk_reluctance`, `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
+| `choice_set.exclude_targeted` | Extra alternatives from peeling off the fastest routes, run last: `rounds` queries, each adding the route ids of the previous round's fastest itinerary (the first round's: of the plain query) to the routes it excludes, so slower routes that the faster ones dominate (e.g. a bus along a metro line) come out. Deterministic; stops early once a round finds nothing. `rounds: 0` disables it |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (see "Output" below) |
 
 ---
@@ -566,7 +570,7 @@ its stop ids, and don't exclude a stop that is also a via stop. `exclude_routeid
 `gtfsId`s, e.g. a leg's `route_gtfs_id`; those routes' trips are not used) is sent as OTP's standard
 `filters` exclude, in the same filter as the `route_short_name` include so the two are ANDed.
 Choice-set generation uses `exclude_stopids` (`choice_set.exclude_stops`) and `exclude_routeids`
-(`choice_set.exclude_routes`); reconstruction doesn't use them yet.
+(`choice_set.exclude_routes`, `choice_set.exclude_targeted`); reconstruction doesn't use them yet.
 
 **Wait reluctance and transfer cost** — `otp.client.load_all_candidates` also takes
 `wait_reluctance` (`preferences.transit.board.waitReluctance`) and `transfer_cost`

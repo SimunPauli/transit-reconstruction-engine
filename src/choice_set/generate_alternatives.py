@@ -98,21 +98,45 @@ def draw_costs(ranges, rng):
 	)
 
 
+def _fastest_routes(legs):
+	"""route_gtfs_ids of the transit legs of legs' fastest itinerary (ties to the earlier start)."""
+	if legs.empty:
+		return []
+	transit = legs[~legs["mode"].isin(STREET_MODES)] #remove street only trips
+	if transit.empty:
+		return []
+	itineraries = transit.groupby("iteration_id")[["start_trip", "end_trip"]].first().apply(pd.to_datetime, utc=True)
+	itineraries["duration"] = itineraries["end_trip"] - itineraries["start_trip"]
+	fastest = itineraries.sort_values(["duration", "start_trip"], kind="stable").index[0]
+	return list(transit.loc[transit["iteration_id"] == fastest, "route_gtfs_id"].dropna())
+
+
 def exclude_rounds(query, candidates, chosen_legs, rounds):
 	"""
 	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
-	round queries with costs drawn by draw_costs(n, rng). Any other kind excludes a set of n ids of kind
-	(EXCLUDE_KINDS) drawn at random (rng) from chosen_legs' and the candidates so far's transit legs,
-	never a set an earlier round excluded; a round with no such set left is skipped. query(**arguments)
-	returns candidates. Each candidate is tagged with its exclude_round (0 = candidates) and that round's
+	round queries with costs drawn by draw_costs(n, rng). A "targeted" round (n, rng unused) adds the
+	routes of the previous targeted round's fastest itinerary (the first round's: candidates') to the
+	routes every targeted round excludes, peeling off the routes that dominate slower ones; once one
+	finds nothing, the rest are skipped. Any other kind excludes a set of n ids of kind (EXCLUDE_KINDS)
+	drawn at random (rng) from chosen_legs' and the candidates so far's transit legs, never a set an
+	earlier round excluded; a round with no such set left is skipped. query(**arguments) returns
+	candidates. Each candidate is tagged with its exclude_round (0 = candidates) and that round's
 	excluded ids ("kind: ids") or drawn costs ("costs: {...}").
 	"""
+	targeted_ids, targeted_from = [], candidates
 	candidates = candidates.assign(exclude_round=0, excluded="")
 	excluded_sets = set()
 	for exclude_round, (kind, n, rng) in enumerate(rounds, start=1):
 		if kind == "costs":
 			arguments = draw_costs(n, rng)
 			label = f"costs: {arguments}"
+		elif kind == "targeted":
+			route_ids = _fastest_routes(targeted_from)
+			if not route_ids:
+				continue
+			targeted_ids += [route_id for route_id in route_ids if route_id not in targeted_ids]
+			arguments = {"exclude_routeids": list(targeted_ids)}
+			label = f"targeted: {' '.join(targeted_ids)}"
 		else:
 			columns, argument = EXCLUDE_KINDS[kind]
 			ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
@@ -126,6 +150,8 @@ def exclude_rounds(query, candidates, chosen_legs, rounds):
 			arguments = {argument: list(ids_set)}
 			label = f"{kind}: {' '.join(ids_set)}"
 		round_candidates = query(**arguments)
+		if kind == "targeted":
+			targeted_from = round_candidates
 		if round_candidates.empty:
 			continue
 		# Past the ids so far; a query's ids go negative for backward pages
