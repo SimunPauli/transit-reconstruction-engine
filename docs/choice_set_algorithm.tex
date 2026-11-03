@@ -1,0 +1,316 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\cand}{\mathcal{C}}
+\newcommand{\key}{\kappa}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+
+\title{Choice-Set Generation for Public Transport Route Choice\\
+\large Algorithm of \code{run\_choice\_set.py}}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+For every trip in the Danish National Travel Survey (TU) the algorithm builds a \emph{choice set}: the
+chosen itinerary plus a set of distinct public transport alternatives between the same origin and
+destination around the same departure time. Alternatives are generated with OpenTripPlanner (OTP) by
+repeatedly querying it under perturbed conditions --- stops and routes excluded, random
+generalized-cost parameters, and the fastest routes successively removed --- and then collapsing the
+pooled itineraries to one representative per distinct alternative.
+
+Two choice sets are produced:
+\begin{description}[leftmargin=1.5em]
+  \item[Public transport trips.] The chosen itinerary is the OTP itinerary matched to the TU trip by
+    the reconstruction run (\code{run\_reconstruct.py}). Only trips whose legs are all walk or transit
+    are used, and trips found only by ignoring the reported route (\code{trip\_wrong\_route}) are
+    dropped, since their route is not the chosen one.
+  \item[Car trips.] Trips with car as primary mode and only walk/car legs. The chosen alternative is
+    the TU car trip itself (distance and duration as reported); the alternatives are the public
+    transport itineraries the respondent could have taken instead, with walk access/egress.
+\end{description}
+
+The generation itself (\code{src/choice\_set/}) takes plain data --- a query, OTP itineraries, a
+departure time, an optional chosen itinerary --- and does not depend on TU, so it can be reused for
+other travel surveys.
+
+\paragraph{Notation.}
+For a trip $i$ let $o_i, d_i$ be origin and destination, $t_i$ the reported departure time, $W$ the
+search window (\code{choice\_set.search\_window}, e.g.\ 1 hour) and $c_i$ the chosen itinerary. An
+itinerary $r$ is a sequence of legs; $T(r)$ denotes its transit legs in order, $s(r)$ and $e(r)$ its
+start and end time. $\cand$ denotes a pool of candidate itineraries.
+
+\section{The base OTP query}
+\label{sec:query}
+
+Each OTP request, $Q(\theta)$, plans transit itineraries from $o_i$ to $d_i$ departing at $t_i$ with
+the trip's access and egress mode, on \emph{all} transit modes (bus, rail, S-train, metro, tram) and
+all routes. $\theta$ collects the optional perturbations of Section~\ref{sec:rounds}: excluded stops,
+excluded routes, and cost parameters (walk, wait and per-mode transit reluctance, transfer cost);
+without them OTP's defaults apply (walk reluctance 2).
+
+\paragraph{Pagination.} A single OTP response holds only a page of itineraries, so $Q$ pages forward
+from $t_i$ until the latest itinerary starts after $t_i + W$, and backward until the earliest starts
+before $t_i - W$, at most \code{max\_itinerary\_candidates} itineraries each way. Duplicated
+itineraries are removed and only itineraries with $s(r) \in [t_i - W,\; t_i + W]$ are kept (OTP may
+widen the window of sparse pages by hours).
+
+\paragraph{Direct-walk filter.} Let $D_i$ be the distance of the direct walk from $o_i$ to $d_i$. An
+itinerary is dropped if its walking legs together are at least as long as the direct walk:
+\begin{equation}
+  \text{keep } r \iff \sum_{\ell \in r,\ \text{mode}(\ell)=\text{WALK}} \text{dist}(\ell) + 0.01\,\text{km} < D_i .
+\end{equation}
+Such itineraries use transit without saving any walking and are not meaningful alternatives.
+
+\paragraph{Bicycle access/egress.} OTP's bicycle mode requires both access and egress by bicycle, so
+TU bicycle access/egress is queried as walking. After generation, the first (last) walk leg of each
+itinerary is relabelled \code{BICYCLE} and its duration multiplied by
+\code{tu\_prep.walk\_bike\_time\_ratio}, as in the reconstruction.
+
+\section{Generating candidates}
+\label{sec:rounds}
+
+Candidate generation starts from the plain query $\cand_0 = Q(\emptyset)$ and then runs a fixed,
+ordered sequence of \emph{rounds}. Each round issues one re-query $Q(\theta_k)$ and appends its
+itineraries to the pool, tagged with the round number and its perturbation. Itineraries found in
+several rounds are kept in the pool at this stage; duplicates are collapsed in
+Section~\ref{sec:collapse}. The round types run in this order:
+
+\begin{enumerate}
+  \item stop exclusion rounds (\code{choice\_set.exclude\_stops}),
+  \item route exclusion rounds (\code{choice\_set.exclude\_routes}),
+  \item random cost rounds (\code{choice\_set.random\_costs}),
+  \item targeted route exclusion rounds (\code{choice\_set.exclude\_targeted}).
+\end{enumerate}
+
+Targeted rounds run last so that the dominant routes they remove do not enter the random draws.
+
+\subsection{Random stop and route exclusion}
+
+Exclusion forces OTP away from the stops and routes it otherwise prefers, revealing alternatives that
+are close in cost but never optimal. The exclusion rounds are organized in \emph{steps}, each a number
+of rounds excluding $n$ ids per round (e.g.\ 5 rounds of 1 stop, then 5 rounds of 2 stops).
+
+In round $k$ with $n$ ids to exclude, the id pool $P_k$ is the set of ids used by the transit legs of
+the chosen itinerary and of all candidates found so far:
+\begin{itemize}
+  \item \emph{stops}: boarding and alighting stop ids. An excluded stop cannot be used for boarding or
+    alighting, but trips may still pass through it;
+  \item \emph{routes}: route ids. An excluded route's trips are not used at all.
+\end{itemize}
+Because the pool grows with every round, later rounds can exclude stops or routes of alternatives
+that earlier rounds uncovered. The excluded set is drawn uniformly from the $\min(n, |P_k|)$-subsets
+of $P_k$ that no earlier round of the same kind has excluded:
+\begin{equation}
+  E_k \sim \mathcal{U}\Bigl(\bigl\{ S \subseteq P_k : |S| = \min(n,|P_k|) \bigr\} \setminus \mathcal{E}\Bigr),
+\end{equation}
+where $\mathcal{E}$ is the set of all sets already excluded (across steps). If no such set is left,
+the round is skipped.
+
+\subsection{Random generalized costs}
+
+Each cost round queries without exclusions but with cost parameters drawn independently per round:
+\begin{align}
+  \beta_{\text{walk}} &\sim \text{LogUniform}[a_{\text{walk}}, b_{\text{walk}}], &
+  \beta_{\text{wait}} &\sim \text{LogUniform}[a_{\text{wait}}, b_{\text{wait}}], \\
+  \beta_{m} &\sim \text{LogUniform}[a_{\text{transit}}, b_{\text{transit}}] \quad \forall m \in \mathcal{M}, &
+  c_{\text{transfer}} &\sim \text{Uniform}[a_{\text{tr}}, b_{\text{tr}}],
+\end{align}
+where $\beta_{\text{walk}}$ and $\beta_{\text{wait}}$ are OTP's walk and wait reluctance, $\beta_m$ the
+in-vehicle reluctance of transit mode $m \in \mathcal{M} = \{\text{bus}, \text{rail},
+\text{S-train}, \text{metro}, \text{tram}\}$, and $c_{\text{transfer}}$ a cost (in seconds) added to
+every boarding after the first. Reluctances are rounded to $0.01$, the transfer cost to whole seconds.
+A draw $X \sim \text{LogUniform}[a,b]$ is $X = \exp(U)$ with $U \sim \mathcal{U}[\ln a, \ln b]$, so
+that, e.g., halving and doubling a reluctance are equally likely. Varying these weights mimics
+travellers with different preferences (e.g.\ walk-averse, transfer-averse, or with a preference for
+rail), each yielding the itineraries optimal for that preference.
+
+\subsection{Targeted exclusion of the fastest routes}
+
+Random exclusion rarely removes the right combination of routes when one fast route dominates
+another, e.g.\ a bus running along a metro line. Targeted rounds peel off the fastest routes
+deterministically. Starting from $X_0 = \emptyset$ and $\cand^{\text{t}}_0 = \cand_0$:
+\begin{align}
+  r^*_j &= \operatorname*{arg\,min}_{r \in \cand^{\text{t}}_{j-1}} \bigl(e(r) - s(r)\bigr)
+    \quad \text{(ties to the earlier start)}, \\
+  X_j &= X_{j-1} \cup \text{routes}\bigl(T(r^*_j)\bigr), \\
+  \cand^{\text{t}}_j &= Q(\text{exclude routes } X_j).
+\end{align}
+Each round therefore excludes all routes of the fastest itinerary of the \emph{previous targeted
+round} (the first: of the plain query) on top of those already excluded. Once a round returns no
+itinerary, the remaining targeted rounds are skipped.
+
+\subsection{Reproducibility}
+
+Every random draw uses a random number generator seeded per trip from the configured \code{seed} and
+the trip's \code{TurId}, with a separate generator for stops, routes and costs. The draws thus do not
+depend on the order in which the parallel worker threads process trips, and repeated runs produce the
+same choice sets (given the same OTP graph).
+
+\begin{algorithm}[htbp]
+\caption{Candidate generation for one trip $i$}
+\label{alg:candidates}
+\begin{algorithmic}[1]
+\Require query $Q$ (with pagination and direct-walk filter), chosen itinerary $c_i$, rounds $R = (\rho_1,\dots,\rho_K)$
+\Ensure candidate pool $\cand$
+\State $\cand \gets Q(\emptyset)$; \quad $\cand^{\text{t}} \gets \cand$; \quad $X \gets \emptyset$; \quad $\mathcal{E} \gets \emptyset$
+\For{$k = 1, \dots, K$}
+  \If{$\rho_k$ is a cost round}
+    \State draw $\theta_k = (\beta_{\text{walk}}, \beta_{\text{wait}}, (\beta_m)_{m}, c_{\text{transfer}})$
+  \ElsIf{$\rho_k$ is a targeted round}
+    \State $r^* \gets$ fastest itinerary of $\cand^{\text{t}}$
+    \If{$r^*$ does not exist} \textbf{continue} \EndIf
+    \State $X \gets X \cup \text{routes}(T(r^*))$; \quad $\theta_k \gets (\text{exclude routes } X)$
+  \Else \Comment{stop or route exclusion with $n$ ids}
+    \State $P \gets$ stop (route) ids of the transit legs of $c_i$ and $\cand$
+    \State $\mathcal{S} \gets \{ S \subseteq P : |S| = \min(n,|P|),\ S \notin \mathcal{E} \}$
+    \If{$\mathcal{S} = \emptyset$} \textbf{continue} \EndIf
+    \State draw $E$ uniformly from $\mathcal{S}$; \quad $\mathcal{E} \gets \mathcal{E} \cup \{E\}$; \quad $\theta_k \gets (\text{exclude } E)$
+  \EndIf
+  \State $\cand_k \gets Q(\theta_k)$
+  \If{$\rho_k$ is a targeted round} $\cand^{\text{t}} \gets \cand_k$ \EndIf
+  \State $\cand \gets \cand \cup \cand_k$ \Comment{tagged with round $k$ and $\theta_k$}
+\EndFor
+\State relabel bicycle access/egress (Section~\ref{sec:query})
+\State \Return $\cand$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Collapsing candidates into alternatives}
+\label{sec:collapse}
+
+The pool contains many itineraries that are, from the route choice point of view, the same
+alternative --- the same routes departing at different times, or the same itinerary found in several
+rounds. The pool is collapsed to one itinerary per distinct alternative.
+
+\paragraph{Alternative key.} Two itineraries are the same alternative if they have the same key
+$\key(r)$, a tuple over their transit legs in order. The key is configured by
+\code{choice\_set.alternative\_key}:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+\code{alternative\_key} & $\key(r)$, per transit leg $\ell \in T(r)$ \\
+\midrule
+\code{routes} & (mode, route name) \\
+\code{routes\_stops} & (mode, route name, boarding stop name, alighting stop name) \\
+\code{trip} & (mode, route name, boarding stop name, alighting stop name, departure time) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Stops are compared by name rather than by stop id, so the same route boarded at another platform of
+the same station is not a new alternative. With \code{trip}, every departure is its own alternative.
+
+\paragraph{Representative itinerary.} Among the candidates sharing a key, the itinerary kept is the
+one closest to the chosen departure, with waiting counted as a loss. With $t^{c}_i$ the start of the
+chosen itinerary (public transport trips) or the reported departure time (car trips), each
+candidate's score in minutes is
+\begin{equation}
+  \text{score}(r) = \bigl| s(r) - t^{c}_i \bigr| + w(r),
+  \qquad
+  w(r) = \sum_{j=2}^{|r|} \bigl( s(\ell_j) - e(\ell_{j-1}) \bigr),
+\end{equation}
+where $w(r)$ is the total waiting time between consecutive legs. The candidate with the lowest score is
+kept, ties going to the one with less waiting. This prefers, of two itineraries arriving at the same
+time, the one leaving later rather than the one leaving earlier and waiting at a transfer.
+
+\paragraph{Chosen itinerary.} The chosen itinerary $c_i$ is alternative $0$. For public transport
+trips, candidates with the chosen key $\key(c_i)$ are removed: the chosen itinerary itself represents
+its alternative. The remaining representatives are numbered $1, 2, \dots$ in increasing score.
+
+\begin{algorithm}[htbp]
+\caption{Building the choice set of trip $i$}
+\label{alg:collapse}
+\begin{algorithmic}[1]
+\Require candidate pool $\cand$, chosen itinerary $c_i$, reference time $t^{c}_i$, key function $\key$
+\Ensure choice set $A_i = (a_0, a_1, \dots)$
+\State $a_0 \gets c_i$
+\If{public transport trip}
+  \State $\text{found} \gets \exists\, r \in \cand : \key(r) = \key(c_i)$
+  \State $\cand \gets \{ r \in \cand : \key(r) \neq \key(c_i) \}$
+\EndIf
+\State sort $\cand$ by $(\text{score}(r), w(r))$ ascending
+\State keep the first itinerary of each key $\to (a_1, a_2, \dots)$
+\State assign line groups (below); compute coverage (public transport trips)
+\State \Return $A_i$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Line groups.} Some distinct alternatives differ only by a parallel line serving the same
+stops, e.g.\ buses 143 and 144, metro M1 and M2, or S-train lines A and C on a shared section. They are
+kept as separate alternatives but grouped in a \code{line\_group}: each alternative's group is the
+lowest alternative number with the same \emph{line-blind} key, i.e.\ the key over (alternative-key
+columns, boarding stop, alighting stop) with the route name replaced by
+\begin{itemize}
+  \item nothing for buses (all buses between the same stops form one group);
+  \item the lower of two metro lines sharing track (M2 $\to$ M1, M4 $\to$ M3);
+  \item one common name for all S-train lines except F (which does not share track with the others);
+  \item the route name itself for other modes.
+\end{itemize}
+Line groups let a model treat overlapping alternatives (e.g.\ with a path-size correction) or
+aggregate them.
+
+\paragraph{Coverage.} For public transport trips, the choice set is \emph{covered} if the generation
+reproduced the chosen alternative, i.e.\ if some candidate had the chosen key, or some generated
+alternative falls in the chosen itinerary's line group (line group $0$):
+\begin{equation}
+  \text{coverage}_i = \mathbb{1}\Bigl[\, \exists\, r \in \cand : \key(r) = \key(c_i)
+  \ \lor\ \exists\, a_j \in A_i,\ j>0 : \text{line\_group}(a_j) = 0 \Bigr].
+\end{equation}
+Coverage measures how well the generation procedure spans the travellers' actual choices; uncovered
+trips point to alternatives the procedure cannot generate.
+
+\section{Output}
+
+Each choice set is written with one row per leg, identified by \code{TurId} and \code{alt\_id}
+($0$ = chosen, with \code{is\_chosen} $=1$), carrying the leg's mode, route, stops, times, distance,
+straight-line distance, OTP generalized cost and geometry, plus \code{line\_group} and (for public
+transport trips) \code{coverage}. A summary reports per choice set (public / car) and, for public
+transport trips, per reconstruction outcome: the number of trips, the number and share covered, the
+number of trips without any OTP transit itinerary, and the mean and percentiles of the number of
+alternatives besides the chosen.
+
+The procedure deliberately over-generates: the choice set may contain many alternatives, including
+ones a traveller would rarely consider.
+
+\section{Configuration}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Key (\code{choice\_set.*}) & Meaning \\
+\midrule
+\code{reconstruct\_run\_dir} & Reconstruction run whose matched itineraries are the chosen trips
+  (\code{null}: newest run of the year) \\
+\code{search\_window} & $W$: alternatives start within $t_i \pm W$ (ISO 8601 duration) \\
+\code{alternative\_key} & \code{routes}, \code{routes\_stops} or \code{trip} (Section~\ref{sec:collapse}) \\
+\code{exclude\_stops} & \code{steps} of (\code{rounds}, \code{stops\_per\_round}); \code{seed} \\
+\code{exclude\_routes} & \code{steps} of (\code{rounds}, \code{routes\_per\_round}); \code{seed} \\
+\code{random\_costs} & \code{rounds}; $[\min,\max]$ of \code{walk\_reluctance}, \code{wait\_reluctance},
+  \code{transit\_reluctance}, \code{transfer\_cost}; \code{seed} \\
+\code{exclude\_targeted} & \code{rounds} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+With the example configuration (\code{README.md}), each trip is queried $1 + 10 + 10 + 10 + 4 = 35$
+times: the plain query, 5 rounds excluding one and 5 excluding two stops, likewise for routes, 10
+random cost rounds and 4 targeted rounds, each searching $\pm 1$ hour around the departure.
+
+\end{document}
