@@ -17,9 +17,13 @@
 \algrenewcommand\algorithmicrequire{\textbf{Input:}}
 \algrenewcommand\algorithmicensure{\textbf{Output:}}
 
+\usepackage[backend=biber, style=apa]{biblatex}
+\addbibresource{references.bib}
+
+
 \title{Choice-Set Generation for Public Transport Route Choice\\
 \large Algorithm of \code{run\_choice\_set.py}}
-\author{}
+\author{Símun Pauli Pálsson}
 \date{\today}
 
 \begin{document}
@@ -28,11 +32,7 @@
 \section{Overview}
 
 For every trip in the Danish National Travel Survey (TU) the algorithm builds a \emph{choice set}: the
-chosen itinerary plus a set of distinct public transport alternatives between the same origin and
-destination around the same departure time. Alternatives are generated with OpenTripPlanner (OTP) by
-repeatedly querying it under perturbed conditions --- stops and routes excluded, random
-generalized-cost parameters, and the fastest routes successively removed --- and then collapsing the
-pooled itineraries to one representative per distinct alternative.
+chosen itinerary plus a set of distinct public transport alternatives between the same origin and destination around the same departure time. Alternatives are generated with OpenTripPlanner (OTP) by repeatedly querying it under perturbed conditions --- stops and routes elimination, random generalized-cost parameters, and the fastest routes successively removed --- and then collapsing the pooled itineraries to one representative per distinct alternative.
 
 Two choice sets are produced:
 \begin{description}[leftmargin=1.5em]
@@ -45,8 +45,8 @@ Two choice sets are produced:
     transport itineraries the respondent could have taken instead, with walk access/egress.
 \end{description}
 
-The generation itself (\code{src/choice\_set/}) takes plain data --- a query, OTP itineraries, a
-departure time, an optional chosen itinerary --- and does not depend on TU, so it can be reused for
+The alternative generation code (\code{src/choice\_set/}) takes plain data --- a query, OTP itineraries, a
+departure time, an optional chosen itinerary --- and does \textbf{not depend on TU}, so it can be reused for
 other travel surveys.
 
 \paragraph{Notation.}
@@ -55,20 +55,29 @@ search window (\code{choice\_set.search\_window}, e.g.\ 1 hour) and $c_i$ the ch
 itinerary $r$ is a sequence of legs; $T(r)$ denotes its transit legs in order, $s(r)$ and $e(r)$ its
 start and end time. $\cand$ denotes a pool of candidate itineraries.
 
+
+
+\section{OTP Routing Algorithm}
+OTP uses the McRAPTOR algorithm \parencite{RAPTOR}, a round-based public transit router, which give a pareto-optimal set of itineries for multi-critera. OTP allows for these criterias: arrival, in-vechical time, and number of transfers. This gives a much faster algorithm then traditional Dijkstra shortest-path algorithms where transit schedule is build into the graph.
+
+To find all stops within reach (a predetermined duration) of origin and destination, the algortihm starts by expanding street mode in all direction (using Dijkstra) from origin and destination.
+%This section needs more work
+%Explain Query $Q$
+
+
+
 \section{The base OTP query}
 \label{sec:query}
 
 Each OTP request, $Q(\theta)$, plans transit itineraries from $o_i$ to $d_i$ departing at $t_i$ with
 the trip's access and egress mode, on \emph{all} transit modes (bus, rail, S-train, metro, tram) and
 all routes. $\theta$ collects the optional perturbations of Section~\ref{sec:rounds}: excluded stops,
-excluded routes, and cost parameters (walk, wait and per-mode transit reluctance, transfer cost);
-without them OTP's defaults apply (walk reluctance 2).
+excluded routes, and cost parameters (walk, wait transfer, and per-mode transit cost);
+without them OTP's defaults apply (walk cost 2).
 
 \paragraph{Pagination.} A single OTP response holds only a page of itineraries, so $Q$ pages forward
 from $t_i$ until the latest itinerary starts after $t_i + W$, and backward until the earliest starts
-before $t_i - W$, at most \code{max\_itinerary\_candidates} itineraries each way. Duplicated
-itineraries are removed and only itineraries with $s(r) \in [t_i - W,\; t_i + W]$ are kept (OTP may
-widen the window of sparse pages by hours).
+before $t_i - W$, at most \code{max\_itinerary\_candidates} itineraries each way. Duplicated itineraries are removed (TODO: define duplication).
 
 \paragraph{Direct-walk filter.} Let $D_i$ be the distance of the direct walk from $o_i$ to $d_i$. An
 itinerary is dropped if its walking legs together are at least as long as the direct walk:
@@ -80,12 +89,12 @@ clearly a conservative threshold. OTP has many more itinerary filters, but they 
 users only ``good'' itineraries. In the TU data some respondents go to great lengths to use transit,
 leaving one to wonder how that choice is better than simply walking directly. This can, however, be
 explained by misjudgement, habit, or bad weather, which may lead respondents to disregard the cost of
-walking directly and consider only the best transit route.
+walking directly and consider only transit route.
 
-\paragraph{Bicycle access/egress.} OTP's bicycle mode requires both access and egress by bicycle, so
-TU bicycle access/egress is queried as walking. After generation, the first (last) walk leg of each
-itinerary is relabelled \code{BICYCLE} and its duration multiplied by
-\code{tu\_prep.walk\_bike\_time\_ratio}, as in the reconstruction.
+%\paragraph{Bicycle access/egress.} OTP's bicycle mode requires both access and egress by bicycle, so
+%TU bicycle access/egress is queried as walking. After generation, the first (last) walk leg of each
+%itinerary is relabelled \code{BICYCLE} and its duration multiplied by
+%\code{tu\_prep.walk\_bike\_time\_ratio}, as in the reconstruction.
 
 \section{Generating candidates}
 \label{sec:rounds}
@@ -100,11 +109,12 @@ Section~\ref{sec:collapse}. The round types run in this order:
   \item stop exclusion rounds (\code{choice\_set.exclude\_stops}),
   \item route exclusion rounds (\code{choice\_set.exclude\_routes}),
   \item random cost rounds (\code{choice\_set.random\_costs}),
-  \item targeted route exclusion rounds (\code{choice\_set.exclude\_targeted}).
+  \item targeted dominating route exclusion rounds (\code{choice\_set.exclude\_targeted}).
 \end{enumerate}
 
-Targeted rounds run last, which means the stops and routes they discover do not enter the random
-route/stop exclusion rounds.
+Targeted rounds run last, which means the routes and stops they discover do not enter the random route/stop exclusion rounds.
+
+
 
 \subsection{Random stop and route exclusion}
 
@@ -123,10 +133,11 @@ Because the pool grows with every round, later rounds can exclude stops or route
 that earlier rounds uncovered. The excluded set is drawn uniformly from the $\min(n, |P_k|)$-subsets
 of $P_k$ that no earlier round of the same kind has excluded:
 \begin{equation}
-  E_k \sim \mathcal{U}\Bigl(\bigl\{ S \subseteq P_k : |S| = \min(n,|P_k|) \bigr\} \setminus \mathcal{E}\Bigr),
+  E_k \sim \text{Uniform} \Bigl(\bigl\{ S \subseteq P_k \setminus \mathcal{E}: |S| = \min(n,|P_k|\setminus \mathcal{E}) \bigr\} \Bigr),
 \end{equation}
 where $\mathcal{E}$ is the set of all sets already excluded (across steps). If no such set is left,
 the round is skipped.
+
 
 \subsection{Random generalized costs}
 
@@ -137,36 +148,27 @@ Each cost round queries without exclusions but with cost parameters drawn indepe
   \beta_{m} &\sim \text{LogUniform}[a_{\text{transit}}, b_{\text{transit}}] \quad \forall m \in \mathcal{M}, &
   c_{\text{transfer}} &\sim \text{Uniform}[a_{\text{tr}}, b_{\text{tr}}],
 \end{align}
-where $\beta_{\text{walk}}$ and $\beta_{\text{wait}}$ are OTP's walk and wait reluctance, $\beta_m$ the
-in-vehicle reluctance of transit mode $m \in \mathcal{M} = \{\text{bus}, \text{rail},
-\text{S-train}, \text{metro}, \text{tram}\}$, and $c_{\text{transfer}}$ a cost (in seconds) added to
-every boarding after the first. Reluctances are rounded to $0.01$, the transfer cost to whole seconds.
-A draw $X \sim \text{LogUniform}[a,b]$ is $X = \exp(U)$ with $U \sim \mathcal{U}[\ln a, \ln b]$, so
-that, e.g., halving and doubling a reluctance are equally likely. Varying these weights mimics
-travellers with different preferences (e.g.\ walk-averse, transfer-averse, or with a preference for
-rail), each yielding the itineraries optimal for that preference.
+where $\beta_{\text{walk}}$ and $\beta_{\text{wait}}$ are OTP's walk and wait cost, $\beta_m$ the in-vehicle cost of transit mode $m \in \mathcal{M} = \{\text{bus}, \text{rail}, \text{S-train}, \text{metro}, \text{tram}\}$, and $c_{\text{transfer}}$ a cost (in seconds) added to every boarding after the first. Costs are rounded to $0.01$, the transfer cost to whole seconds.
+A draw $X \sim \text{LogUniform}[a,b]$ is $X = \exp(U)$ with $U \sim \mathcal{U}[\ln a, \ln b]$, so that, e.g., halving and doubling a cost are equally likely. Varying these weights mimics travellers with different preferences (e.g.\ walk-averse, transfer-averse, or with a preference for rail), each yielding the itineraries optimal for that preference.
 
 \subsection{Targeted exclusion of the fastest routes}
-
-Random exclusion rarely removes the right combination of routes when one fast route dominates
+Random exclusion may not remove the right combination of routes when one fast route dominates
 another, e.g.\ a bus running along a metro line. Targeted rounds peel off the fastest routes
-deterministically. Starting from $X_0 = \emptyset$ and $\cand^{\text{t}}_0 = \cand_0$:
-\begin{align}
-  r^*_j &= \operatorname*{arg\,min}_{r \in \cand^{\text{t}}_{j-1}} \bigl(e(r) - s(r)\bigr)
-    \quad \text{(ties to the earlier start)}, \\
-  X_j &= X_{j-1} \cup \text{routes}\bigl(T(r^*_j)\bigr), \\
-  \cand^{\text{t}}_j &= Q(\text{exclude routes } X_j).
-\end{align}
-Each round therefore excludes all routes of the fastest itinerary of the \emph{previous targeted
-round} (the first: of the plain query) on top of those already excluded. Once a round returns no
-itinerary, the remaining targeted rounds are skipped.
+deterministically. Let $\mathcal{F}_j$ be the itineraries found by targeted round $j$
+($\mathcal{F}_0 = \cand_0$), $E^*_j$ the routes it excludes ($E^*_0 = \emptyset$) and $R(r)$ the routes
+of itinerary $r$. Round $j$ adds the routes of the previous round's fastest itinerary $r^*_j$ (ties to
+the earlier start) to those already excluded:
+\begin{equation}
+  r^*_j = \operatorname*{arg\,min}_{r \in \mathcal{F}_{j-1}} \bigl(e(r) - s(r)\bigr), \qquad
+  E^*_j = E^*_{j-1} \cup R(r^*_j), \qquad
+  \mathcal{F}_j = Q(\text{exclude routes } E^*_j).
+\end{equation}
+Once a round finds no itinerary, the remaining targeted rounds are skipped.
+For example, if the fastest itinerary of the plain query is metro M1, round 1 excludes M1 and may find bus 5C along the same corridor; round 2 then excludes both M1 and 5C, and so on.
 
 \subsection{Reproducibility}
 
-Every random draw uses a random number generator seeded per trip from the configured \code{seed} and
-the trip's \code{TurId}, with a separate generator for stops, routes and costs. The draws thus do not
-depend on the order in which the parallel worker threads process trips, and repeated runs produce the
-same choice sets (given the same OTP graph).
+Every random draw uses a random number generator seeded per trip from the configured \code{seed} and the trip's \code{TurId}, with a separate generator for stops, routes and costs. The draws thus do not depend on the order in which the parallel worker threads process trips, and repeated runs produce the same choice sets (given the same OTP graph).
 
 \begin{algorithm}[htbp]
 \caption{Candidate generation for one trip $i$}
@@ -308,8 +310,8 @@ Key (\code{choice\_set.*}) & Meaning \\
 \code{alternative\_key} & \code{routes}, \code{routes\_stops} or \code{trip} (Section~\ref{sec:collapse}) \\
 \code{exclude\_stops} & \code{steps} of (\code{rounds}, \code{stops\_per\_round}); \code{seed} \\
 \code{exclude\_routes} & \code{steps} of (\code{rounds}, \code{routes\_per\_round}); \code{seed} \\
-\code{random\_costs} & \code{rounds}; $[\min,\max]$ of \code{walk\_reluctance}, \code{wait\_reluctance},
-  \code{transit\_reluctance}, \code{transfer\_cost}; \code{seed} \\
+\code{random\_costs} & \code{rounds}; $[\min,\max]$ of \code{walk\_cost}, \code{wait\_cost},
+  \code{transit\_cost}, \code{transfer\_cost}; \code{seed} \\
 \code{exclude\_targeted} & \code{rounds} \\
 \bottomrule
 \end{tabularx}
