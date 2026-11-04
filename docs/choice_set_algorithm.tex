@@ -75,7 +75,12 @@ itinerary is dropped if its walking legs together are at least as long as the di
 \begin{equation}
   \text{keep } r \iff \sum_{\ell \in r,\ \text{mode}(\ell)=\text{WALK}} \text{dist}(\ell) + 0.01\,\text{km} < D_i .
 \end{equation}
-Such itineraries use transit without saving any walking and are not meaningful alternatives.
+Such itineraries use transit without saving any walking and are not meaningful alternatives. This is
+clearly a conservative threshold. OTP has many more itinerary filters, but they are designed to show
+users only ``good'' itineraries. In the TU data some respondents go to great lengths to use transit,
+leaving one to wonder how that choice is better than simply walking directly. This can, however, be
+explained by misjudgement, habit, or bad weather, which may lead respondents to disregard the cost of
+walking directly and consider only the best transit route.
 
 \paragraph{Bicycle access/egress.} OTP's bicycle mode requires both access and egress by bicycle, so
 TU bicycle access/egress is queried as walking. After generation, the first (last) walk leg of each
@@ -98,7 +103,8 @@ Section~\ref{sec:collapse}. The round types run in this order:
   \item targeted route exclusion rounds (\code{choice\_set.exclude\_targeted}).
 \end{enumerate}
 
-Targeted rounds run last so that the dominant routes they remove do not enter the random draws.
+Targeted rounds run last, which means the stops and routes they discover do not enter the random
+route/stop exclusion rounds.
 
 \subsection{Random stop and route exclusion}
 

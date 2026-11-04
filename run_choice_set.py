@@ -73,7 +73,7 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	for step in exclude_routes["steps"]:
 		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
 	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
-	# Last, so the routes they peel off don't enter the random draws
+	# Last, so their itineraries stay out of the random exclusion pools
 	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
 	candidates = exclude_rounds(query, query(), chosen_legs, rounds)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
