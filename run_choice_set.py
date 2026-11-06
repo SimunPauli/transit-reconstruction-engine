@@ -75,7 +75,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
 	# Last, so their itineraries stay out of the random exclusion pools
 	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
-	candidates = exclude_rounds(query, query(), chosen_legs, rounds)
+	candidates_init = query()
+	candidates = exclude_rounds(query, candidates_init, chosen_legs, rounds)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 
@@ -175,6 +176,7 @@ def car_chosen(tu_tur_row, tu_deltur):
 		"distance_km": tu_legs["StageLength"],
 		"duration_min": tu_legs["StageDurationMin"],
 	})
+	#TODO: Should chosen be OTP shorest path with car instead of TU given answer?
 	return tu_tur_row["depart_dt"], chosen_legs
 
 def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):

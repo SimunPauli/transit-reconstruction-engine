@@ -73,8 +73,10 @@ def _itinerary_keys(legs, key_columns):
 def _used_ids(legs, columns):
 	"""Sorted ids in columns of legs' transit legs."""
 	transit = legs[~legs["mode"].isin(STREET_MODES)].reindex(columns=columns)
-	return sorted({value for value in transit.to_numpy().ravel() if isinstance(value, str)})
-
+	ids = set()
+	for column in columns:
+		ids.update(transit[column].dropna())
+	return sorted(ids)  # sorted so seeded draws repeat across runs
 
 # Per kind of exclude round: the transit-leg columns its ids are drawn from, and the query argument they go to
 EXCLUDE_KINDS = {
@@ -111,7 +113,7 @@ def _fastest_routes(legs):
 	return list(transit.loc[transit["iteration_id"] == fastest, "route_gtfs_id"].dropna())
 
 
-def exclude_rounds(query, candidates, chosen_legs, rounds):
+def exclude_rounds(query, candidates_init, chosen_legs, rounds):
 	"""
 	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
 	round queries with costs drawn by draw_costs(n, rng). A "targeted" round (n, rng unused) adds the
@@ -123,7 +125,9 @@ def exclude_rounds(query, candidates, chosen_legs, rounds):
 	candidates. Each candidate is tagged with its exclude_round (0 = candidates) and that round's
 	excluded ids ("kind: ids") or drawn costs ("costs: {...}").
 	"""
-	targeted_ids, targeted_from = [], candidates
+	candidates = candidates_init.copy()
+	targeted_ids = []
+	targeted_source = candidates_init
 	candidates = candidates.assign(exclude_round=0, excluded="")
 	excluded_sets = set()
 	for exclude_round, (kind, n, rng) in enumerate(rounds, start=1):
@@ -131,13 +135,13 @@ def exclude_rounds(query, candidates, chosen_legs, rounds):
 			arguments = draw_costs(n, rng)
 			label = f"costs: {arguments}"
 		elif kind == "targeted":
-			route_ids = _fastest_routes(targeted_from)
+			route_ids = _fastest_routes(targeted_source)
 			if not route_ids:
 				continue
 			targeted_ids += [route_id for route_id in route_ids if route_id not in targeted_ids]
 			arguments = {"exclude_routeids": list(targeted_ids)}
 			label = f"targeted: {' '.join(targeted_ids)}"
-		else:
+		elif kind in EXCLUDE_KINDS:
 			columns, argument = EXCLUDE_KINDS[kind]
 			ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
 			# ids is sorted, so each set has one tuple
@@ -151,7 +155,7 @@ def exclude_rounds(query, candidates, chosen_legs, rounds):
 			label = f"{kind}: {' '.join(ids_set)}"
 		round_candidates = query(**arguments)
 		if kind == "targeted":
-			targeted_from = round_candidates
+			targeted_source = round_candidates #new target
 		if round_candidates.empty:
 			continue
 		# Past the ids so far; a query's ids go negative for backward pages
