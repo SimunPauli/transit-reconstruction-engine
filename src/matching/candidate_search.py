@@ -319,8 +319,11 @@ def align_and_filter_candidates(
 		route_name_groups,
 		modes_list,
 		tur_id,
-		route_match=ROUTE_MATCH_EXACT
+		route_match=ROUTE_MATCH_EXACT,
+		unreported_transfers=None
 ):
+	"""unreported_transfers, if a set, collects the stops of unreported transfers found when
+	every itinerary fails alignment (for the trip summary)."""
 	alignment_diagnostics = []
 	otp_candidates_df = add_tu_delturnr_to_otp_candidates(
 		otp_candidates_df=otp_candidates_df,
@@ -347,6 +350,9 @@ def align_and_filter_candidates(
 		summary = summarize_alignment_diagnostics(alignment_diagnostics)
 		if summary:
 			print(summary)
+		if unreported_transfers is not None:
+			for d in alignment_diagnostics:
+				unreported_transfers.update(d["unreported_transfer_stops"])
 
 	return filtered_df, reason
 
@@ -371,6 +377,7 @@ def _load_add_and_filter_candidates(
 		skip_alignment=False,
 		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
+		unreported_transfers=None,
 ):
 	otp_candidates_df = otp.client.load_all_candidates(
 		origin=origin,
@@ -405,7 +412,8 @@ def _load_add_and_filter_candidates(
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
-		route_match=route_match
+		route_match=route_match,
+		unreported_transfers=unreported_transfers,
 	)
 
 
@@ -424,7 +432,8 @@ def load_candidates_with_reluctance_retries(
 		destination_stop_id=None,
 		depart_dt=None,
 		route_match=ROUTE_MATCH_EXACT,
-		debug_profile="LIST_ALL"
+		debug_profile="LIST_ALL",
+		unreported_transfers=None,
 ):
 	"""
 	origin_stop_id/destination_stop_id anchor that end of the query at a GTFS stop, reached on
@@ -468,6 +477,7 @@ def load_candidates_with_reluctance_retries(
 			skip_alignment=skip_alignment,
 			route_match=route_match,
 			debug_profile=debug_profile,
+			unreported_transfers=unreported_transfers,
 		)
 
 		if not otp_candidates_df.empty:

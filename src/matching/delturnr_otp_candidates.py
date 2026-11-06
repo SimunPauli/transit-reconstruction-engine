@@ -1,6 +1,6 @@
 import pandas as pd
 from collections import Counter
-from src.constant import WALK_BIKE_TIME_RATIO, ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED
+from src.constant import WALK_BIKE_TIME_RATIO, ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED, STREET_MODES
 from .route_matching_utils import route_names_match, route_match_flags
 
 def add_tu_delturnr_to_otp_candidates(
@@ -175,6 +175,34 @@ def add_tu_delturnr_to_otp_candidates(
 			parts.append(f"{frm} -> {to}")
 		return ", ".join(parts)
 
+	def _unreported_transfer_stops(otp_legs, tu_deltur_sub_leg):
+		"""Stops where a run of same-mode OTP legs changes vehicle, if the run boards at the TU
+		leg's FromStation and alights at its ToStation: a transfer the respondent didn't report.
+		Street legs (transfer walks) may lie in between. [] if there is no such run."""
+		mode = tu_deltur_sub_leg.get("otp_mode")
+		if mode not in {"SUBWAY", "RAIL", "S_TRAIN"}:
+			return []
+		from_ids = station_lookup.get((mode, _normalise_name(str(tu_deltur_sub_leg.get("FromStation")))), set())
+		to_ids = station_lookup.get((mode, _normalise_name(str(tu_deltur_sub_leg.get("ToStation")))), set())
+
+		transfer_stops = None   # None until a leg boards at FromStation
+		for _, otp_leg in otp_legs.iterrows():
+			if otp_leg["mode"] != mode:
+				if otp_leg["mode"] not in STREET_MODES:
+					transfer_stops = None   # another transit mode in between
+				continue
+			if transfer_stops is None and otp_leg.get("from_gtfs_id") in from_ids:
+				transfer_stops = []
+			if transfer_stops is None:
+				continue
+			if otp_leg.get("to_gtfs_id") not in to_ids:
+				transfer_stops.append(str(otp_leg.get("to")))
+			elif transfer_stops:
+				return transfer_stops
+			else:
+				transfer_stops = None   # one leg with both stations, rejected on route instead
+		return []
+
 	def _align_iteration(iteration_df):
 		iteration_id = iteration_df.name
 		iteration_df = iteration_df.sort_values("leg_id").copy()
@@ -186,8 +214,9 @@ def add_tu_delturnr_to_otp_candidates(
 		# stuck on, but was rejected on route or station. Reset whenever alignment
 		# advances, so what survives describes the leg it never got past.
 		near_misses = []
+		stall_start = 0   # position of the first OTP leg after the last match
 
-		for _, otp_leg in iteration_df.iterrows():
+		for leg_pos, (_, otp_leg) in enumerate(iteration_df.iterrows()):
 			matched_delturnr = pd.NA
 			is_bike_placeholder = False
 
@@ -202,6 +231,7 @@ def add_tu_delturnr_to_otp_candidates(
 					)
 					tu_pos += 1
 					near_misses = []
+					stall_start = leg_pos + 1
 					break
 
 				kind, description = mismatch
@@ -219,12 +249,21 @@ def add_tu_delturnr_to_otp_candidates(
 		# legs left over means it stalled on tu_pos and every later TU leg went
 		# unmatched as a consequence. Record that one leg, not the pile it dragged down.
 		if diagnostics is not None and tu_pos < len(tu_deltur_sub):
+			stalled_leg = tu_deltur_sub.iloc[tu_pos]
+			transfer_stops = _unreported_transfer_stops(iteration_df.iloc[stall_start:], stalled_leg)
+			if transfer_stops:
+				# Both TU stations matched, on different OTP legs: not a station-mapping error
+				near_misses = [
+					f"unreported transfer: TU leg spans {len(transfer_stops) + 1} OTP "
+					f"{stalled_leg['otp_mode']} legs, changing at {', '.join(transfer_stops)}"
+				]
 			diagnostics.append({
 				"iteration_id": iteration_id,
-				"stalled_on": _describe_tu_leg(tu_deltur_sub.iloc[tu_pos]),
+				"stalled_on": _describe_tu_leg(stalled_leg),
 				"tu_legs_matched": tu_pos,
 				"tu_legs_total": len(tu_deltur_sub),
 				"near_misses": near_misses,
+				"unreported_transfer_stops": transfer_stops,
 			})
 
 		iteration_df["tu_Delturnr"] = delturnrs
@@ -257,6 +296,8 @@ def summarize_alignment_diagnostics(diagnostics, max_stall_points=3, max_reasons
 
 	  * near misses listed  -> OTP *did* return a leg of the right mode and alignment
 	    rejected it, so the fault is in the station mapping or the route comparison;
+	  * unreported transfer -> both TU stations matched, but on consecutive same-mode
+	    OTP legs: the respondent changed vehicle without reporting it;
 	  * no near misses      -> OTP never produced a leg of that mode at that point in
 	    the itinerary, so the fault is upstream in the query or the feed.
 	"""

@@ -47,6 +47,7 @@ def _match_once(
 	"""
 	i_TurId = tu_tur_row["TurId"]
 	used_anchor_fallback = False
+	unreported_transfers = set()   # stops of transfers TU doesn't record, filled by alignment
 
 	def _empty_trip_summary(last_print_if_not_found, failure_reason):
 		return {
@@ -59,6 +60,7 @@ def _match_once(
 			"route_match": pd.NA,
 			"last_print_if_not_found": last_print_if_not_found,
 			"failure_reason": failure_reason,
+			"unreported_transfer_stops": "; ".join(sorted(unreported_transfers)) or pd.NA,
 			"used_anchor_fallback": used_anchor_fallback,
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
@@ -118,6 +120,7 @@ def _match_once(
 		settings=settings,
 		route_match=route_match,
 		debug_profile=debug_profile,
+		unreported_transfers=unreported_transfers,
 	)
 
 	otp_candidates_df = pd.DataFrame()
@@ -219,6 +222,7 @@ def _match_once(
 			anchor_segments=anchor_segments,
 			settings=settings,
 			route_match=route_match,
+			unreported_transfers=unreported_transfers,
 		)
 		if otp_candidates_df.empty:
 			_log_stage("STATION_ANCHOR_FALLBACK", "FAILED", fallback_msg)
@@ -285,6 +289,7 @@ def _match_once(
 		"route_match": route_match if is_bus_s_train else pd.NA,
 		"last_print_if_not_found": "",
 		"failure_reason": pd.NA,
+		"unreported_transfer_stops": pd.NA,
 		"used_anchor_fallback": used_anchor_fallback,
 		"rmse": round(best_trip_summary["rmse"],3),
 		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"],0),

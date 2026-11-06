@@ -129,6 +129,7 @@ def _run(config, tee):
 					"route_match": pd.NA,
 					"last_print_if_not_found": str(exc),
 					"failure_reason": type(exc).__name__,
+					"unreported_transfer_stops": pd.NA,
 					"used_anchor_fallback": False,
 					"rmse": pd.NA, "depart_deviation_min": pd.NA,
 					"arrival_deviation_min": pd.NA, "deviation_duration_min": pd.NA,

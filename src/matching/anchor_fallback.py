@@ -45,7 +45,8 @@ def try_station_anchored_fallback(
 		first_stop_id,
 		last_stop_id,
 		route_match=ROUTE_MATCH_EXACT,
-		debug_profile="LIST_ALL"
+		debug_profile="LIST_ALL",
+		unreported_transfers=None,
 ):
 	"""
 	Fallback for TU trips where the normal full-route OTP search finds nothing, but the
@@ -132,7 +133,8 @@ def try_station_anchored_fallback(
 		route_name_groups=route_name_groups,
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
-		route_match=route_match
+		route_match=route_match,
+		unreported_transfers=unreported_transfers,
 	)
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"
@@ -173,6 +175,7 @@ def _load_and_align_segment_candidates(
 		settings,
 		route_match=ROUTE_MATCH_EXACT,
 		debug_profile="LIST_ALL",
+		unreported_transfers=None,
 ):
 	"""
 	Runs one anchor-split "transit" segment's own OTP search plus leg alignment, mirroring
@@ -218,6 +221,7 @@ def _load_and_align_segment_candidates(
 		modes_list=modes_list,
 		tur_id=tu_tur_row["TurId"],
 		route_match=route_match,
+		unreported_transfers=unreported_transfers,
 	)
 	if filtered_df.empty:
 		return filtered_df, reason
@@ -245,6 +249,7 @@ def try_split_station_anchored_fallback(
 		anchor_segments,
 		settings,
 		route_match=ROUTE_MATCH_EXACT,
+		unreported_transfers=None,
 ):
 	"""
 	Generalized station-anchored fallback: splits the TU trip at every resolvable
@@ -321,7 +326,8 @@ def try_split_station_anchored_fallback(
 				depart_dt=chain["depart_dt"],
 				settings=settings,
 				route_match=route_match,
-				debug_profile = "OFF"
+				debug_profile = "OFF",
+				unreported_transfers=unreported_transfers,
 			)
 			if segment_df.empty:
 				last_reason = reason
@@ -356,6 +362,7 @@ def try_split_station_anchored_fallback(
 		modes_list=modes_list,
 		tur_id=tur_id,
 		route_match=route_match,
+		unreported_transfers=unreported_transfers,
 	)
 	if filtered_df.empty:
 		return filtered_df, f"anchored_{reason}"

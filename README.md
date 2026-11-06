@@ -390,6 +390,13 @@ For trips that *were* successfully reconstructed via the fallback, `trip_matchin
 trip also prints a `ANCHOR_FALLBACK_USED: TurId=<id>` line, so every fallback-reconstructed trip can
 be found in `log_file` with a plain text search.
 
+For a `no_matching_leg_sequence` failure, `trip_matching_summaries_file`'s `unreported_transfer_stops`
+column lists (`; `-separated) the stops where an OTP itinerary changed vehicle inside one TU
+rail/metro/S-train leg: one OTP leg boards at the TU leg's `FromStation`, a later same-mode leg
+alights at its `ToStation`. The respondent most likely changed trains without reporting it, so
+the station mapping is not at fault. Such itineraries are still rejected; the log shows them as
+`unreported transfer` instead of two station near misses. The column is empty otherwise.
+
 | Code | Meaning |
 |------|---------|
 | `no_valid_modes` | None of the TU trip's legs map to a usable OTP transit mode |
