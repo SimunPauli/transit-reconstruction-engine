@@ -204,8 +204,8 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `station_matching.station_name_threshold` | Minimum name-similarity score (0–1, rapidfuzz WRatio) for a station name match; stations with no candidate above this are left unmatched for that mode rather than guessed by distance |
 | `reconstruct.search_window` | ISO 8601 duration — time window searched around departure time |
 | `reconstruct.matching.return_trip_summary` | Whether to output a per-trip summary Excel file |
-| `reconstruct.matching.anchor_timeout_min` | Wall-clock limit in minutes for one trip's station-anchored fallback (see below). `0` = unlimited. |
-| `reconstruct.matching.station_anchor_wait_min` | Minutes of slack between the street-only access/egress leg and the transit leg in the station-anchored fallback (see below). `0` = back-to-back. |
+| `reconstruct.matching.anchor_timeout_min` | Wall-clock limit in minutes for one trip's station-anchored fallback (see below); a trip over the limit fails as `anchored_anchor_timeout`, depending on OTP's response times. `0` = unlimited. |
+| `reconstruct.matching.station_anchor_wait_min` | Minutes of slack between consecutive segments in the station-anchored fallback (see below). `0` = back-to-back. |
 | `reconstruct.matching.s_train_sibling_lines` | Whether to try the `sibling` route-match level, accepting the S-train line sharing the TU line's track (A↔E, B↔Bx, C↔H) before dropping the route name (see "Trip outcomes" below) |
 | `reconstruct.reluctance_retries.transit.enabled` | Whether to retry with reduced per-mode transit reluctance when no candidate survives filtering (see "Fetching candidates from OTP" below) |
 | `reconstruct.reluctance_retries.transit.sequence` | Transit reluctance values tried, per mode then per mode combination, when `transit.enabled` is true |
@@ -387,8 +387,9 @@ search's own reason, since a fallback was never possible.
 
 For trips that *were* successfully reconstructed via the fallback, `trip_matching_summaries_file`'s
 `used_anchor_fallback` column is `True` (it's `False` for every normal full-route match). Each such
-trip also prints a `ANCHOR_FALLBACK_USED: TurId=<id>` line, so every fallback-reconstructed trip can
-be found in `log_file` with a plain text search.
+trip also prints a `[TurId=<id>] STATION_ANCHOR_FALLBACK: SUCCEEDED` line (`STATION_ANCHOR_FALLBACK
+(car access/egress): SUCCEEDED` for car anchoring), so every fallback-reconstructed trip can be found
+in `log_file` with a plain text search.
 
 For a `no_matching_leg_sequence` failure, `trip_matching_summaries_file`'s `unreported_transfer_stops`
 column lists (`; `-separated) the stops where an OTP itinerary changed vehicle inside one TU
@@ -405,10 +406,12 @@ the station mapping is not at fault. Such itineraries are still rejected; the lo
 | `no_required_routes` | OTP itineraries were found, but none used all the required BUS/S_TRAIN routes |
 | `no_required_modes` | OTP itineraries were found, but none used all the required transit modes |
 | `no_matching_leg_sequence` | OTP itineraries were found, but none matched the TU legs in the correct order |
-| `no_direct_access_route` | Station-anchored fallback: no direct (walk/car) route found from the true origin to the anchor station |
-| `no_direct_egress_route` | Station-anchored fallback: no direct (walk/car) route found from the anchor station to the true destination |
-| `anchored_no_otp_candidates` | Station-anchored fallback: the direct access/egress leg(s) were found, but OTP returned zero transit itineraries from/to the anchor station |
-| `anchored_no_required_routes` / `anchored_no_required_modes` / `anchored_no_matching_leg_sequence` | Station-anchored fallback: transit itineraries were found from/to the anchor station, but none passed the same route/mode/sequence checks as the full-route search |
+| `car_leg_not_satisfied` | Car access/egress without a usable anchor station: OTP itineraries were found, but none came back with `CAR` on the required access/egress leg |
+| `anchored_no_direct_access_route` / `anchored_no_direct_egress_route` / `anchored_no_direct_interior_route` | Station-anchored fallback: no street-only (walk/car) route for a direct segment — from the true origin, to the true destination, or between two stations |
+| `anchored_no_otp_candidates` | Station-anchored fallback: OTP returned zero transit itineraries for a transit segment |
+| `anchored_no_required_routes` / `anchored_no_required_modes` / `anchored_no_matching_leg_sequence` | Station-anchored fallback: a transit segment's itineraries, or the stitched ones, failed the same route/mode/sequence checks as the full-route search |
+| `anchored_no_connecting_segment` | Station-anchored fallback: every itinerary for a transit segment departed before the previous segment arrived |
+| `anchored_anchor_timeout` | Station-anchored fallback: stopped after `reconstruct.matching.anchor_timeout_min` |
 | `duration_outside_search_window` | Candidates passed all filters, but every one's total duration differs from the TU trip's by more than `reconstruct.search_window` |
 | `no_best_match` | Candidates passed all filters, but RMSE ranking found no best trip |
 | *(exception class name, e.g. `TimeoutError`)* | An unexpected error was raised while processing the trip; see `log_file` for the message |
@@ -561,13 +564,15 @@ time spent walking on street networks more expensive than in-vehicle time. This
 value is somewhat arbitrary, but it stays within OTP’s recommended range for
 walking reluctance, which is roughly between `2` and `4`.
 
-**Transfer times** — the OTP graph is built with `discardMinTransferTimes: true`
-(`build-config.json`), so `min_transfer_time` in `transfers.txt` is ignored. Rejseplan's values are
-planning norms per station class (120–360 s at rail stations, 6 min almost everywhere in 2017), not
-walking times, and they removed connections respondents actually made. A transfer then needs walking
-time (from OSM) plus `transferSlack` (default 2 min, settable per query via `planConnection`'s
-`preferences.transit.transfer.slack`). Stay-seated (`transfer_type=4`) and timed (`transfer_type=1`)
-transfers are unaffected. Changing the setting requires rebuilding the graph.
+**Transfer times** — `min_transfer_time` in `transfers.txt` is used. With the modified OTP, a
+transfer needs `max(min_transfer_time, walk + transferSlack)`, walk being the walking time from OSM
+(see `OpenTripPlanner/README.md`). `transferSlack` is 0, since Rejseplan's values are already buffers
+(e.g. 240 s at the same stop for most bus agencies), so a transfer needs whichever is longer: the
+minimum transfer time or the walk. The slack can be set per query via `planConnection`'s
+`preferences.transit.transfer.slack`. Ignoring `min_transfer_time` altogether
+(`discardMinTransferTimes: true` in `build-config.json`, which needs a graph rebuild) has been
+considered, as Rejseplan's values are planning norms per station class (120–360 s at rail stations,
+6 min almost everywhere in 2017) that can remove connections respondents actually made.
 
 **Excluding stops and trips** — `otp.client.load_all_candidates` also takes `exclude_stopids`
 (no boarding/alighting at those stops; trips may still pass through) and `exclude_tripids`
@@ -682,29 +687,41 @@ The itinerary with the lowest RMSE is selected as the reproduced trip.
 
 ### 7. Station-anchored fallback
 
-Sometimes the full-route query (steps 2–3) returns no valid itinerary at all, even
-though TU records which S-train, regional/intercity rail, or metro station the
-respondent boarded or alighted at — OTP's own street-access routing can prefer a
-different, nearby station instead of the one actually used. (Only S-train, rail, and
-metro legs have reliably populated station names in TU; bus stops aren't named and
-tram names aren't reliable enough to anchor on.)
+Sometimes the full-route query (steps 2–3) returns no valid itinerary at all, even though TU
+records the S-train, regional/intercity rail or metro stations the respondent used — OTP's own
+routing can prefer a different, nearby station. (Only S-train, rail and metro legs have reliably
+populated station names in TU; bus stops aren't named and tram names aren't reliable enough to
+anchor on.)
 
-When the full-route search comes back empty and the first and/or last S-train/rail/
-metro leg's station resolves via the TU–GTFS station mapping, the tool splits the
-query instead of giving up. A side (access or egress) is only anchored this way if every TU leg
-on that side is street-mode — if getting to the anchor station itself involved another transit
-leg (e.g. a bus), that side is left alone, since a single direct walk/car leg can't stand in for
-a real transit leg without breaking the route/mode/leg-order checks in step 5:
+When the full-route query comes back empty, the TU leg sequence is split at every S-train/rail/
+metro station that resolves via the TU–GTFS station mapping: before a leg if its `FromStation`
+resolves, after it if its `ToStation` resolves. Each segment between two cuts (or a cut and the
+trip's true origin/destination) is either:
 
-1. A street-only (walk or car) itinerary from the true origin to the known station,
-   and/or from the known station to the true destination, is queried once — OTP's
-   street-mode travel time doesn't depend on time of day, so this only needs to be
-   requested once and its duration reused for every transit candidate.
-2. A transit-only itinerary is queried from/to the known station instead of the true
-   origin/destination, using the same mode/route/via filters as the normal query.
-3. The two are stitched into a single itinerary per transit candidate, with the
-   street-only leg placed `reconstruct.matching.station_anchor_wait_min` minutes before/after the
-   transit leg (`0` = back-to-back, the default).
-4. The stitched itinerary is run through the same leg alignment (step 4) and
-   candidate filtering (step 5) as any other candidate.
+- **direct** — street legs only (walk/car). Queried once as a street-only itinerary (the fastest,
+  if OTP returns several); street travel time doesn't depend on time of day, so its duration is
+  reused everywhere.
+- **transit** — at least one transit leg. Queried with its own mode/route/via filters and walk
+  reluctance retries, then aligned and filtered against its own TU legs as in steps 4–5.
+
+Segments are resolved left to right as *chains*. A transit segment is queried once per chain
+surviving so far, departing when that chain reaches the segment's start, and every itinerary that
+passes starts its own continuation chain — the best whole trip needn't be built from each
+segment's individually best itinerary. A transit itinerary departing before the previous segment
+arrives is dropped (`no_connecting_segment`). Direct segments are placed
+`reconstruct.matching.station_anchor_wait_min` minutes before/after their neighbour (`0` =
+back-to-back). Every surviving chain is stitched into one itinerary and goes through the same
+alignment and filtering (steps 4–5), duration check and RMSE ranking as any other candidate.
+
+Chains multiply with every transit segment, so `reconstruct.matching.anchor_timeout_min` limits one
+trip's fallback in wall-clock minutes: once exceeded, no further transit query is made and the trip
+fails as `anchored_anchor_timeout`, with no partial result. Whether a trip hits the limit depends on
+how fast OTP answers, so with a limit set, runs aren't fully reproducible; `0` means no limit.
+
+**Car access/egress** is anchored up front instead, since OTP's car access bundles `WALK` and
+`CAR_DROP_OFF` and may silently return `WALK`. If the first/last S-train/rail/metro leg's station
+resolves and every TU leg on the car side is a street leg, a single-mode car leg to/from that
+station is stitched onto the transit itineraries from/to it. Otherwise the full-route query is
+used, keeping only itineraries whose access/egress came back as `CAR` (`car_leg_not_satisfied` if
+none). Trips with car access/egress don't go on to the split fallback.
 

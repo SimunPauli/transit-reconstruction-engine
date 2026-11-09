@@ -222,8 +222,10 @@ $\key(r)$, a tuple over their transit legs in order. The key is configured by
 \end{tabularx}
 \end{center}
 
-Stops are compared by name rather than by stop id, so the same route boarded at another platform of
-the same station is not a new alternative. With \code{trip}, every departure is its own alternative.
+Stops are compared by their GTFS stop name, so only stops with identical names count as the same
+stop. Platforms of one station usually have their own names (e.g.\ with the platform number added),
+so the same route boarded at another platform is in practice a separate alternative. With
+\code{trip}, every departure is its own alternative.
 
 \paragraph{Representative itinerary.} Among the candidates sharing a key, the itinerary kept is the
 one closest to the chosen departure, with waiting counted as a loss. With $t^{c}_i$ the start of the
