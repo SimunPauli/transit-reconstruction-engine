@@ -1,10 +1,13 @@
 """
 Which trips got a different itinerary between two runs, e.g. with different squared_error_weights.
 
-Each trip's transit legs are joined into two signatures, compared per TurId:
-- route: mode, route and boarding/alighting stop per leg. A change is a different route or transfer.
-- departure: the route signature plus train number and leg times. A change with the same route
-  is a different departure of the same route.
+Each trip's transit legs are joined into three signatures, compared per TurId in this order:
+- route: mode and route short name per leg. A change is a different route or number of transit legs.
+  Short name, not GTFS route id: Rejseplan splits one line into several route ids.
+- stops: the route signature plus boarding/alighting stop per leg. A change with the same routes is
+  e.g. a transfer at another stop.
+- departure: the stops signature plus train number and leg times. A change with the same stops
+  is a different departure of the same routes.
 Street legs are left out: with the same graph they follow from the transit legs.
 
 Only trips found (trip_found) in both runs are compared. A trip's status (outcome and route match
@@ -26,14 +29,14 @@ from src import config_loader
 TZ = "Europe/Copenhagen"
 PRINT_ROWS = 30  # longer tables are cut in the printout, not in the xlsx
 SUMMARY_COLS = ["rmse", "depart_deviation_min", "arrival_deviation_min"]
-TEXT_COLS = ["mode", "route_gtfs_id", "from_gtfs_id", "to_gtfs_id", "trip_short_name", "interlined_trip_short_names"]
+TEXT_COLS = ["mode", "route_short_name", "from_gtfs_id", "to_gtfs_id", "trip_short_name", "interlined_trip_short_names"]
 NEAR_ROUTE_LEVELS = ["sibling", "letter", "digit"]  # route_match levels counted as trip_near_route
 
 # Printed above each table
 TABLE_DESCRIPTIONS = {
-	"summary": "Trips per change level. Route/departure/unchanged count trips found in both runs; status changes\n"
-			   "should be 0 for runs that differ only in weights.",
-	"changed_trips": "Trips found in both runs with a different route/transfer or departure, with both runs'\n"
+	"summary": "Trips per change level. Route/stop(s)/departure/unchanged count trips found in both runs; status\n"
+			   "changes should be 0 for runs that differ only in weights.",
+	"changed_trips": "Trips found in both runs with a different route, stop(s) or departure, with both runs'\n"
 					 "transit leg signatures (mode route from>to, then #train number and leg times) and RMSE components.",
 	"status_changes": "Trips whose outcome or route match level differs between the runs, or that are in one run only.",
 }
@@ -51,6 +54,13 @@ def load_run(run_dir):
 	# As text, so a train number isn't read as e.g. 1234.0
 	matches = pd.read_csv(run_file(run_dir, "rmse_based_matches_file"), dtype={col: str for col in TEXT_COLS})
 	summaries = pd.read_excel(run_file(run_dir, "trip_matching_summaries_file"))
+	# Runs before 04-09-2026 have no interlined legs, before 29-09-2026 no route_match levels:
+	# route names were then only used or ignored (route_name_ignored, later trip_wrong_route)
+	if "interlined_trip_short_names" not in matches:
+		matches["interlined_trip_short_names"] = "[]"  # as an empty list is written to the csv
+	if "route_match" not in summaries:
+		ignored = summaries.reindex(columns=["route_name_ignored", "trip_wrong_route"]).eq(1).any(axis=1)
+		summaries["route_match"] = np.where(ignored, "ignored", None)
 	# From route_match rather than the outcome columns, whose meaning changed between runs
 	summaries["status"] = np.select(
 		[summaries["trip_not_found"] == 1,
@@ -65,15 +75,17 @@ def load_run(run_dir):
 
 
 def signatures(matches):
-	"""Route and departure signature per TurId, from its transit legs (the ones with a route) in leg order."""
+	"""Route, stops and departure signature per TurId, from its transit legs (the ones with a route) in leg order."""
 	legs = matches[matches["route_gtfs_id"].notna()].sort_values(["TurId", "leg_id"])
 	legs[TEXT_COLS] = legs[TEXT_COLS].fillna("")
 	clock = lambda ms: pd.to_datetime(ms, unit="ms", utc=True).dt.tz_convert(TZ).dt.strftime("%H:%M")
 	train = legs["trip_short_name"] + legs["interlined_trip_short_names"]
-	legs["route_leg"] = legs["mode"] + " " + legs["route_gtfs_id"] + " " + legs["from_gtfs_id"] + ">" + legs["to_gtfs_id"]
-	legs["departure_leg"] = (legs["route_leg"] + (" #" + train).where(train != "", "")
+	legs["route_leg"] = legs["mode"] + " " + legs["route_short_name"]
+	legs["stops_leg"] = legs["route_leg"] + " " + legs["from_gtfs_id"] + ">" + legs["to_gtfs_id"]
+	legs["departure_leg"] = (legs["stops_leg"] + (" #" + train).where(train != "", "")
 							 + " " + clock(legs["start_leg"]) + "-" + clock(legs["end_leg"]))
-	return legs.groupby("TurId").agg(route=("route_leg", " | ".join), departure=("departure_leg", " | ".join))
+	return legs.groupby("TurId").agg(route=("route_leg", " | ".join), stops=("stops_leg", " | ".join),
+									 departure=("departure_leg", " | ".join))
 
 
 def compare(run_a, run_b):
@@ -86,12 +98,12 @@ def compare(run_a, run_b):
 	trips = (signatures(run_a[0]).join(signatures(run_b[0]), lsuffix="_a", rsuffix="_b", how="inner")
 			 .loc[lambda df: df.index.isin(found_ids)])
 	trips["change"] = np.select(
-		[trips["route_a"] != trips["route_b"], trips["departure_a"] != trips["departure_b"]],
-		["route/transfer", "departure only"], default="unchanged",
+		[trips[f"{sig}_a"] != trips[f"{sig}_b"] for sig in ("route", "stops", "departure")],
+		["route", "stop(s)", "departure only"], default="unchanged",
 	)
 
 	summary = (trips["change"].value_counts()
-			   .reindex(["route/transfer", "departure only", "unchanged"], fill_value=0)
+			   .reindex(["route", "stop(s)", "departure only", "unchanged"], fill_value=0)
 			   .rename_axis("change").reset_index(name="trips"))
 	summary = pd.concat([summary, pd.DataFrame([{"change": "status change", "trips": len(status_changes)}])], ignore_index=True)
 	summary["pct_of_compared"] = (100 * summary["trips"] / len(trips)).round(1)
@@ -100,7 +112,7 @@ def compare(run_a, run_b):
 	changed = (trips[trips["change"] != "unchanged"].reset_index()
 			   .merge(status[["TurId", *[f"{col}_{run}" for run in "ab" for col in SUMMARY_COLS]]], on="TurId", how="left")
 			   .sort_values(["change", "TurId"]))
-	changed = changed[["TurId", "change", "route_a", "route_b", "departure_a", "departure_b",
+	changed = changed[["TurId", "change", "stops_a", "stops_b", "departure_a", "departure_b",
 					   *[f"{col}_{run}" for col in SUMMARY_COLS for run in "ab"]]]
 
 	return {"summary": summary, "changed_trips": changed, "status_changes": status_changes}
