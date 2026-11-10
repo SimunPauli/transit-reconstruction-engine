@@ -5,7 +5,7 @@ from src import otp
 from src.constant import STREET_MODES, METRO_SIBLING_LINES, S_TRAIN_UNGROUPED_LINES
 
 # Transit-leg columns that make two itineraries the same alternative (choice_set.alternative_key).
-# Stops by name, not stop_id, so the same route from another platform isn't a new alternative.
+# Stops by GTFS stop name: only stops with identical names count as one (platforms usually differ).
 ALTERNATIVE_KEYS = {
 	"routes": ["mode", "route_short_name"],
 	"routes_stops": ["mode", "route_short_name", "from", "to"],
