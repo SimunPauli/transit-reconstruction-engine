@@ -127,7 +127,7 @@ def load_tu(data_dir,
 		| _add_lat_lon(tu_tur, "orig_e", "orig_n", "orig_lat", "orig_lon")
 	)
 	if invalid.any():
-		print(f"Note: dropping {invalid.sum()} trips with missing/invalid UTM coordinates.")
+		print(f"Note: dropping {invalid.sum()} out of {len(tu_tur)} trips with missing/invalid UTM coordinates.")
 		tu_tur = tu_tur[~invalid]
 
 	tu_deltur =tu_deltur[tu_deltur["TurId"].isin(tu_tur["TurId"])].copy()
