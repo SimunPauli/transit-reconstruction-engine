@@ -9,7 +9,7 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
-from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, exclude_rounds,
+from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, search_rounds,
 	choice_set_summary, print_choice_set, walk_to_bicycle)
 from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES, STREET_MODES
 from src import otp
@@ -39,7 +39,7 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
                     exclude_stops, exclude_routes, random_costs, exclude_targeted, access_egress_mode=None):
 	"""
 	The TU trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
-	steps' rounds, then the random_costs rounds (exclude_rounds, each kind seeded per trip by its
+	steps' rounds, then the random_costs rounds (search_rounds, each kind seeded per trip by its
 	"seed" and TurId), then the exclude_targeted rounds, bike access/egress relabelled BICYCLE.
 	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	"""
@@ -76,7 +76,7 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	# Last, so their itineraries stay out of the random exclusion pools
 	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
 	candidates_init = query()
-	candidates = exclude_rounds(query, candidates_init, chosen_legs, rounds)
+	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 

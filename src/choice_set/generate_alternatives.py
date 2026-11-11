@@ -17,6 +17,8 @@ CHOICE_SET_COLUMNS = [
 	"alt_id",
 	"is_chosen",
 	"line_group",
+	"search_round",
+	"search_variation",
 	"leg_id",
 	"start_trip",
 	"end_trip",
@@ -113,7 +115,7 @@ def _fastest_routes(legs):
 	return list(transit.loc[transit["iteration_id"] == fastest, "route_gtfs_id"].dropna())
 
 
-def exclude_rounds(query, candidates_init, chosen_legs, rounds):
+def search_rounds(query, candidates_init, chosen_legs, rounds):
 	"""
 	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
 	round queries with costs drawn by draw_costs(n, rng). A "targeted" round (n, rng unused) adds the
@@ -122,15 +124,15 @@ def exclude_rounds(query, candidates_init, chosen_legs, rounds):
 	finds nothing, the rest are skipped. Any other kind excludes a set of n ids of kind (EXCLUDE_KINDS)
 	drawn at random (rng) from chosen_legs' and the candidates so far's transit legs, never a set an
 	earlier round excluded; a round with no such set left is skipped. query(**arguments) returns
-	candidates. Each candidate is tagged with its exclude_round (0 = candidates) and that round's
-	excluded ids ("kind: ids") or drawn costs ("costs: {...}").
+	candidates. Each candidate is tagged with its search_round (0 = candidates) and search_variation:
+	"base query", that round's excluded ids ("kind: ids") or drawn costs ("costs: {...}").
 	"""
 	candidates = candidates_init.copy()
 	targeted_ids = []
 	targeted_source = candidates_init
-	candidates = candidates.assign(exclude_round=0, excluded="")
+	candidates = candidates.assign(search_round=0, search_variation="base query")
 	excluded_sets = set()
-	for exclude_round, (kind, n, rng) in enumerate(rounds, start=1):
+	for search_round, (kind, n, rng) in enumerate(rounds, start=1):
 		if kind == "costs":
 			arguments = draw_costs(n, rng)
 			label = f"costs: {arguments}"
@@ -161,7 +163,7 @@ def exclude_rounds(query, candidates_init, chosen_legs, rounds):
 		# Past the ids so far; a query's ids go negative for backward pages
 		offset = candidates["iteration_id"].max() + 1 - round_candidates["iteration_id"].min() if not candidates.empty else 0
 		candidates = pd.concat([candidates, round_candidates.assign(iteration_id=round_candidates["iteration_id"] + offset,
-			exclude_round=exclude_round, excluded=label)], ignore_index=True)
+			search_round=search_round, search_variation=label)], ignore_index=True)
 	return candidates
 
 
@@ -251,7 +253,9 @@ def print_choice_set(trip_choice_set):
 	"""Prints each alternative's legs, one at a time, as the reconstruction prints its match."""
 	legs = otp.parser.add_leg_times(trip_choice_set.sort_values(["alt_id", "leg_id"]), itinerary_column="alt_id")
 	for alt_id, alt_legs in legs.groupby("alt_id"):
-		print(f"alt_id {alt_id}{' (chosen)' if alt_id == 0 else ''}:")
+		first = alt_legs.iloc[0]
+		stage = "chosen" if alt_id == 0 else f"round {int(first['search_round'])}, {first['search_variation']}"
+		print(f"alt_id {alt_id} ({stage}):")
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
 
 

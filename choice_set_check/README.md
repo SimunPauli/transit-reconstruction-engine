@@ -33,7 +33,7 @@ An oracle alternative counts as plausible if it takes at most `PLAUSIBLE_RATIO` 
 travel time and walks at most `PLAUSIBLE_WALK_KM`. Alternatives are compared by their sequence of
 transit routes, ignoring the stops. A missed alternative is *dominated* if, for each of its
 departures, a production itinerary leaves at the same time or later, arrives earlier and has no more
-transfers. A route that only shows up in one or two exclude rounds was found by luck in the random
+transfers. A route that only shows up in one or two search rounds was found by luck in the random
 draw, and may be missed with another `seed`.
 
 ## Output

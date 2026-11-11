@@ -130,7 +130,7 @@ def itinerary_table(legs, source):
 		interlined = transit["interline_with_previous"].fillna(False).astype(bool).sum() if "interline_with_previous" in transit else 0
 		rows.append({
 			"source": source, "iteration_id": iteration_id,
-			"exclude_round": it["exclude_round"].iloc[0] if "exclude_round" in it else None,
+			"search_round": it["search_round"].iloc[0] if "search_round" in it else None,
 			"start": start, "end": end, "duration_min": (end - start).total_seconds() / 60,
 			"transfers": len(transit) - 1 - interlined,
 			"walk_km": it.loc[it["mode"] == "WALK", "distance_km"].sum(),
@@ -201,7 +201,7 @@ def main():
 			cs_routes, cs_groups = set(cs["routes"]), set(cs["line_group"])
 			plausible = plausible.assign(found=plausible["routes"].isin(cs_routes),
 				group_found=plausible["line_group"].isin(cs_groups))
-			first_round = prod_raw.groupby("routes")["exclude_round"].min() if not prod_raw.empty else pd.Series(dtype=float)
+			first_round = prod_raw.groupby("routes")["search_round"].min() if not prod_raw.empty else pd.Series(dtype=float)
 			for _, alt in plausible[~plausible["found"]].iterrows():
 				instances = oracle[oracle["routes"] == alt["routes"]] if not oracle.empty else pd.DataFrame()
 				misses.append({"od": name, "routes": alt["routes"], "duration_min": alt["duration_min"],
