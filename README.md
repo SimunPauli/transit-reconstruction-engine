@@ -215,7 +215,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `reconstruct.paths.*` | Output file names, written into the run folder (see "Output" below) |
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
 | `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
-| `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
+| `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each alternative_key group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
 | `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `steps` run in order, each `rounds` queries excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded (across steps); a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `steps: []` disables it |
 | `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` of `rounds` queries, each excluding `routes_per_round` route ids (their trips are not used at all) drawn from the routes of the chosen itinerary and all candidates so far. `steps: []` disables it |
 | `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the exclude rounds: `rounds` queries (no exclusions), each with `walk_reluctance`, `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
@@ -332,7 +332,8 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 Both choice-set files have one row per leg, with `TurId`, `alt_id` (0 is the chosen) and `is_chosen`.
 `line_group` is the lowest `alt_id` among alternatives that differ only by parallel lines between the
 same stops (any bus lines, metro M1/M2 and M3/M4, S-train lines but F), or its own `alt_id`; use it to
-merge or path-size such alternatives in the model.
+merge or path-size such alternatives in the model. `route_group` is the same for alternatives with the
+same routes that differ only by stops.
 
 ### Trip outcomes
 

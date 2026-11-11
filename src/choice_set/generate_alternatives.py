@@ -17,6 +17,7 @@ CHOICE_SET_COLUMNS = [
 	"alt_id",
 	"is_chosen",
 	"line_group",
+	"route_group",
 	"search_round",
 	"search_variation",
 	"leg_id",
@@ -80,6 +81,13 @@ def _used_ids(legs, columns):
 		ids.update(transit[column].dropna())
 	return sorted(ids)  # sorted so seeded draws repeat across runs
 
+
+def _named_ids(legs, ids):
+	"""ids as "name (id)", comma-separated, names looked up in legs."""
+	names = {**dict(zip(legs["route_gtfs_id"], legs["route_short_name"])),
+		**dict(zip(legs["from_gtfs_id"], legs["from"])), **dict(zip(legs["to_gtfs_id"], legs["to"]))}
+	return ", ".join(f"{names[id_]} ({id_})" for id_ in ids)
+
 # Per kind of exclude round: the transit-leg columns its ids are drawn from, and the query argument they go to
 EXCLUDE_KINDS = {
 	"stops": (["from_gtfs_id", "to_gtfs_id"], "exclude_stopids"),
@@ -125,7 +133,7 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 	drawn at random (rng) from chosen_legs' and the candidates so far's transit legs, never a set an
 	earlier round excluded; a round with no such set left is skipped. query(**arguments) returns
 	candidates. Each candidate is tagged with its search_round (0 = candidates) and search_variation:
-	"base query", that round's excluded ids ("kind: ids") or drawn costs ("costs: {...}").
+	"base query", that round's excluded ids ("kind: name (id), ...") or drawn costs ("costs: {...}").
 	"""
 	candidates = candidates_init.copy()
 	targeted_ids = []
@@ -142,10 +150,11 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 				continue
 			targeted_ids += [route_id for route_id in route_ids if route_id not in targeted_ids]
 			arguments = {"exclude_routeids": list(targeted_ids)}
-			label = f"targeted: {' '.join(targeted_ids)}"
+			label = f"targeted: {_named_ids(candidates, targeted_ids)}"
 		elif kind in EXCLUDE_KINDS:
 			columns, argument = EXCLUDE_KINDS[kind]
-			ids = _used_ids(pd.concat([chosen_legs, candidates]), columns)
+			legs = pd.concat([chosen_legs, candidates])
+			ids = _used_ids(legs, columns)
 			# ids is sorted, so each set has one tuple
 			unused_sets = [ids_set for ids_set in combinations(ids, min(n, len(ids)))
 				if (kind, ids_set) not in excluded_sets]
@@ -154,7 +163,7 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 			ids_set = rng.choice(unused_sets)
 			excluded_sets.add((kind, ids_set))
 			arguments = {argument: list(ids_set)}
-			label = f"{kind}: {' '.join(ids_set)}"
+			label = f"{kind}: {_named_ids(legs, ids_set)}"
 		round_candidates = query(**arguments)
 		if kind == "targeted":
 			targeted_source = round_candidates #new target
@@ -188,16 +197,15 @@ def walk_to_bicycle(candidates, bike_access, bike_egress, walk_bike_time_ratio):
 	return candidates
 
 
-def _line_groups(trip_choice_set, key_columns):
+def _groups(trip_choice_set, key_columns, route=lambda mode, name: name):
 	"""
-	Per row, the lowest alt_id of the alternatives the same as its alternative but for parallel lines
-	(e.g. buses 143/144, metro M1/M2 or S-train A/C between the same stops; see _line_group_route):
-	its own alt_id if there is none.
+	Per row, the lowest alt_id of the alternatives whose transit legs match its alternative's on
+	key_columns, route names mapped by route(mode, name): its own alt_id if there is none.
 	"""
-	line_blind = trip_choice_set.assign(iteration_id=trip_choice_set["alt_id"], route_short_name=[
-		_line_group_route(mode, name) for mode, name in zip(trip_choice_set["mode"], trip_choice_set["route_short_name"])
+	keyed = trip_choice_set.assign(iteration_id=trip_choice_set["alt_id"], route_short_name=[
+		route(mode, name) for mode, name in zip(trip_choice_set["mode"], trip_choice_set["route_short_name"])
 	])
-	keys = _itinerary_keys(line_blind, list(dict.fromkeys([*key_columns, "from", "to"])))
+	keys = _itinerary_keys(keyed, key_columns)
 	first_alt = {}
 	for alt_id in sorted(keys):
 		first_alt.setdefault(keys[alt_id], alt_id)
@@ -237,7 +245,8 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0)) for alt_id, legs in enumerate(alternatives)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
-	trip_choice_set["line_group"] = _line_groups(trip_choice_set, key_columns)
+	trip_choice_set["line_group"] = _groups(trip_choice_set, list(dict.fromkeys([*key_columns, "from", "to"])), _line_group_route)
+	trip_choice_set["route_group"] = _groups(trip_choice_set, ALTERNATIVE_KEYS["routes"])
 	if chosen_public_transport:
 		# 1 if the generated candidates included the chosen key or another alternative of its line_group, 0 otherwise
 		coverage = int(coverage or (trip_choice_set["line_group"].eq(0) & trip_choice_set["alt_id"].ne(0)).any())
@@ -252,10 +261,12 @@ PRINT_COLUMNS = ["mode", "distance_km", "waitingtime", "duration_min", "route_sh
 def print_choice_set(trip_choice_set):
 	"""Prints each alternative's legs, one at a time, as the reconstruction prints its match."""
 	legs = otp.parser.add_leg_times(trip_choice_set.sort_values(["alt_id", "leg_id"]), itinerary_column="alt_id")
-	for alt_id, alt_legs in legs.groupby("alt_id"):
+	# In round order, chosen (no round) first
+	legs = legs.sort_values(["search_round", "alt_id", "leg_id"], na_position="first")
+	for alt_id, alt_legs in legs.groupby("alt_id", sort=False):
 		first = alt_legs.iloc[0]
 		stage = "chosen" if alt_id == 0 else f"round {int(first['search_round'])}, {first['search_variation']}"
-		print(f"alt_id {alt_id} ({stage}):")
+		print(f"alt_id {alt_id}, line_group {first['line_group']}, route_group {first['route_group']} ({stage}):")
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
 
 
