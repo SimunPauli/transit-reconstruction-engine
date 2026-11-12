@@ -1,6 +1,12 @@
 import sys
 import threading
 import time
+from datetime import timedelta
+
+
+def elapsed(start):
+	"""Wall time since start (a time.perf_counter() value), as H:MM:SS."""
+	return str(timedelta(seconds=round(time.perf_counter() - start)))
 
 
 class Tee:

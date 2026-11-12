@@ -1,5 +1,6 @@
 import io
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import pandas as pd
@@ -13,7 +14,7 @@ from src.matching.anchor_stitching import build_anchor_station_lookup
 from src.config_loader import get_config, start_run
 from src.constant import TRANSIT_STAGE_MODES
 from src.matching.export_files import _write_failures_file, _print_and_export_summary_stats, _reorder_rmse_columns
-from src.run_utils import Tee, wait_for_output_dir
+from src.run_utils import Tee, elapsed, wait_for_output_dir
 
 
 def main():
@@ -29,6 +30,7 @@ def main():
 
 
 def _run(config, tee):
+	start = time.perf_counter()
 	reconstruct = config["reconstruct"]
 	paths = reconstruct["paths"]
 	return_trip_summary = reconstruct.get("matching", {}).get("return_trip_summary", True)
@@ -150,6 +152,8 @@ def _run(config, tee):
 				rmse_based_matches.append(rmse_based_match)
 			if trip_matching_summary is not None:
 				trip_matching_summaries.append(trip_matching_summary)
+	# Before waiting on the share, so an outage isn't counted
+	run_time = elapsed(start)
 
 	wait_for_output_dir(config["paths"]["output_dir"])
 
@@ -160,7 +164,7 @@ def _run(config, tee):
 			trip_matching_summaries.to_excel(paths["trip_matching_summaries_file"], index=False)
 			_write_failures_file(trip_matching_summaries, paths["failures_file"])
 			_print_and_export_summary_stats(
-				trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+				trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df, run_time
 			)
 		return
 
@@ -172,7 +176,7 @@ def _run(config, tee):
 		trip_matching_summaries.to_excel(paths["trip_matching_summaries_file"], index=False)
 		_write_failures_file(trip_matching_summaries, paths["failures_file"])
 		_print_and_export_summary_stats(
-			trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df
+			trip_matching_summaries, paths["summary_stats_file"], tu_deltur, tu_gtfs_station_df, run_time
 		)
 	print(f"\n\n\n____________________________________________________________________________________________")
 	print(f"\n\n\nall_rmse_based_matches has been exported to {paths['rmse_based_matches_file']}")

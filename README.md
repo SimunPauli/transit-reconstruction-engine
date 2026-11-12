@@ -326,7 +326,7 @@ All output files are written to `paths.output_dir/<tu_subset.year>/<run_id>/` (c
 |------|-------------|
 | `public_choice_set_file` | Public transport trips. The chosen is the reconstructed itinerary; alternatives' bike access/egress WALK legs are relabelled `BICYCLE` and scaled by `tu_prep.walk_bike_time_ratio`, as in reconstruction. Has `coverage` per trip: 1 if the search found the chosen itinerary's `alternative_key` or another alternative of its `line_group`, else 0 |
 | `car_choice_set_file` | Car trips. Alternatives use WALK access/egress; the chosen is the TU car legs, with only `leg_id`, `start_trip`, `end_trip`, `mode`, `distance_km`, `duration_min` filled |
-| `summary_file` | The summary printed at the end, one row per `choice_set` (`public`/`car`) and `group` (`all`, then for `public` each reconstruction outcome): `trips`, `covered`/`coverage_share` (`public` only), `no_otp_itinerary` (no OTP transit itinerary), and the mean and 0–100th percentiles of alternatives besides the chosen per trip (`n_alternatives_*`, actual trips' values, not interpolated) |
+| `summary_file` | The summary printed at the end, one row per `choice_set` (`public`/`car`) and `group` (`all`, then for `public` each reconstruction outcome): `trips`, `covered`/`coverage_share` (`public` only), `no_otp_itinerary` (no OTP transit itinerary), and the mean and 0–100th percentiles of alternatives besides the chosen per trip (`n_alternatives_*`, actual trips' values, not interpolated), and `run_time` (that choice set's generation time, H:MM:SS) |
 | `log_file` | Full console log of the run |
 
 Both choice-set files have one row per leg, with `TurId`, `alt_id` (0 is the chosen) and `is_chosen`.
@@ -372,7 +372,8 @@ a level that adds no real GTFS route over the previous one is skipped rather tha
 they're kept separate rather than dropped, because their route assignment is the part that's
 unverified, not the trip itself. `summary_stats_file` reports `success_rate_pct` (`trip_found`
 only), `success_rate_incl_near_route_pct` (+ `trip_near_route`) and
-`success_rate_incl_wrong_route_pct` (+ `trip_wrong_route`), and counts trips per `route_match` level.
+`success_rate_incl_wrong_route_pct` (+ `trip_wrong_route`), counts trips per `route_match` level,
+and gives the run's `run_time` (H:MM:SS).
 
 ### Failure reasons
 

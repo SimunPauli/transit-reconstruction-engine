@@ -1,12 +1,13 @@
 import io
 import random
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 import pandas as pd
 from src.tu import load_TU_data
 from src.config_loader import get_config, start_run
-from src.run_utils import Tee, wait_for_output_dir
+from src.run_utils import Tee, elapsed, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, search_rounds,
@@ -88,6 +89,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 	(chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set,
 	access_egress_mode to trip_candidates.
 	"""
+	start = time.perf_counter()
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
 	exclude_stops = config["choice_set"]["exclude_stops"]
 	exclude_routes = config["choice_set"]["exclude_routes"]
@@ -127,6 +129,8 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 			print(output, end="")
 			if trip_choice_set is not None:
 				choice_sets.append(trip_choice_set)
+	# Before waiting on the share, so an outage isn't counted
+	run_time = elapsed(start)
 
 	# Before writing: the output dir is on a network share
 	wait_for_output_dir(config["paths"]["output_dir"])
@@ -137,6 +141,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
 	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
 	summary = choice_set_summary(choice_sets, groups)
+	summary["run_time"] = run_time
 	print(f"Choice-set summary (alternative_key={config['choice_set']['alternative_key']}):")
 	print(summary.to_string(index=False))
 	return summary

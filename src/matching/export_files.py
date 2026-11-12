@@ -53,12 +53,12 @@ def _write_failures_file(trip_matching_summaries_df, path):
 	failures_df.to_csv(path, sep=",", decimal = ".", index=False)
 
 
-def _build_summary_stats(trip_matching_summaries_df):
+def _build_summary_stats(trip_matching_summaries_df, run_time=None):
 	"""
 	Builds run-level summary tables from the per-trip matching summaries: an overview
 	(counts and success rates for each of the four outcomes - found with the TU-recorded
-	routes, found with a near route name, found only by ignoring them, not found) and a
-	breakdown of failure_reason frequency among the trips not found.
+	routes, found with a near route name, found only by ignoring them, not found - and run_time)
+	and a breakdown of failure_reason frequency among the trips not found.
 	"""
 	total = len(trip_matching_summaries_df)
 	found = int(trip_matching_summaries_df["trip_found"].sum())
@@ -79,7 +79,8 @@ def _build_summary_stats(trip_matching_summaries_df):
 		**{f"route_match_{level}": int(route_match_counts.get(level, 0)) for level in ROUTE_MATCH_LEVELS},
 		"success_rate_pct": pct(found),
 		"success_rate_incl_near_route_pct": pct(found + near_route),
-		"success_rate_incl_wrong_route_pct": pct(found + near_route + wrong_route)
+		"success_rate_incl_wrong_route_pct": pct(found + near_route + wrong_route),
+		"run_time": run_time
 	}])
 
 	failures_df = trip_matching_summaries_df.loc[trip_matching_summaries_df["trip_not_found"] == 1]
@@ -181,8 +182,8 @@ def _build_session_stats(trip_matching_summaries_df):
 	return stats.sort_values(["problem_trips", "problem_rate_pct"], ascending=False).reset_index(drop=True)
 
 
-def _print_and_export_summary_stats(trip_matching_summaries_df, path, tu_deltur=None, tu_gtfs_station_df=None):
-	overview_df, failure_counts_df = _build_summary_stats(trip_matching_summaries_df)
+def _print_and_export_summary_stats(trip_matching_summaries_df, path, tu_deltur=None, tu_gtfs_station_df=None, run_time=None):
+	overview_df, failure_counts_df = _build_summary_stats(trip_matching_summaries_df, run_time)
 	session_stats_df = _build_session_stats(trip_matching_summaries_df)
 	station_stats_df = None
 	if tu_deltur is not None and tu_gtfs_station_df is not None:
