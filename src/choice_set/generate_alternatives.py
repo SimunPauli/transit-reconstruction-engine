@@ -267,6 +267,10 @@ def print_choice_set(trip_choice_set):
 		first = alt_legs.iloc[0]
 		stage = "chosen" if alt_id == 0 else f"round {int(first['search_round'])}, {first['search_variation']}"
 		print(f"alt_id {alt_id}, line_group {first['line_group']}, route_group {first['route_group']} ({stage}):")
+		wait = round(alt_legs["waitingtime"].sum(), 1)
+		transit = alt_legs.loc[~alt_legs["mode"].isin(STREET_MODES), "duration_min"].sum()
+		walk = alt_legs.loc[alt_legs["mode"] == "WALK", "duration_min"].sum()
+		print(f"total {alt_legs['duration_min'].sum() + wait:g} min: wait {wait:g}, transit {transit:g}, walk {walk:g}")
 		print(alt_legs[PRINT_COLUMNS].to_string(index=False, max_colwidth=None))
 
 
