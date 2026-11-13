@@ -97,13 +97,14 @@ EXCLUDE_KINDS = {
 
 def draw_costs(ranges, rng):
 	"""
-	Query cost arguments drawn at random (rng) from ranges' [min, max]: walk, wait and per-mode transit
-	reluctance log-uniform (rounded to 0.01), transfer_cost uniform (whole seconds).
+	Query cost arguments drawn at random (rng) from ranges' [min, max]: walk_reluctance uniform over
+	the integers (few values, so OTP's transfer cache is reused), wait and per-mode transit reluctance
+	log-uniform (rounded to 0.01), transfer_cost uniform (whole seconds).
 	"""
 	def log_uniform(low, high):
 		return round(math.exp(rng.uniform(math.log(low), math.log(high))), 2)
 	return dict(
-		walk_reluctance=log_uniform(*ranges["walk_reluctance"]),
+		walk_reluctance=rng.randint(*ranges["walk_reluctance"]),
 		wait_reluctance=log_uniform(*ranges["wait_reluctance"]),
 		transit_reluctances={mode: log_uniform(*ranges["transit_reluctance"]) for mode in otp.client.DEFAULT_TRANSIT_MODES},
 		transfer_cost=round(rng.uniform(*ranges["transfer_cost"])),
