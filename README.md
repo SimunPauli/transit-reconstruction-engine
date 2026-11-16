@@ -162,6 +162,9 @@ Create it based on the template below:
       ],
       "seed": 0
     },
+    "fixed_costs": [
+      {"walk_reluctance": 4, "wait_reluctance": 2, "transit_reluctance": {"BUS": 1.5}, "transfer_cost": 600}
+    ],
     "random_costs": {
       "rounds": 10,
       "walk_reluctance": [1, 8],
@@ -170,6 +173,7 @@ Create it based on the template below:
       "transfer_cost": [0, 1800],
       "seed": 0
     },
+    "only_modes": [["BUS"], ["SUBWAY", "S_TRAIN", "RAIL", "TRAM"]],
     "exclude_targeted": {
       "rounds": 4
     },
@@ -218,7 +222,9 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each alternative_key group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
 | `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `steps` run in order, each `rounds` queries excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded (across steps); a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `steps: []` disables it |
 | `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` of `rounds` queries, each excluding `routes_per_round` route ids (their trips are not used at all) drawn from the routes of the chosen itinerary and all candidates so far. `steps: []` disables it |
-| `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the exclude rounds: `rounds` queries (no exclusions), each with `walk_reluctance` drawn uniform over the integers in its `[min, max]` (integer bounds; few distinct values, so OTP's transfer cache is reused), `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
+| `choice_set.fixed_costs` | Extra alternatives from re-querying with chosen generalized-cost parameters, run after the exclude rounds: one query (no exclusions) per entry, each setting any of `walk_reluctance`, `wait_reluctance`, `transit_reluctance` (one value for every transit mode, or `{mode: value}`; modes left out get 1) and `transfer_cost` (seconds). Left-out keys keep the plain query's values (`walk_reluctance` 2, the rest OTP's defaults). `[]` disables it |
+| `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the `fixed_costs` rounds: `rounds` queries (no exclusions), each with `walk_reluctance` drawn uniform over the integers in its `[min, max]` (integer bounds; few distinct values, so OTP's transfer cache is reused), `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
+| `choice_set.only_modes` | Extra alternatives from re-querying with only some transit modes, run after the `random_costs` rounds: one query (no exclusions, plain costs) per entry, a list of OTP transit modes (`BUS`, `SUBWAY`, `S_TRAIN`, `RAIL`, `TRAM`) it may use, e.g. `[["BUS"], ["SUBWAY", "S_TRAIN", "RAIL", "TRAM"]]`: bus only, then everything but bus. `[]` disables it |
 | `choice_set.exclude_targeted` | Extra alternatives from peeling off the fastest routes, run last: `rounds` queries, each adding the route ids of the previous round's fastest itinerary (the first round's: of the plain query) to the routes it excludes, so slower routes that the faster ones dominate (e.g. a bus along a metro line) come out. Deterministic; stops early once a round finds nothing. `rounds: 0` disables it |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (see "Output" below) |
 
@@ -590,7 +596,7 @@ Choice-set generation uses `exclude_stopids` (`choice_set.exclude_stops`) and `e
 `wait_reluctance` (`preferences.transit.board.waitReluctance`) and `transfer_cost`
 (`preferences.transit.transfer.cost`, seconds added to every boarding after the first, on top of
 `boardCost`); left out, OTP's defaults apply (1 and 0). Only choice-set generation sets them
-(`choice_set.random_costs`).
+(`choice_set.fixed_costs`, `choice_set.random_costs`).
 
 ---
 

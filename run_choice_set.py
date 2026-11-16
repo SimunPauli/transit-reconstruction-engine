@@ -37,11 +37,13 @@ def otp_settings(config):
 	)
 
 def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
-                    exclude_stops, exclude_routes, random_costs, exclude_targeted, access_egress_mode=None):
+                    exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes, exclude_targeted,
+                    access_egress_mode=None):
 	"""
 	The TU trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
-	steps' rounds, then the random_costs rounds (search_rounds, each kind seeded per trip by its
-	"seed" and TurId), then the exclude_targeted rounds, bike access/egress relabelled BICYCLE.
+	steps' rounds, then one round per fixed_costs entry, then the random_costs rounds (search_rounds,
+	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
+	entry (only those transit modes), then the exclude_targeted rounds, bike access/egress relabelled BICYCLE.
 	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	"""
 	tu_legs = tu_trip_legs(tu_tur_row, tu_deltur)
@@ -73,7 +75,9 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 		rounds += [("stops", step["stops_per_round"], stop_rng)] * step["rounds"]
 	for step in exclude_routes["steps"]:
 		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
+	rounds += [("fixed_costs", costs, None) for costs in fixed_costs]
 	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
+	rounds += [("modes", modes, None) for modes in only_modes]
 	# Last, so their itineraries stay out of the random exclusion pools
 	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
 	candidates_init = query()
@@ -95,7 +99,9 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
 	exclude_stops = config["choice_set"]["exclude_stops"]
 	exclude_routes = config["choice_set"]["exclude_routes"]
+	fixed_costs = config["choice_set"]["fixed_costs"]
 	random_costs = config["choice_set"]["random_costs"]
+	only_modes = config["choice_set"]["only_modes"]
 	exclude_targeted = config["choice_set"]["exclude_targeted"]
 	settings = otp_settings(config)
 	max_workers = config["run"]["max_workers"]
@@ -108,7 +114,8 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 			chosen_start, chosen_legs = chosen(tu_tur_row)
 			#Generated alternatives (many will be duplicated)
 			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
-			                             exclude_stops, exclude_routes, random_costs, exclude_targeted, access_egress_mode)
+			                             exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes,
+			                             exclude_targeted, access_egress_mode)
 			#Filter alternatives; drop duplicates only keeping one closest to departure
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
 			                                   chosen_start, chosen_legs, chosen_public_transport)

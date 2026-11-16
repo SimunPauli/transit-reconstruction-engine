@@ -111,6 +111,18 @@ def draw_costs(ranges, rng):
 	)
 
 
+def fixed_costs(costs):
+	"""
+	Query cost arguments of costs, one choice_set.fixed_costs entry: as given, but transit_reluctance
+	(one value for every transit mode, or {mode: value}) goes to transit_reluctances.
+	"""
+	arguments = dict(costs)
+	transit = arguments.pop("transit_reluctance", None)
+	if transit is not None:
+		arguments["transit_reluctances"] = transit if isinstance(transit, dict) else dict.fromkeys(otp.client.DEFAULT_TRANSIT_MODES, transit)
+	return arguments
+
+
 def _fastest_routes(legs):
 	"""route_gtfs_ids of the transit legs of legs' fastest itinerary (ties to the earlier start)."""
 	if legs.empty:
@@ -127,14 +139,16 @@ def _fastest_routes(legs):
 def search_rounds(query, candidates_init, chosen_legs, rounds):
 	"""
 	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
-	round queries with costs drawn by draw_costs(n, rng). A "targeted" round (n, rng unused) adds the
+	round queries with costs drawn by draw_costs(n, rng), a "fixed_costs" round with fixed_costs(n)
+	(rng unused), a "modes" round with only the transit modes n (rng unused). A "targeted" round (n, rng unused) adds the
 	routes of the previous targeted round's fastest itinerary (the first round's: candidates') to the
 	routes every targeted round excludes, peeling off the routes that dominate slower ones; once one
 	finds nothing, the rest are skipped. Any other kind excludes a set of n ids of kind (EXCLUDE_KINDS)
 	drawn at random (rng) from chosen_legs' and the candidates so far's transit legs, never a set an
 	earlier round excluded; a round with no such set left is skipped. query(**arguments) returns
 	candidates. Each candidate is tagged with its search_round (0 = candidates) and search_variation:
-	"base query", that round's excluded ids ("kind: name (id), ...") or drawn costs ("costs: {...}").
+	"base query", that round's excluded ids ("kind: name (id), ..."), costs ("costs: {...}", "fixed costs: {...}")
+	or modes ("only modes: BUS, ...").
 	"""
 	candidates = candidates_init.copy()
 	targeted_ids = []
@@ -145,6 +159,12 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 		if kind == "costs":
 			arguments = draw_costs(n, rng)
 			label = f"costs: {arguments}"
+		elif kind == "fixed_costs":
+			arguments = fixed_costs(n)
+			label = f"fixed costs: {arguments}"
+		elif kind == "modes":
+			arguments = {"modes_json": [{"mode": mode} for mode in n]}
+			label = f"only modes: {', '.join(n)}"
 		elif kind == "targeted":
 			route_ids = _fastest_routes(targeted_source)
 			if not route_ids:
