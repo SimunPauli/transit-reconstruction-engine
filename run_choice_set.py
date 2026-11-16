@@ -82,12 +82,14 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
-                         chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None):
+                         chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None,
+                         trip_columns=None):
 	"""
 	Choice sets for every trip in tu_tur, written to choice_set_file; prints and returns their
 	choice_set_summary per groups (None if there are none). chosen(tu_tur_row) returns the trip's
 	(chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set,
-	access_egress_mode to trip_candidates.
+	access_egress_mode to trip_candidates. trip_columns (DataFrame indexed by TurId), if given, is
+	written after TurId.
 	"""
 	start = time.perf_counter()
 	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
@@ -138,6 +140,9 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		print("No choice sets generated.")
 		return None
 	choice_sets = pd.concat(choice_sets, ignore_index=True)
+	if trip_columns is not None:
+		for position, name in enumerate(trip_columns, start=1):
+			choice_sets.insert(position, name, choice_sets["trip_id"].map(trip_columns[name]))
 	choice_sets.rename(columns={"trip_id": "TurId"}).to_csv(choice_set_file, sep=",", decimal=".", index=False)
 	print(f"Saved {choice_sets['trip_id'].nunique()} choice sets to {choice_set_file}")
 	summary = choice_set_summary(choice_sets, groups)
@@ -166,9 +171,10 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
 		return chosen_legs["start_trip"].iloc[0], chosen_legs
 
+	outcome = chosen_trips.groupby("TurId")["outcome"].first()
 	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
-		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"],
-		groups=chosen_trips.groupby("TurId")["outcome"].first())
+		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"], groups=outcome,
+		trip_columns=pd.DataFrame({name: outcome.eq(name).astype(int) for name in ["trip_found", "trip_near_route"]}))
 
 def car_chosen(tu_tur_row, tu_deltur):
 	"""(depart_dt, chosen_legs) of a car trip: its TU legs, in the choice-set columns TU has."""
