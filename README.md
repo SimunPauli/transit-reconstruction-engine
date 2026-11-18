@@ -399,6 +399,11 @@ trip also prints a `[TurId=<id>] STATION_ANCHOR_FALLBACK: SUCCEEDED` line (`STAT
 (car access/egress): SUCCEEDED` for car anchoring), so every fallback-reconstructed trip can be found
 in `log_file` with a plain text search.
 
+For reconstructed trips that needed a [reluctance retry](#3-fetching-candidates-from-otp),
+`trip_matching_summaries_file`'s `reluctance_retry` column names the retry that found the candidates,
+e.g. `walk=4` or `BUS=0.25, RAIL=0.25` (`; `-separated per transit segment for a station-anchored
+trip). It's empty when the baseline query found them, and for trips not found.
+
 For a `no_matching_leg_sequence` failure, `trip_matching_summaries_file`'s `unreported_transfer_stops`
 column lists (`; `-separated) the stops where an OTP itinerary changed vehicle inside one TU
 rail/metro/S-train leg: one OTP leg boards at the TU leg's `FromStation`, a later same-mode leg

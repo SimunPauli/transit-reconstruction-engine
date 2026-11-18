@@ -62,6 +62,7 @@ def _match_once(
 			"failure_reason": failure_reason,
 			"unreported_transfer_stops": "; ".join(sorted(unreported_transfers)) or pd.NA,
 			"used_anchor_fallback": used_anchor_fallback,
+			"reluctance_retry": pd.NA,
 			"rmse": pd.NA,
 			"depart_deviation_min": pd.NA,
 			"arrival_deviation_min": pd.NA,
@@ -291,6 +292,8 @@ def _match_once(
 		"failure_reason": pd.NA,
 		"unreported_transfer_stops": pd.NA,
 		"used_anchor_fallback": used_anchor_fallback,
+		# Per segment for a stitched trip; street legs queried directly have none
+		"reluctance_retry": "; ".join(best_trip_candidate["reluctance_retry"].dropna().unique()) or pd.NA,
 		"rmse": round(best_trip_summary["rmse"],3),
 		"depart_deviation_min": round(best_trip_summary["depart_deviation_min"],0),
 		"arrival_deviation_min": round(best_trip_summary["arrival_deviation_min"],0),

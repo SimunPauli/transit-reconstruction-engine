@@ -481,7 +481,14 @@ def load_candidates_with_reluctance_retries(
 		)
 
 		if not otp_candidates_df.empty:
-			return otp_candidates_df, ""
+			# Which retry found them (NA for the baseline query), for the trip summary
+			if walk_reluctance_override is not None:
+				retry = f"walk={walk_reluctance_override}"
+			elif transit_reluctances:
+				retry = ", ".join(f"{mode}={value}" for mode, value in transit_reluctances.items())
+			else:
+				retry = pd.NA
+			return otp_candidates_df.assign(reluctance_retry=retry), ""
 
 		last_msg = msg_filter
 
