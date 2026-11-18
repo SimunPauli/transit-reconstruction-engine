@@ -302,29 +302,13 @@ def build_graphql_query(
           }
         }
         pageInfo {
-          startCursor endCursor hasPreviousPage hasNextPage
+          startCursor endCursor hasPreviousPage hasNextPage searchWindowUsed
         }
       }
     }
     """
 
 	return query
-
-def _candidate_start_bounds(otp_candidates_df: pd.DataFrame):
-	if otp_candidates_df.empty or "start_trip" not in otp_candidates_df.columns:
-		return None, None
-
-	start_times = (
-		pd.to_datetime(otp_candidates_df["start_trip"], utc=True, errors="coerce")
-		.dropna()
-		.drop_duplicates()
-	)
-
-	if start_times.empty:
-		return None, None
-
-	return start_times.min(), start_times.max()
-
 
 def load_all_candidates(origin: dict,
                         destination: dict,
@@ -395,11 +379,16 @@ def load_all_candidates(origin: dict,
 	window_start = depart_dt - search_delta
 	window_end = depart_dt + search_delta
 
+	# Backward pages continue from the first page, not the last forward one
+	first_response_data = response_data
+	# Searched so far: from depart_dt, each page's searchWindowUsed further. Paging stops once it
+	# covers the window (itinerary starts rarely fall exactly on its edge)
+	covered_end = depart_dt + pd.Timedelta(response_data["data"]["planConnection"]["pageInfo"]["searchWindowUsed"])
+
 	n_forward = len(response_data["data"]["planConnection"]["edges"])
 	hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
-	while n_forward < max_itinerary_candidates and hasNextPage:
-		_, latest_start_df = _candidate_start_bounds(otp_candidates_df)
-		if latest_start_df is None or (latest_start_df >= window_end):
+	while n_forward < max_itinerary_candidates and hasNextPage and covered_end < window_end:
+		if otp_candidates_df.empty:
 			break
 
 		endCursor = response_data["data"]["planConnection"]["pageInfo"]["endCursor"]
@@ -420,13 +409,15 @@ def load_all_candidates(origin: dict,
 		response_data = response.json()
 		hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
 		n_forward += len(response_data["data"]["planConnection"]["edges"])
+		covered_end += pd.Timedelta(response_data["data"]["planConnection"]["pageInfo"]["searchWindowUsed"])
 
+	response_data = first_response_data
+	covered_start = depart_dt
 	n_backward = 0
 	hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 
-	while n_backward < max_itinerary_candidates and hasPreviousPage:
-		earliest_start_df, _ = _candidate_start_bounds(otp_candidates_df)
-		if earliest_start_df is None or (earliest_start_df <= window_start):
+	while n_backward < max_itinerary_candidates and hasPreviousPage and covered_start > window_start:
+		if otp_candidates_df.empty:
 			break
 
 		startCursor = response_data["data"]["planConnection"]["pageInfo"]["startCursor"]
@@ -447,6 +438,7 @@ def load_all_candidates(origin: dict,
 		response_data = response.json()
 		hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 		n_backward += len(response_data["data"]["planConnection"]["edges"])
+		covered_start -= pd.Timedelta(response_data["data"]["planConnection"]["pageInfo"]["searchWindowUsed"])
 
 	otp_candidates_df = deduplicate_itineraries(otp_candidates_df)
 
