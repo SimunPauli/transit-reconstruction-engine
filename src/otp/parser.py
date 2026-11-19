@@ -6,10 +6,8 @@ WGS84_F = 1 / 298.257223563
 
 def decode_polyline(encoded):
 	"""
-	Decode a Google encoded polyline string into a list of (latitude, longitude) tuples.
-
-	This replaces the external `polyline` package so the script does not fail with:
-	ModuleNotFoundError: No module named 'polyline'
+	Decode a Google encoded polyline string (OTP's legGeometry.points, as exported in
+	leg_geometry) into a list of (latitude, longitude) tuples.
 	"""
 	if not encoded:
 		return []
@@ -52,12 +50,23 @@ def decode_polyline(encoded):
 
 	return coordinates
 
-def json_to_df(response):
-	if response.status_code != 200:
-		raise Exception(response.text)
-	if "errors" in response.json():
-		raise Exception(response.json()["errors"])
-	data = response.json()["data"]["planConnection"]["edges"]
+def encode_polyline(coordinates):
+	"""Encode (latitude, longitude) tuples as a Google encoded polyline; inverse of decode_polyline."""
+	chars = []
+	prev_lat = prev_lng = 0
+	for lat, lng in coordinates:
+		lat, lng = round(lat * 1e5), round(lng * 1e5)
+		for delta in (lat - prev_lat, lng - prev_lng):
+			value = ~(delta << 1) if delta < 0 else delta << 1
+			while value >= 0x20:
+				chars.append(chr((0x20 | (value & 0x1F)) + 63))
+				value >>= 5
+			chars.append(chr(value + 63))
+		prev_lat, prev_lng = lat, lng
+	return "".join(chars)
+
+def json_to_df(response_data):
+	data = response_data["data"]["planConnection"]["edges"]
 	rows = []
 	columns = [
 		"iteration_id",
@@ -134,7 +143,7 @@ def json_to_df(response):
 				"bikes_allowed": trip.get("bikesAllowed"),
 				"trip_gtfs_id": trip.get("gtfsId"),
 				"generalized_cost": leg["generalizedCost"],
-				"leg_geometry": decode_polyline(leg["legGeometry"]["points"]),
+				"leg_geometry": leg["legGeometry"]["points"],
 				"system_notice_tag": system_notice_tag,
 				"system_notice_text": system_notice_text
 			})
@@ -198,7 +207,10 @@ def _collapse_interlined_legs(df):
 			previous["distance_km"] = round(previous["distance_km"] + row["distance_km"], 3)
 			if previous["generalized_cost"] is not None and row["generalized_cost"] is not None:
 				previous["generalized_cost"] += row["generalized_cost"]
-			previous["leg_geometry"] = list(previous["leg_geometry"]) + list(row["leg_geometry"])
+			# Encoded polylines are delta-coded, so they can't be joined as strings
+			previous["leg_geometry"] = encode_polyline(
+				decode_polyline(previous["leg_geometry"]) + decode_polyline(row["leg_geometry"])
+			)
 			previous["interlined_route_short_names"].append(row["route_short_name"])
 			previous["interlined_trip_short_names"].append(row["trip_short_name"])
 			previous["interlined_trip_gtfs_ids"].append(row["trip_gtfs_id"])
@@ -284,9 +296,9 @@ def add_leg_times(legs, itinerary_column="iteration_id", timezone="Europe/Copenh
 	return legs
 
 
-def stops_json_to_df(response):
+def stops_json_to_df(response_data):
 	"""One row per stop in a stopsByBbox response; modes/routes as comma-joined strings."""
-	stops = response.json().get("data", {}).get("stopsByBbox", [])
+	stops = response_data.get("data", {}).get("stopsByBbox", [])
 
 	rows = []
 	for stop in stops:

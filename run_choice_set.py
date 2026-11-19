@@ -43,7 +43,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	The TU trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
 	steps' rounds, then one round per fixed_costs entry, then the random_costs rounds (search_rounds,
 	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
-	entry (only those transit modes), then the exclude_targeted rounds, bike access/egress relabelled BICYCLE.
+	entry (only those transit modes), then each exclude_targeted chain's rounds ("all", "first" or "last"
+	legs' routes peeled), bike access/egress relabelled BICYCLE.
 	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
 	itineraries walking at least as far are dropped.
@@ -81,7 +82,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
 	rounds += [("modes", modes, None) for modes in only_modes]
 	# Last, so their itineraries stay out of the random exclusion pools
-	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
+	for chain, chain_rounds in exclude_targeted.items():
+		rounds += [("targeted", chain, None)] * chain_rounds
 	candidates_init = query()
 	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE", #walk_to_bicycle does nothing if tu access/egress is not bike
@@ -119,6 +121,7 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 			                             exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes,
 			                             exclude_targeted, access_egress_mode)
 			#Filter alternatives; drop duplicates only keeping one closest to departure
+
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
 			                                   chosen_start, chosen_legs, chosen_public_transport)
 			trip_choice_set.insert(1, "direct_walk_km", direct_km)

@@ -154,17 +154,21 @@ A draw $X \sim \text{LogUniform}[a,b]$ is $X = \exp(U)$ with $U \sim \mathcal{U}
 \subsection{Targeted exclusion of the fastest routes}
 Random exclusion may not remove the right combination of routes when one fast route dominates
 another, e.g.\ a bus running along a metro line. Targeted rounds peel off the fastest routes
-deterministically. Let $\mathcal{F}_j$ be the itineraries found by targeted round $j$
-($\mathcal{F}_0 = \cand_0$), $E^*_j$ the routes it excludes ($E^*_0 = \emptyset$) and $R(r)$ the routes
-of itinerary $r$. Round $j$ adds the routes of the previous round's fastest itinerary $r^*_j$ (ties to
-the earlier start) to those already excluded:
+deterministically, in independent chains $c \in \{\text{all}, \text{first}, \text{last}\}$. Let
+$\mathcal{F}^c_j$ be the itineraries found by round $j$ of chain $c$ ($\mathcal{F}^c_0 = \cand_0$),
+$E^c_j$ the routes it excludes ($E^c_0 = \emptyset$) and $R_c(r)$ the routes of itinerary $r$ that chain
+$c$ peels: those of all its transit legs for $c = \text{all}$, only the first (last) transit leg's for
+$c = \text{first}$ ($\text{last}$). Round $j$ adds $R_c$ of the previous round's fastest itinerary
+$r^c_j$ (ties to the earlier start) to those already excluded:
 \begin{equation}
-  r^*_j = \operatorname*{arg\,min}_{r \in \mathcal{F}_{j-1}} \bigl(e(r) - s(r)\bigr), \qquad
-  E^*_j = E^*_{j-1} \cup R(r^*_j), \qquad
-  \mathcal{F}_j = Q(\text{exclude routes } E^*_j).
+  r^c_j = \operatorname*{arg\,min}_{r \in \mathcal{F}^c_{j-1}} \bigl(e(r) - s(r)\bigr), \qquad
+  E^c_j = E^c_{j-1} \cup R_c(r^c_j), \qquad
+  \mathcal{F}^c_j = Q(\text{exclude routes } E^c_j).
 \end{equation}
-Once a round finds no itinerary, the remaining targeted rounds are skipped.
-For example, if the fastest itinerary of the plain query is metro M1, round 1 excludes M1 and may find bus 5C along the same corridor; round 2 then excludes both M1 and 5C, and so on.
+Once a round finds no itinerary, the chain's remaining rounds are skipped. A round whose $E^c_j$ an
+earlier targeted round (of any chain) already excluded reuses that round's itineraries instead of
+querying again.
+For example, if the fastest itinerary of the plain query is metro M1, round 1 of the all chain excludes M1 and may find bus 5C along the same corridor; round 2 then excludes both M1 and 5C, and so on. If it is instead a bus feeding an S-train line, the all chain excludes both, while the first chain excludes only the bus, so other buses feeding the same S-train line can come out.
 
 \subsection{Reproducibility}
 
@@ -176,14 +180,16 @@ Every random draw uses a random number generator seeded per trip from the config
 \begin{algorithmic}[1]
 \Require query $Q$ (with pagination and direct-walk filter), chosen itinerary $c_i$, rounds $R = (\rho_1,\dots,\rho_K)$
 \Ensure candidate pool $\cand$
-\State $\cand \gets Q(\emptyset)$; \quad $\cand^{\text{t}} \gets \cand$; \quad $X \gets \emptyset$; \quad $\mathcal{E} \gets \emptyset$
+\State $\cand \gets Q(\emptyset)$; \quad $\cand^{c} \gets \cand$, $X_c \gets \emptyset$ for every chain $c$; \quad $\mathcal{E} \gets \emptyset$
 \For{$k = 1, \dots, K$}
   \If{$\rho_k$ is a cost round}
     \State draw $\theta_k = (\beta_{\text{walk}}, \beta_{\text{wait}}, (\beta_m)_{m}, c_{\text{transfer}})$
-  \ElsIf{$\rho_k$ is a targeted round}
-    \State $r^* \gets$ fastest itinerary of $\cand^{\text{t}}$
+  \ElsIf{$\rho_k$ is a round of targeted chain $c$}
+    \State $r^* \gets$ fastest itinerary of $\cand^{c}$
     \If{$r^*$ does not exist} \textbf{continue} \EndIf
-    \State $X \gets X \cup \text{routes}(T(r^*))$; \quad $\theta_k \gets (\text{exclude routes } X)$
+    \State $X_c \gets X_c \cup R_c(r^*)$
+    \If{an earlier targeted round $k'$ excluded $X_c$} $\cand^{c} \gets \cand_{k'}$; \textbf{continue} \EndIf
+    \State $\theta_k \gets (\text{exclude routes } X_c)$
   \Else \Comment{stop or route exclusion with $n$ ids}
     \State $P \gets$ stop (route) ids of the transit legs of $c_i$ and $\cand$
     \State $\mathcal{S} \gets \{ S \subseteq P : |S| = \min(n,|P|),\ S \notin \mathcal{E} \}$
@@ -191,7 +197,7 @@ Every random draw uses a random number generator seeded per trip from the config
     \State draw $E$ uniformly from $\mathcal{S}$; \quad $\mathcal{E} \gets \mathcal{E} \cup \{E\}$; \quad $\theta_k \gets (\text{exclude } E)$
   \EndIf
   \State $\cand_k \gets Q(\theta_k)$
-  \If{$\rho_k$ is a targeted round} $\cand^{\text{t}} \gets \cand_k$ \EndIf
+  \If{$\rho_k$ is a round of targeted chain $c$} $\cand^{c} \gets \cand_k$ \EndIf
   \State $\cand \gets \cand \cup \cand_k$ \Comment{tagged with round $k$ and $\theta_k$}
 \EndFor
 \State relabel bicycle access/egress (Section~\ref{sec:query})
@@ -314,7 +320,7 @@ Key (\code{choice\_set.*}) & Meaning \\
 \code{exclude\_routes} & \code{steps} of (\code{rounds}, \code{routes\_per\_round}); \code{seed} \\
 \code{random\_costs} & \code{rounds}; $[\min,\max]$ of \code{walk\_cost}, \code{wait\_cost},
   \code{transit\_cost}, \code{transfer\_cost}; \code{seed} \\
-\code{exclude\_targeted} & \code{rounds} \\
+\code{exclude\_targeted} & rounds per chain: \code{all}, \code{first}, \code{last} \\
 \bottomrule
 \end{tabularx}
 \end{center}

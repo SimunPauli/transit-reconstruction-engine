@@ -33,9 +33,11 @@ def get_response(url, query, variables, timeout=60):
 		raise ConnectionError(f"OTP request failed: {exc}") from exc
 	if response.status_code != 200:
 		raise Exception(response.text)
-	if "errors" in response.json():
-		raise Exception(response.json()["errors"])
-	return response
+	# Parsed once here; callers get the dict
+	response_data = response.json()
+	if "errors" in response_data:
+		raise Exception(response_data["errors"])
+	return response_data
 
 
 # If user want
@@ -370,10 +372,9 @@ def load_all_candidates(origin: dict,
 		debug_profile=debug_profile,
 	)
 
-	response = graphql_json_request(**request_kwargs, first=max_itinerary_candidates)
+	response_data = graphql_json_request(**request_kwargs, first=max_itinerary_candidates)
 
-	otp_candidates_df = json_to_df(response)
-	response_data = response.json()
+	otp_candidates_df = json_to_df(response_data)
 
 	search_delta = pd.Timedelta(search_window)
 	window_start = depart_dt - search_delta
@@ -395,9 +396,9 @@ def load_all_candidates(origin: dict,
 		if not endCursor:
 			break
 		# Send forward request to OTP
-		response = graphql_json_request(**request_kwargs, after=endCursor, first=max_itinerary_candidates - n_forward)
+		page_data = graphql_json_request(**request_kwargs, after=endCursor, first=max_itinerary_candidates - n_forward)
 
-		otp_candidates_forward_df = json_to_df(response)
+		otp_candidates_forward_df = json_to_df(page_data)
 		if otp_candidates_forward_df.empty:
 			break
 
@@ -406,7 +407,7 @@ def load_all_candidates(origin: dict,
 		otp_candidates_forward_df["iteration_id"] = otp_candidates_forward_df["iteration_id"] + offset
 		otp_candidates_df = pd.concat([otp_candidates_df, otp_candidates_forward_df]).reset_index(drop=True)
 
-		response_data = response.json()
+		response_data = page_data
 		hasNextPage = response_data["data"]["planConnection"]["pageInfo"]["hasNextPage"]
 		n_forward += len(response_data["data"]["planConnection"]["edges"])
 		covered_end += pd.Timedelta(response_data["data"]["planConnection"]["pageInfo"]["searchWindowUsed"])
@@ -425,9 +426,9 @@ def load_all_candidates(origin: dict,
 			break
 
 		# Send backward request to OTP
-		response = graphql_json_request(**request_kwargs, before=startCursor, last=max_itinerary_candidates - n_backward)
+		page_data = graphql_json_request(**request_kwargs, before=startCursor, last=max_itinerary_candidates - n_backward)
 
-		otp_candidates_backward_df = json_to_df(response)
+		otp_candidates_backward_df = json_to_df(page_data)
 		if otp_candidates_backward_df.empty:
 			break
 		# Add iteration_id to the backward dataframe
@@ -435,7 +436,7 @@ def load_all_candidates(origin: dict,
 		otp_candidates_backward_df["iteration_id"] = otp_candidates_backward_df["iteration_id"] + offset
 		otp_candidates_df = pd.concat([otp_candidates_backward_df, otp_candidates_df]).reset_index(drop=True)
 
-		response_data = response.json()
+		response_data = page_data
 		hasPreviousPage = response_data["data"]["planConnection"]["pageInfo"]["hasPreviousPage"]
 		n_backward += len(response_data["data"]["planConnection"]["edges"])
 		covered_start -= pd.Timedelta(response_data["data"]["planConnection"]["pageInfo"]["searchWindowUsed"])
@@ -468,7 +469,7 @@ def request_direct_leg(
 	Query OTP once for street-only (WALK/CAR) itineraries, without transit. Returns every
 	direct itinerary OTP finds (e.g. both riding and walking a bike).
 	"""
-	response = graphql_json_request(
+	response_data = graphql_json_request(
 		origin=origin,
 		destination=destination,
 		depart_dt=depart_dt,
@@ -481,7 +482,7 @@ def request_direct_leg(
 		timeout=request_timeout,
 	)
 
-	return json_to_df(response)
+	return json_to_df(response_data)
 
 
 ##Get all route names for a specific mode
@@ -495,7 +496,7 @@ def get_all_routes_for_mode(mode: str, url: str = "http://localhost:8080/otp/gtf
       }
     }
     """ % mode
-	data = get_response(url, query, {}).json()
+	data = get_response(url, query, {})
 	return [
 		r["shortName"] for r in data.get("data", {}).get("routes", [])
 		if r.get("shortName")
@@ -542,5 +543,4 @@ def get_stops_by_bbox_query(lat: float,
 		"minLon": minLon
 	}
 
-	response = get_response(otp_url, query, variables)
-	return response
+	return get_response(otp_url, query, variables)

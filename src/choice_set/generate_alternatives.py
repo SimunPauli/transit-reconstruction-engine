@@ -140,10 +140,12 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 	"""
 	candidates plus one re-query per round of rounds, a list of (kind, n, rng) run in order. A "costs"
 	round queries with costs drawn by draw_costs(n, rng), a "fixed_costs" round with fixed_costs(n)
-	(rng unused), a "modes" round with only the transit modes n (rng unused). A "targeted" round (n, rng unused) adds the
-	routes of the previous targeted round's fastest itinerary (the first round's: candidates') to the
-	routes every targeted round excludes, peeling off the routes that dominate slower ones; once one
-	finds nothing, the rest are skipped. Any other kind excludes a set of n ids of kind (EXCLUDE_KINDS)
+	(rng unused), a "modes" round with only the transit modes n (rng unused). A "targeted" round (rng unused)
+	of chain n adds routes of the fastest itinerary of that chain's previous round (the first round's:
+	candidates') to the routes the chain excludes, peeling off the routes that dominate slower ones: all
+	its transit legs' routes for n "all", only the first (last) leg's for "first" ("last"). Once a chain's
+	round finds nothing, its later rounds are skipped; a round excluding the same routes as an earlier
+	targeted round reuses that round's itineraries without querying. Any other kind excludes a set of n ids of kind (EXCLUDE_KINDS)
 	drawn at random (rng) from chosen_legs' and the candidates so far's transit legs, never a set an
 	earlier round excluded; a round with no such set left is skipped. query(**arguments) returns
 	candidates. Each candidate is tagged with its search_round (0 = candidates) and search_variation:
@@ -151,8 +153,9 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 	or modes ("only modes: BUS, ...").
 	"""
 	candidates = candidates_init.copy()
-	targeted_ids = []
-	targeted_source = candidates_init
+	targeted_ids = {}  # chain -> route ids its rounds exclude
+	targeted_source = {}  # chain -> its previous round's itineraries
+	targeted_queries = {}  # sorted excluded route ids -> that round's itineraries
 	candidates = candidates.assign(search_round=0, search_variation="base query")
 	excluded_sets = set()
 	for search_round, (kind, n, rng) in enumerate(rounds, start=1):
@@ -166,12 +169,18 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 			arguments = {"modes_json": [{"mode": mode} for mode in n]}
 			label = f"only modes: {', '.join(n)}"
 		elif kind == "targeted":
-			route_ids = _fastest_routes(targeted_source)
+			route_ids = _fastest_routes(targeted_source.get(n, candidates_init))
+			route_ids = {"all": route_ids, "first": route_ids[:1], "last": route_ids[-1:]}[n]
 			if not route_ids:
 				continue
-			targeted_ids += [route_id for route_id in route_ids if route_id not in targeted_ids]
-			arguments = {"exclude_routeids": list(targeted_ids)}
-			label = f"targeted: {_named_ids(candidates, targeted_ids)}"
+			chain_ids = targeted_ids.setdefault(n, [])
+			chain_ids += [route_id for route_id in route_ids if route_id not in chain_ids]
+			key = tuple(sorted(chain_ids))
+			if key in targeted_queries: #another chain already ran it
+				targeted_source[n] = targeted_queries[key]
+				continue
+			arguments = {"exclude_routeids": list(chain_ids)}
+			label = f"targeted {n}: {_named_ids(candidates, chain_ids)}"
 		elif kind in EXCLUDE_KINDS:
 			columns, argument = EXCLUDE_KINDS[kind]
 			legs = pd.concat([chosen_legs, candidates])
@@ -187,7 +196,7 @@ def search_rounds(query, candidates_init, chosen_legs, rounds):
 			label = f"{kind}: {_named_ids(legs, ids_set)}"
 		round_candidates = query(**arguments)
 		if kind == "targeted":
-			targeted_source = round_candidates #new target
+			targeted_source[n] = targeted_queries[key] = round_candidates #new target
 		if round_candidates.empty:
 			continue
 		# Past the ids so far; a query's ids go negative for backward pages
