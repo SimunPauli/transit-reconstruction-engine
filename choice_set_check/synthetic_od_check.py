@@ -81,9 +81,10 @@ def production(name, orig, dest, config):
 	settings = run_choice_set.otp_settings(config)
 	ThreadStdout.local.buffer = io.StringIO()
 	try:
-		candidates = run_choice_set.trip_candidates(row, deltur, settings, chosen_legs,
-			config["choice_set"]["exclude_stops"], config["choice_set"]["exclude_routes"],
-			config["choice_set"]["random_costs"], config["choice_set"]["exclude_targeted"])
+		cs = config["choice_set"]
+		candidates, _ = run_choice_set.trip_candidates(row, deltur, settings, chosen_legs,
+			cs["exclude_stops"], cs["exclude_routes"], cs["fixed_costs"], cs["random_costs"],
+			cs["only_modes"], cs["exclude_targeted"])
 	finally:
 		log = ThreadStdout.local.buffer.getvalue()
 		ThreadStdout.local.buffer = None

@@ -45,6 +45,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
 	entry (only those transit modes), then the exclude_targeted rounds, bike access/egress relabelled BICYCLE.
 	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
+	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
+	itineraries walking at least as far are dropped.
 	"""
 	tu_legs = tu_trip_legs(tu_tur_row, tu_deltur)
 	trip_query = tu_trip_query(tu_tur_row, tu_deltur)
@@ -82,8 +84,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	rounds += [("targeted", None, None)] * exclude_targeted["rounds"]
 	candidates_init = query()
 	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
-	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE",
-		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO)
+	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE", #walk_to_bicycle does nothing if tu access/egress is not bike
+		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO), direct_km
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
                          chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None,
@@ -113,12 +115,13 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		try:
 			chosen_start, chosen_legs = chosen(tu_tur_row)
 			#Generated alternatives (many will be duplicated)
-			candidates = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
+			candidates, direct_km = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 			                             exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes,
 			                             exclude_targeted, access_egress_mode)
 			#Filter alternatives; drop duplicates only keeping one closest to departure
 			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
 			                                   chosen_start, chosen_legs, chosen_public_transport)
+			trip_choice_set.insert(1, "direct_walk_km", direct_km)
 			print_choice_set(trip_choice_set)
 			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
