@@ -95,7 +95,7 @@ def production(name, orig, dest, config):
 
 def near_routes(lat, lon, url):
 	"""{(mode, short name)} of routes at stops within RADIUS_M."""
-	stops = otp.client.get_stops_by_bbox_query(lat, lon, RADIUS_M, url).json()["data"]["stopsByBbox"]
+	stops = otp.client.get_stops_by_bbox_query(lat, lon, RADIUS_M, url)["data"]["stopsByBbox"]
 	routes = set()
 	for stop in stops:
 		dy = (stop["lat"] - lat) * 111320
