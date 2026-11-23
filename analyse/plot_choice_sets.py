@@ -21,7 +21,6 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.dates as mdates
-import matplotlib.patheffects as patheffects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -46,10 +45,11 @@ LINE_MATCH = {ROUTE_MATCH_EXACT: "exact line", ROUTE_MATCH_SIBLING: "near line (
 NO_LINE_MATCH = "line not checked (no bus/S-train leg)"
 PLOTS_FILE = "choice_set_plots.pdf"
 TIMEZONE = "Europe/Copenhagen"
-MODE_COLORS = {"WALK": "#d9d9d9", "BICYCLE": "#a6d96a", "BUS": "#f2c94c", "RAIL": "#c0392b",
+MODE_COLORS = {"WALK": "#808080", "BICYCLE": "#a6d96a", "BUS": "#f2c94c", "RAIL": "#c0392b",
 	"S_TRAIN": "#f28e2b", "SUBWAY": "#4e79a7", "TRAM": "#76b7b2", "FERRY": "#9c755f"}
 OTHER_MODE_COLOR = "#999999"
-CASING = [patheffects.Stroke(linewidth=4.5, foreground="#333333"), patheffects.Normal()]  # lines' dark outline, to stand out on OSM
+CHOSEN_STYLE = {"color": "magenta", "lw": 8, "alpha": 0.35}  # wide highlighter under the alternative, a colour no mode has
+HIGHLIGHT_COLOR = "#1f4e9c"  # the same-routes alternative's frame and timeline band, for STOP_CAUSES trips
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 TILE_HEADERS = {"User-Agent": "trip_choice_pipeline plot_choice_sets"}  # OSM's tile policy requires one
 MAP_PX = 1024  # OSM background's resolution across a map (×0.7–1.4, by zoom level)
@@ -143,10 +143,10 @@ def map_extent(trip, shown):
 	return x_mid - half, x_mid + half, y_mid - half, y_mid + half
 
 
-def plot_map(ax, trip, alt_id, label, extent):
+def plot_map(ax, trip, alt_id, label, extent, highlight):
 	"""
 	Legs of alt_id, coloured by mode, over the chosen's (wide underneath; walk dashed) in Web Mercator over
-	OSM, their transit stops named, those only one of them uses circled red.
+	OSM, their transit stops named, those only one of them uses circled red. highlight: framed, bold title.
 	"""
 	stops = {}
 	for shown_id in dict.fromkeys([0, alt_id]):
@@ -158,10 +158,9 @@ def plot_map(ax, trip, alt_id, label, extent):
 			x, y = _mercator(points)
 			walk = leg["mode"] in STREET_MODES
 			if shown_id == 0:
-				ax.plot(x, y, color="black", lw=6, alpha=0.3, ls=":" if walk else "-", zorder=1)
+				ax.plot(x, y, **CHOSEN_STYLE, ls=":" if walk else "-", zorder=1)
 			else:
-				ax.plot(x, y, color=MODE_COLORS.get(leg["mode"], OTHER_MODE_COLOR), lw=2.5, ls="--" if walk else "-",
-					path_effects=CASING, zorder=2)
+				ax.plot(x, y, color=MODE_COLORS.get(leg["mode"], OTHER_MODE_COLOR), lw=2.5, ls="--" if walk else "-", zorder=2)
 			if not walk:
 				used.setdefault(leg["from"], (x[0], y[0]))
 				used.setdefault(leg["to"], (x[-1], y[-1]))
@@ -185,11 +184,17 @@ def plot_map(ax, trip, alt_id, label, extent):
 		add_osm_background(ax)
 	ax.set_xticks([])
 	ax.set_yticks([])
-	ax.set_title(label, fontsize=10)
+	ax.set_title(label, fontsize=10, fontweight="bold" if highlight else "normal", color=HIGHLIGHT_COLOR if highlight else "black")
+	if highlight:
+		for spine in ax.spines.values():
+			spine.set(color=HIGHLIGHT_COLOR, linewidth=4)
 
 
-def plot_timeline(ax, trip, shown):
-	"""One row per shown alternative: legs as bars coloured by mode, labelled by km (and route, transit)."""
+def plot_timeline(ax, trip, shown, highlight):
+	"""
+	One row per shown alternative: legs as bars coloured by mode, labelled by km (and route, transit).
+	highlight (an alt_id, or None): its row banded, label bold.
+	"""
 	modes = set()
 	for row, alt_id in enumerate(shown):
 		legs = trip[trip["alt_id"] == alt_id].sort_values("leg_id")
@@ -202,6 +207,10 @@ def plot_timeline(ax, trip, shown):
 			ax.text((start + end) / 2, row, text, ha="center", va="center", fontsize=8, clip_on=True)
 
 	ax.set_yticks(range(len(shown)), list(shown.values()), fontsize=9)
+	if highlight is not None:
+		row = list(shown).index(highlight)
+		ax.axhspan(row - 0.45, row + 0.45, color=HIGHLIGHT_COLOR, alpha=0.15, zorder=0)
+		ax.get_yticklabels()[row].set(fontweight="bold", color=HIGHLIGHT_COLOR)
 	ax.invert_yaxis()
 	ax.axhline(0.5, color="black", lw=1)  # the chosen's row apart
 	chosen_start = _clock(trip.loc[trip["alt_id"] == 0, "start_leg"]).min()
@@ -215,18 +224,22 @@ def plot_timeline(ax, trip, shown):
 def plot_trip(pdf, tur_id, trip, info, closest):
 	line_match = LINE_MATCH.get(info["route_match"], NO_LINE_MATCH)
 	shown = shown_alternatives(trip, closest, line_match)
+	# Where the chosen's stops are the likely cause, its closest same-routes alternative matters most: first
+	highlight = closest if info["likely_cause"] in coverage.STOP_CAUSES and closest in shown else None
+	if highlight is not None:
+		shown = {0: shown.pop(0), highlight: shown.pop(highlight), **shown}
 	map_ids = [alt_id for alt_id in shown if alt_id != 0] or [0]  # the chosen alone if no alternatives
 	map_rows = -(-len(map_ids) // MAP_COLUMNS)
 	fig = plt.figure(figsize=(MAP_COLUMNS * MAP_SIZE_IN, TIMELINE_HEIGHT_IN + map_rows * MAP_SIZE_IN), layout="constrained")
 	grid = fig.add_gridspec(1 + map_rows, MAP_COLUMNS, height_ratios=[TIMELINE_HEIGHT_IN, *[MAP_SIZE_IN] * map_rows])
-	plot_timeline(fig.add_subplot(grid[0, :]), trip, shown)
+	plot_timeline(fig.add_subplot(grid[0, :]), trip, shown, highlight)
 	extent = map_extent(trip, shown)
 	for i, alt_id in enumerate(map_ids):
 		plot_map(fig.add_subplot(grid[1 + i // MAP_COLUMNS, i % MAP_COLUMNS]), trip, alt_id,
-			shown[alt_id].replace("\n", " · "), extent)
+			shown[alt_id].replace("\n", " · "), extent, alt_id == highlight)
 	fig.legend(handles=[
-		Line2D([], [], color="black", lw=5, alpha=0.3, label="chosen"),
-		Line2D([], [], color=MODE_COLORS["WALK"], lw=2.5, ls="--", path_effects=CASING, label="walk (chosen dotted)"),
+		Line2D([], [], **CHOSEN_STYLE, label="chosen"),
+		Line2D([], [], color=MODE_COLORS["WALK"], lw=2.5, ls="--", label="walk (chosen dotted)"),
 		Line2D([], [], marker="^", color="green", ls="", label="origin"),
 		Line2D([], [], marker="s", color="red", ls="", label="destination"),
 		Line2D([], [], marker="o", mfc="none", mec="red", ls="", ms=10, label="stop only one of them uses"),
@@ -271,3 +284,4 @@ def main():
 
 if __name__ == "__main__":
 	main()
+	
