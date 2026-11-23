@@ -45,7 +45,7 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
 	entry (only those transit modes), then each exclude_targeted chain's rounds ("all", "first" or "last"
 	legs' routes peeled), bike access/egress relabelled BICYCLE.
-	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
+	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs (no BICYCLE relabel).
 	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
 	itineraries walking at least as far are dropped.
 	"""
@@ -86,6 +86,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 		rounds += [("targeted", chain, None)] * chain_rounds
 	candidates_init = query()
 	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
+	if access_egress_mode:
+		return candidates, direct_km
 	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE", #walk_to_bicycle does nothing if tu access/egress is not bike
 		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO), direct_km
 
@@ -189,8 +191,8 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"], groups=outcome,
 		trip_columns=pd.DataFrame({name: outcome.eq(name).astype(int) for name in ["trip_found", "trip_near_route"]}))
 
-def car_chosen(tu_tur_row, tu_deltur):
-	"""(depart_dt, chosen_legs) of a car trip: its TU legs, in the choice-set columns TU has."""
+def tu_chosen(tu_tur_row, tu_deltur):
+	"""(depart_dt, chosen_legs) of a street-mode trip: its TU legs, in the choice-set columns TU has."""
 	tu_legs = tu_deltur[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
 	chosen_legs = pd.DataFrame({
 		"leg_id": tu_legs["Delturnr"] - 1,
@@ -203,23 +205,22 @@ def car_chosen(tu_tur_row, tu_deltur):
 	#TODO: Should chosen be OTP shorest path with car instead of TU given answer?
 	return tu_tur_row["depart_dt"], chosen_legs
 
-def car_choice_set(config, tee, tu_session, tu_tur, tu_deltur):
+def street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, stage_modes, choice_set_file):
 	"""
-	---- Public transport choice-set for car trip ----
+	---- Public transport choice-set for street-mode (car, bike) trips ----
 
-	Chosen trips are with car. Alternatives are OTP itineraries for the same
-	origin, destination and departure with WALK access/egress on any route, collapsed per
-	choice_set.alternative_key (what makes two itineraries the same alternative).
+	Chosen trips have primary mode in stage_modes and only those and walk legs. Alternatives are
+	OTP itineraries for the same origin, destination and departure with WALK access/egress on any
+	route, collapsed per choice_set.alternative_key (what makes two itineraries the same alternative).
 	"""
-	turid_car = tu_tur.loc[tu_tur["PrimMode"] == 11,"TurId"] #primary mode is car
-	legs = tu_deltur[tu_deltur["TurId"].isin(turid_car)]
-	only_car_walk = legs["StageMode"].isin([1,11]).groupby(legs["TurId"]).all()
-	turid_car = only_car_walk[only_car_walk].index
-	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_car)
+	turid = tu_tur.loc[tu_tur["PrimMode"].isin(stage_modes), "TurId"]
+	legs = tu_deltur[tu_deltur["TurId"].isin(turid)]
+	only_mode_walk = legs["StageMode"].isin([1, *stage_modes]).groupby(legs["TurId"]).all()
+	turid = only_mode_walk[only_mode_walk].index
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid)
 
-	return generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: car_chosen(tu_tur_row, tu_deltur),
-		chosen_public_transport=False,
-		choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
+	return generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: tu_chosen(tu_tur_row, tu_deltur),
+		chosen_public_transport=False, choice_set_file=choice_set_file, access_egress_mode="WALK")
 
 def _run(config, tee, chosen_trips_path):
 	print("Loading TU data...")
@@ -227,8 +228,11 @@ def _run(config, tee, chosen_trips_path):
 	print("TU data loaded")
 
 	summaries = {
-		"public": public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path),
-		"car": car_choice_set(config, tee, tu_session, tu_tur, tu_deltur),
+	#	"public": public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path),
+	#	"car": street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, {11},
+	#		config["choice_set"]["paths"]["car_choice_set_file"]),
+		"bike": street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, {2},
+			config["choice_set"]["paths"]["bike_choice_set_file"]),
 	}
 	if any(summary is not None for summary in summaries.values()):
 		summary_file = config["choice_set"]["paths"]["summary_file"]

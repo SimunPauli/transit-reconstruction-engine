@@ -1,7 +1,7 @@
 """
 Runs one made-up TU trip through run_choice_set's choice-set generation, for debugging in PyCharm.
 Edit the OD, departure and legs below. No TU data or reconstruction run is needed: the fake
-legs are the chosen alternative, as for a car trip (run_choice_set.car_chosen).
+legs are the chosen alternative, as for a car trip (run_choice_set.tu_chosen).
 """
 import sys
 from contextlib import redirect_stdout
@@ -9,7 +9,7 @@ import pandas as pd
 from src.config_loader import get_config, start_run
 from src.constant import MODE_MAP, LOCAL_TIMEZONE
 from src.run_utils import Tee
-from run_choice_set import generate_choice_sets, car_chosen
+from run_choice_set import generate_choice_sets, tu_chosen
 
 ORIGIN = (55.66660, 12.60356)       # lat, lon
 DESTINATION = (55.78022, 12.51670)  # lat, lon
@@ -48,8 +48,8 @@ def main():
 	with open(config["choice_set"]["paths"]["log_file"], "w", encoding="utf-8") as log_file:
 		tee = Tee(sys.stdout, log_file)
 		with redirect_stdout(tee):
-			# WALK access/egress, as car_choice_set
-			generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: car_chosen(tu_tur_row, tu_deltur),
+			# WALK access/egress, as street_choice_set
+			generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: tu_chosen(tu_tur_row, tu_deltur),
 				chosen_public_transport=False,
 				choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
 
