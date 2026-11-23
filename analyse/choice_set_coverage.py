@@ -169,6 +169,8 @@ def coverage_table(choice_sets, summaries, window_min, differences):
 	trips["walks_past_direct"] = trips["chosen_walk_km"] + DIRECT_WALK_MARGIN_KM >= trips["direct_walk_km"]
 	# An alternative with the chosen's routes but other stops: covered under alternative_key "routes"
 	trips["same_routes_alt"] = (choice_sets["route_group"].eq(0) & choice_sets["alt_id"].ne(0)).groupby(choice_sets["TurId"]).any()
+	# Coverage with other_stops and other_transfer trips counted as covered
+	trips["coverage_routes"] = (trips["coverage"].eq(1) | trips["same_routes_alt"]).astype(int)
 	# Where the closest same-routes alternative differs: at any transfer stop, else access/egress only
 	transfer = differences["position"].eq("transfer").groupby(differences["TurId"]).any()
 	trips["same_routes_differ_at"] = transfer.map({True: "transfer", False: "access_egress"})
@@ -192,7 +194,7 @@ def coverage_table(choice_sets, summaries, window_min, differences):
 
 
 def coverage_by_feature(trips):
-	"""Trips, uncovered trips and coverage share per group of each feature."""
+	"""Trips, uncovered trips and coverage share (also as coverage_routes) per group of each feature."""
 	features = {
 		"trip_near_route": trips["trip_near_route"],
 		"route_match": trips["route_match"].fillna("no bus/S-train leg"),
@@ -209,14 +211,16 @@ def coverage_by_feature(trips):
 	}
 	rows = []
 	for name, values in features.items():
-		grouped = trips["coverage"].groupby(values.astype(str), dropna=False)
+		grouped = trips[["coverage", "coverage_routes"]].groupby(values.astype(str), dropna=False)
 		rows.append(pd.DataFrame({
 			"feature": name,
 			"trips": grouped.size(),
-			"uncovered": grouped.apply(lambda coverage: (coverage == 0).sum()),
-			"coverage_share": grouped.mean().round(3),
+			"uncovered": grouped["coverage"].apply(lambda coverage: (coverage == 0).sum()),
+			"coverage_share": grouped["coverage"].mean().round(3),
+			"coverage_share_routes": grouped["coverage_routes"].mean().round(3),
 		}).rename_axis("group").reset_index())
-	return pd.concat(rows, ignore_index=True)[["feature", "group", "trips", "uncovered", "coverage_share"]]
+	return pd.concat(rows, ignore_index=True)[["feature", "group", "trips", "uncovered", "coverage_share",
+		"coverage_share_routes"]]
 
 
 def main():
@@ -245,6 +249,8 @@ def main():
 
 	uncovered = trips[trips["coverage"] == 0]
 	print(f"\n{len(uncovered)} of {len(trips)} trips uncovered ({len(uncovered) / len(trips):.1%})")
+	print(f"Coverage share {trips['coverage'].mean():.1%}, {trips['coverage_routes'].mean():.1%} with other_stops "
+		f"and other_transfer covered (coverage_routes)")
 	print(f"\nLikely cause (first that applies, in order {', '.join(CAUSE_ORDER)}):")
 	print(uncovered["likely_cause"].value_counts().to_string())
 	print("\nCoverage by feature:")
