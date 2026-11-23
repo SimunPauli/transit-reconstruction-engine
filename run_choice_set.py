@@ -88,8 +88,8 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
 	if access_egress_mode:
 		return candidates, direct_km
-	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BIKE", #walk_to_bicycle does nothing if tu access/egress is not bike
-		tu_legs["otp_mode"].iloc[-1] == "BIKE", WALK_BIKE_TIME_RATIO), direct_km
+	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BICYCLE", #walk_to_bicycle does nothing if tu access/egress is not bike
+		tu_legs["otp_mode"].iloc[-1] == "BICYCLE", WALK_BIKE_TIME_RATIO), direct_km
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
                          chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None,

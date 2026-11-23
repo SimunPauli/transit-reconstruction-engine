@@ -13,9 +13,9 @@ MODE_MAP = {
 	35: "CAR", #Telebus, Flexbus. These are often essentially functioning as taxi.
 	# Street modes:
 	1: "WALK",
-	2: "BIKE",
+	2: "BICYCLE",
 	7: "WALK",  # Electric wheelchair. Assumed to have same speed as regular walk. Very few observations
-	8: "BIKE",  # Electric bike. Assumed to have same speed as regular bike. Few observations.
+	8: "BICYCLE",  # E-scooter. Assumed to have same speed as regular bike... Few observations!
 	11: "CAR",
 	12: "CAR",  # van
 	25: "CAR",  # Taxi
@@ -23,7 +23,7 @@ MODE_MAP = {
 	# TODO: Add all modes. For some modes, OTP need modification. Which might not be worth the time as they have almost no observations.
 }
 
-#BIKE doesn't work well with OTP. So setting it to walk, then later reducing the time by WALK_BIKE_TIME_RATIO
+#BICYCLE doesn't work well with OTP. So setting it to walk, then later reducing the time by WALK_BIKE_TIME_RATIO
 ACCESS_EGRESS_MODE_MAP = {
 	1: "WALK",
 	2: "WALK", #Bicycle
@@ -56,7 +56,7 @@ DIRECT_ACCESS_MODE_MAP = {
 #SUBWAY/BUS/RAIL/S_TRAIN/TRAM leg is not. BICYCLE is the bike-placeholder rename (see
 #delturnr_otp_candidates.py); the rest are OTP's direct/access-egress street modes.
 STREET_MODES = {
-	"WALK", "BICYCLE", "BIKE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
+	"WALK", "BICYCLE", "BIKE_RENTAL", "BIKE_TO_PARK", "CAR", "CARPOOL",
 	"CAR_HAILING", "CAR_RENTAL", "CAR_TO_PARK", "FLEXIBLE", "SCOOTER_RENTAL"
 }
 
@@ -65,7 +65,7 @@ LOCAL_TIMEZONE = "Europe/Copenhagen"
 
 WALK_BIKE_TIME_RATIO = config["tu_prep"]["walk_bike_time_ratio"]
 
-#Plain walk only (not the BIKE stage modes, which have their own placeholder handling) and the
+#Plain walk only (not the bike stage modes, which have their own placeholder handling) and the
 #CAR-family stage modes, for tu_utils.absorb_short_walk_into_car.
 WALK_STAGE_MODES = {1, 7}
 CAR_STAGE_MODES = {11, 12, 14, 25, 26, 35}
