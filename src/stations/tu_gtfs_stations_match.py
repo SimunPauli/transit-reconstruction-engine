@@ -1,5 +1,5 @@
 import pandas as pd
-from src import otp
+from pt_network_simulation import otp
 import re
 from rapidfuzz import fuzz
 import numpy as np

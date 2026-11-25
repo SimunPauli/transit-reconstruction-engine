@@ -38,7 +38,7 @@ config_loader._config = config_loader.load_config(CONFIG_PATH)
 
 from src.tu import load_TU_data
 from src.matching.best_otp_candidate import street_length_bin
-from src.otp.client import STREET_MODES
+from pt_network_simulation.otp.client import STREET_MODES
 from src.tu.tu_utils import absorb_short_walk_into_car
 
 DISTANCE_BINS_KM = [0, 0.5, 1, 2, 5, 10, 20, np.inf]

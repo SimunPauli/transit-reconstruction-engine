@@ -6,7 +6,7 @@ from .candidate_search import (
 	load_candidates_with_reluctance_retries,
 	drop_via_stations,
 )
-from src import otp
+from pt_network_simulation import otp
 from src.tu.tu_utils import tu_endpoints
 from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,

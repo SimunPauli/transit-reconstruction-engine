@@ -7,7 +7,7 @@ import pandas as pd
 from src.tu import load_TU_data
 from src.matching.tu_otp_matching import match_tu_trip_to_otp
 from src.matching.candidate_search import SearchSettings
-from src import otp
+from pt_network_simulation import otp
 from src.matching.route_matching_utils import build_route_name_index
 from src.stations.tu_gtfs_stations_match import match_tu_gtfs_stations
 from src.matching.anchor_stitching import build_anchor_station_lookup

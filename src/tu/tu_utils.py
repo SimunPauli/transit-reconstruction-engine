@@ -1,5 +1,5 @@
 import pandas as pd
-from src import otp
+from pt_network_simulation import otp
 from src.constant import WALK_STAGE_MODES, CAR_STAGE_MODES, WALK_CAR_ABSORB_MAX_KM, ACCESS_EGRESS_MODE_MAP
 
 

@@ -9,7 +9,7 @@ from .route_matching_utils import (
 	resolve_route_short_names,
 )
 from src.tu.tu_utils import tu_trip_legs
-from src import otp
+from pt_network_simulation import otp
 from src.constant import (
 	DIRECT_ACCESS_MODE_MAP,
 	REASON_NO_VALID_MODES,

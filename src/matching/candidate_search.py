@@ -2,10 +2,10 @@ import pandas as pd
 from dataclasses import dataclass
 from itertools import combinations
 from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summarize_alignment_diagnostics
-from src import otp
+from pt_network_simulation import otp
 from .route_matching_utils import resolve_route_short_names
 from src.tu.tu_utils import tu_endpoints, get_access_egress
-from src.otp.client import STREET_MODES
+from pt_network_simulation.otp.client import STREET_MODES
 from src.constant import (
 	REASON_NO_OTP_CANDIDATES,
 	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,

@@ -12,8 +12,8 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, elapsed, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query
-from src.choice_set.generate_alternatives import choice_set_summary
-from src.choice_set.batch import generate_choice_sets
+from pt_network_simulation.choice_set.generate_alternatives import choice_set_summary
+from pt_network_simulation.choice_set.batch import generate_choice_sets
 from src.constant import TRANSIT_STAGE_MODES
 
 def main():

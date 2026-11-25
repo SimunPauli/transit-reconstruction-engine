@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src import otp
+from pt_network_simulation import otp
 from src.matching import tu_otp_matching
 from src.matching.candidate_search import SearchSettings
 from src.matching.route_matching_utils import build_route_name_index

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from src.config_loader import get_config
-from src.otp.client import STREET_MODES
+from pt_network_simulation.otp.client import STREET_MODES
 from src.constant import TRANSIT_STAGE_MODES
 
 def street_length_bin(tu_km, length_bins):
