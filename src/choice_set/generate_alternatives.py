@@ -3,7 +3,6 @@ import math
 import pandas as pd
 from src import otp
 from src.otp.client import STREET_MODES
-from src.constant import METRO_SIBLING_LINES, S_TRAIN_UNGROUPED_LINES
 
 # Transit-leg columns that make two itineraries the same alternative (choice_set.alternative_key).
 # Stops by GTFS stop name: only stops with identical names count as one (platforms usually differ).
@@ -44,8 +43,10 @@ CHOICE_SET_COLUMNS = [
 	"leg_geometry",
 ]
 
-
-
+# Metro lines sharing track; line_group counts them as one route.
+METRO_SIBLING_LINES = {"M1": "M2", "M2": "M1", "M3": "M4", "M4": "M3"}
+# S-train lines but F share one track between any two stops they share; F crosses them instead
+S_TRAIN_UNGROUPED_LINES = {"F"}
 
 
 def _line_group_route(mode, name):
