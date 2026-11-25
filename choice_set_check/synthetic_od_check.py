@@ -12,7 +12,6 @@ Writes summary.csv, misses.csv and per OD its choice set, itineraries and produc
 """
 import io
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from math import radians, cos, sqrt
 from pathlib import Path
@@ -23,6 +22,7 @@ from src import otp
 from src.config_loader import get_config
 from src.otp.client import STREET_MODES
 from src.choice_set.generate_alternatives import trip_candidates, build_choice_set, ALTERNATIVE_KEYS, _line_group_route
+from src.choice_set.batch import ThreadStdout
 
 if len(sys.argv) != 2:
 	sys.exit("Usage: .venv/bin/python choice_set_check/synthetic_od_check.py <out_dir>")
@@ -50,26 +50,15 @@ ODS = {
 }
 
 
-class ThreadStdout(io.TextIOBase):
-	"""Per-thread print buffer, so parallel ODs' prints don't interleave."""
-	local = threading.local()
-
-	def __init__(self, real):
-		self.real = real
-
-	def write(self, text):
-		buffer = getattr(self.local, "buffer", None)
-		return (buffer or self.real).write(text)
-
-
 def production(name, orig, dest, config):
-	ThreadStdout.local.buffer = io.StringIO()
+	# sys.stdout is main()'s ThreadStdout, so parallel ODs' prints don't interleave
+	sys.stdout.local.buffer = io.StringIO()
 	try:
 		candidates, _ = trip_candidates(name, otp.client.coordinate_location(*orig),
 			otp.client.coordinate_location(*dest), DEPART, "WALK", "WALK", config)
 	finally:
-		log = ThreadStdout.local.buffer.getvalue()
-		ThreadStdout.local.buffer = None
+		log = sys.stdout.local.buffer.getvalue()
+		sys.stdout.local.buffer = None
 	choice_set = build_choice_set(name, candidates, ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]], DEPART)
 	return candidates, choice_set, log
 

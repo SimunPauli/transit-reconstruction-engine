@@ -288,6 +288,7 @@ def trip_candidates(trip_id, origin, destination, depart_dt, access_mode, egress
 		max_itinerary_candidates=request["max_itinerary_candidates"],
 		otp_url=request["otp_url"],
 		request_timeout=request["request_timeout"],
+		print_query=request.get("print_query", False),
 		#TODO: decide on debug_profile. Currently default ("LIST_ALL")
 	)
 	trip_query = dict(origin=origin, destination=destination, depart_dt=depart_dt,
