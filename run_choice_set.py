@@ -228,9 +228,9 @@ def _run(config, tee, chosen_trips_path):
 	print("TU data loaded")
 
 	summaries = {
-	#	"public": public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path),
-	#	"car": street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, {11},
-	#		config["choice_set"]["paths"]["car_choice_set_file"]),
+		"public": public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_trips_path),
+		"car": street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, {11},
+			config["choice_set"]["paths"]["car_choice_set_file"]),
 		"bike": street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, {2},
 			config["choice_set"]["paths"]["bike_choice_set_file"]),
 	}
