@@ -1,7 +1,7 @@
 """
 Synthetic-OD recall check of the choice-set generator.
 
-Per OD: the production choice set (run_choice_set.trip_candidates + build_choice_set, config.json's
+Per OD: the production choice set (trip_candidates + build_choice_set, config.json's
 settings) vs an oracle that forces each route / route pair serving stops near origin and destination
 (include filter), so alternatives Raptor prunes as dominated still come out. Reports which plausible
 oracle alternatives the choice set misses, and whether a found itinerary dominates them.
@@ -19,11 +19,10 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import run_choice_set
 from src import otp
 from src.config_loader import get_config
 from src.otp.client import STREET_MODES
-from src.choice_set.generate_alternatives import build_choice_set, ALTERNATIVE_KEYS, _line_group_route
+from src.choice_set.generate_alternatives import trip_candidates, build_choice_set, ALTERNATIVE_KEYS, _line_group_route
 
 if len(sys.argv) != 2:
 	sys.exit("Usage: .venv/bin/python choice_set_check/synthetic_od_check.py <out_dir>")
@@ -63,33 +62,15 @@ class ThreadStdout(io.TextIOBase):
 		return (buffer or self.real).write(text)
 
 
-def synthetic_trip(turid, orig, dest):
-	"""A TU trip row and walk/bus/walk legs for an OD, as trip_candidates reads them."""
-	row = pd.Series({"TurId": turid, "SessionId": turid, "orig_lat": orig[0], "orig_lon": orig[1],
-		"tiladrlat": dest[0], "tiladrlon": dest[1], "depart_dt": DEPART, "arrival_dt": DEPART + pd.Timedelta("1h"),
-		"depart_dt_str": str(DEPART), "arrival_dt_str": ""})
-	deltur = pd.DataFrame({"TurId": turid, "Delturnr": [1, 2, 3], "StageMode": [1, 31, 1],
-		"otp_mode": ["WALK", "BUS", "WALK"], "StageLength": [0.3, 5, 0.3], "StageDurationMin": [4, 20, 4],
-		"StageWaitMin": [0, 2, 0], "Route": None, "FromStation": None, "ToStation": None})
-	return row, deltur
-
-
 def production(name, orig, dest, config):
-	row, deltur = synthetic_trip(name, orig, dest)
-	chosen_legs = pd.DataFrame({"leg_id": [0], "start_trip": DEPART, "end_trip": DEPART, "mode": "CAR",
-		"distance_km": 0.0, "duration_min": 0})
-	settings = run_choice_set.otp_settings(config)
 	ThreadStdout.local.buffer = io.StringIO()
 	try:
-		cs = config["choice_set"]
-		candidates, _ = run_choice_set.trip_candidates(row, deltur, settings, chosen_legs,
-			cs["exclude_stops"], cs["exclude_routes"], cs["fixed_costs"], cs["random_costs"],
-			cs["only_modes"], cs["exclude_targeted"])
+		candidates, _ = trip_candidates(name, otp.client.coordinate_location(*orig),
+			otp.client.coordinate_location(*dest), DEPART, "WALK", "WALK", config)
 	finally:
 		log = ThreadStdout.local.buffer.getvalue()
 		ThreadStdout.local.buffer = None
-	choice_set = build_choice_set(name, candidates, ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]],
-		DEPART, chosen_legs, chosen_public_transport=False)
+	choice_set = build_choice_set(name, candidates, ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]], DEPART)
 	return candidates, choice_set, log
 
 

@@ -50,7 +50,6 @@ def main():
 		with redirect_stdout(tee):
 			# WALK access/egress, as street_choice_set
 			generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: tu_chosen(tu_tur_row, tu_deltur),
-				chosen_public_transport=False,
 				choice_set_file=config["choice_set"]["paths"]["car_choice_set_file"], access_egress_mode="WALK")
 
 

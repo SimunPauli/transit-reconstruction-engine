@@ -22,7 +22,7 @@ It needs a running OTP at `config.json`'s `request.otp_url`, serving a graph tha
 The script uses a fixed list of synthetic origin–destination pairs (`ODS`): commuter corridors with
 known slower alternatives, such as bus 5C vs. metro M3 or S-train E vs. regional train RE. For each pair:
 
-- **Production:** the choice set from `run_choice_set.trip_candidates` and `build_choice_set`, as in
+- **Production:** the choice set from `trip_candidates` and `build_choice_set`, as in
   a real run, with walk access/egress and no chosen trip.
 - **Oracle:** one OTP query per route, and per pair of routes, serving stops within `RADIUS_M` of the
   origin and destination. Each query allows only those routes, so it finds alternatives that OTP's

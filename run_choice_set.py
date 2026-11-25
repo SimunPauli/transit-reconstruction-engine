@@ -1,5 +1,4 @@
 import io
-import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -10,8 +9,7 @@ from src.config_loader import get_config, start_run
 from src.run_utils import Tee, elapsed, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query
-from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, search_rounds,
-	choice_set_summary, print_choice_set)
+from src.choice_set.generate_alternatives import trip_choice_set, choice_set_summary, print_choice_set
 from src.constant import TRANSIT_STAGE_MODES
 from src import otp
 
@@ -25,87 +23,15 @@ def main():
 		with redirect_stdout(tee):
 			_run(config, tee, chosen_trips_path)
 
-def otp_settings(config):
-	"""otp.client.load_all_candidates settings, the same for every choice-set trip."""
-	request = config["request"]
-	return dict(
-		search_window=config["choice_set"]["search_window"],
-		max_itinerary_candidates=request["max_itinerary_candidates"],
-		otp_url=request["otp_url"],
-		request_timeout=request["request_timeout"],
-		#TODO: decide on debug_profile. Currently default ("LIST_ALL")
-	)
-
-def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
-                    exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes, exclude_targeted,
-                    access_egress_mode=None):
-	"""
-	The TU trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
-	steps' rounds, then one round per fixed_costs entry, then the random_costs rounds (search_rounds,
-	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
-	entry (only those transit modes), then each exclude_targeted chain's rounds ("all", "first" or "last"
-	legs' routes peeled).
-	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
-	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
-	itineraries walking at least as far are dropped.
-	"""
-	trip_query = tu_trip_query(tu_tur_row, tu_deltur)
-	if access_egress_mode:
-		trip_query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
-
-	direct = otp.client.request_direct_leg(trip_query["origin"], trip_query["destination"], "WALK",
-	                                       trip_query["depart_dt"], otp_url=settings["otp_url"],
-	                                       request_timeout=settings["request_timeout"])
-	direct_km = None if direct.empty else direct.groupby("iteration_id")["distance_km"].sum().min()
-	def query(**arguments):
-		candidates = otp.client.load_all_candidates(**trip_query, **settings, **arguments)
-		if direct_km is None or candidates.empty:
-			return candidates
-		walk_km = candidates["distance_km"].where(candidates["mode"] == "WALK", 0).groupby(candidates["iteration_id"]).transform("sum")
-		keep = walk_km + 0.01 < direct_km
-		n_dropped = candidates.loc[~keep, "iteration_id"].nunique()
-#		if n_dropped:
-#			print(f"Dropped {n_dropped} itierary(ies) walking at least as far as the direct walk ({direct_km:.3f} km)")
-		return candidates[keep].reset_index(drop=True)
-
-	# Seeded per trip, so draws don't depend on thread order
-	stop_rng = random.Random(f"{exclude_stops['seed']}:{tu_tur_row['TurId']}")
-	route_rng = random.Random(f"{exclude_routes['seed']}:{tu_tur_row['TurId']}")
-	cost_rng = random.Random(f"{random_costs['seed']}:{tu_tur_row['TurId']}")
-	rounds = []
-	for step in exclude_stops["steps"]:
-		rounds += [("stops", step["stops_per_round"], stop_rng)] * step["rounds"]
-	for step in exclude_routes["steps"]:
-		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
-	rounds += [("fixed_costs", costs, None) for costs in fixed_costs]
-	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
-	rounds += [("modes", modes, None) for modes in only_modes]
-	# Last, so their itineraries stay out of the random exclusion pools
-	for chain, chain_rounds in exclude_targeted.items():
-		rounds += [("targeted", chain, None)] * chain_rounds
-	candidates_init = query()
-	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
-	return candidates, direct_km
-
-def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
-                         chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None,
-                         trip_columns=None):
+def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, choice_set_file, access_egress_mode=None,
+                         groups=None, trip_columns=None):
 	"""
 	Choice sets for every trip in tu_tur, written to choice_set_file; prints and returns their
 	choice_set_summary per groups (None if there are none). chosen(tu_tur_row) returns the trip's
-	(chosen_start, chosen_legs); chosen_public_transport is passed on to build_choice_set,
-	access_egress_mode to trip_candidates. trip_columns (DataFrame indexed by TurId), if given, is
-	written after TurId.
+	chosen_legs. access_egress_mode, if given, replaces the access/egress mode derived from the TU
+	legs. trip_columns (DataFrame indexed by TurId), if given, is written after TurId.
 	"""
 	start = time.perf_counter()
-	key_columns = ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]]
-	exclude_stops = config["choice_set"]["exclude_stops"]
-	exclude_routes = config["choice_set"]["exclude_routes"]
-	fixed_costs = config["choice_set"]["fixed_costs"]
-	random_costs = config["choice_set"]["random_costs"]
-	only_modes = config["choice_set"]["only_modes"]
-	exclude_targeted = config["choice_set"]["exclude_targeted"]
-	settings = otp_settings(config)
 	max_workers = config["run"]["max_workers"]
 
 	def choice_set_one(tu_tur_row):
@@ -113,35 +39,30 @@ def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		tee.local.buffer = io.StringIO()
 		otp.client.trace.id = f"TurId={tu_tur_row['TurId']}"
 		try:
-			chosen_start, chosen_legs = chosen(tu_tur_row)
-			#Generated alternatives (many will be duplicated)
-			candidates, direct_km = trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
-			                             exclude_stops, exclude_routes, fixed_costs, random_costs, only_modes,
-			                             exclude_targeted, access_egress_mode)
-			#Filter alternatives; drop duplicates only keeping one closest to departure
-
-			trip_choice_set = build_choice_set(tu_tur_row["TurId"], candidates, key_columns,
-			                                   chosen_start, chosen_legs, chosen_public_transport)
-			trip_choice_set.insert(1, "direct_walk_km", direct_km)
-			print_choice_set(trip_choice_set)
-			print(f"TurId {tu_tur_row['TurId']}: {trip_choice_set['alt_id'].max()} alternative(s) besides the chosen")
+			trip_query = tu_trip_query(tu_tur_row, tu_deltur)
+			if access_egress_mode:
+				trip_query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
+			choice_set = trip_choice_set(tu_tur_row["TurId"], **trip_query, config=config,
+			                             chosen_legs=chosen(tu_tur_row))
+			print_choice_set(choice_set)
+			print(f"TurId {tu_tur_row['TurId']}: {choice_set['alt_id'].max()} alternative(s) besides the chosen")
 		except Exception as exc:
 			print(f"Skipping TurId {tu_tur_row['TurId']} due to unexpected error: {exc}")
-			trip_choice_set = None
+			choice_set = None
 		finally:
 			output = tee.local.buffer.getvalue()
 			tee.local.buffer = None
 			otp.client.trace.id = None
-		return output, trip_choice_set
+		return output, choice_set
 
 	# Trips are independent and I/O-bound on OTP, hence threads. map() yields in TU order.
 	print(f"Generating choice sets for {len(tu_tur)} trips with {max_workers} worker(s)...")
 	choice_sets = []
 	with ThreadPoolExecutor(max_workers=max_workers) as executor:
-		for output, trip_choice_set in executor.map(choice_set_one, (row for _, row in tu_tur.iterrows())):
+		for output, choice_set in executor.map(choice_set_one, (row for _, row in tu_tur.iterrows())):
 			print(output, end="")
-			if trip_choice_set is not None:
-				choice_sets.append(trip_choice_set)
+			if choice_set is not None:
+				choice_sets.append(choice_set)
 	# Before waiting on the share, so an outage isn't counted
 	run_time = elapsed(start)
 
@@ -178,17 +99,16 @@ def public_trans_choice_set(config, tee, tu_session, tu_tur, tu_deltur, chosen_t
 	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_walk_transit)
 
 	def chosen(tu_tur_row):
-		chosen_legs = chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
-		# TODO: gap from the reconstructed start or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
-		return chosen_legs["start_trip"].iloc[0], chosen_legs
+		# TODO: gap from the reconstructed start (trip_choice_set's chosen start) or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
+		return chosen_trips[chosen_trips["TurId"] == tu_tur_row["TurId"]]
 
 	outcome = chosen_trips.groupby("TurId")["outcome"].first()
-	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen, chosen_public_transport=True,
+	return generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
 		choice_set_file=config["choice_set"]["paths"]["public_choice_set_file"], groups=outcome,
 		trip_columns=pd.DataFrame({name: outcome.eq(name).astype(int) for name in ["trip_found", "trip_near_route"]}))
 
 def tu_chosen(tu_tur_row, tu_deltur):
-	"""(depart_dt, chosen_legs) of a street-mode trip: its TU legs, in the choice-set columns TU has."""
+	"""chosen_legs of a street-mode trip: its TU legs, in the choice-set columns TU has."""
 	tu_legs = tu_deltur[tu_deltur["TurId"] == tu_tur_row["TurId"]].sort_values("Delturnr")
 	chosen_legs = pd.DataFrame({
 		"leg_id": tu_legs["Delturnr"] - 1,
@@ -199,7 +119,7 @@ def tu_chosen(tu_tur_row, tu_deltur):
 		"duration_min": tu_legs["StageDurationMin"],
 	})
 	#TODO: Should chosen be OTP shorest path with car instead of TU given answer?
-	return tu_tur_row["depart_dt"], chosen_legs
+	return chosen_legs
 
 def street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, stage_modes, choice_set_file):
 	"""
@@ -216,7 +136,7 @@ def street_choice_set(config, tee, tu_session, tu_tur, tu_deltur, stage_modes, c
 	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid)
 
 	return generate_choice_sets(config, tee, tu_tur, tu_deltur, lambda tu_tur_row: tu_chosen(tu_tur_row, tu_deltur),
-		chosen_public_transport=False, choice_set_file=choice_set_file, access_egress_mode="WALK")
+		choice_set_file=choice_set_file, access_egress_mode="WALK")
 
 def _run(config, tee, chosen_trips_path):
 	print("Loading TU data...")

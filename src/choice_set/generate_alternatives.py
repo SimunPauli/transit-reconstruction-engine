@@ -1,5 +1,6 @@
 from itertools import combinations
 import math
+import random
 import pandas as pd
 from src import otp
 from src.otp.client import STREET_MODES
@@ -224,15 +225,16 @@ def _groups(trip_choice_set, key_columns, route=lambda mode, name: name):
 	return trip_choice_set["alt_id"].map(lambda alt_id: first_alt[keys[alt_id]] if alt_id in keys else alt_id)
 
 
-def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, chosen_public_transport):
+def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs=None):
 	"""
 	One itinerary per alternative: per key, the candidate with the least gap to depart_dt plus waiting
-	(ties to less waiting), ordered by that score. chosen_legs is alt_id 0; if chosen_public_transport, it replaces the candidates
-	sharing its key, and a coverage column is added. Columns chosen_legs lacks (e.g. a car trip's
-	routes/stops) are left empty.
+	(ties to less waiting), ordered by that score. chosen_legs, if given, is alt_id 0 (else alt_ids start
+	at 1); if it has a transit leg, it replaces the candidates sharing its key, and a coverage column is
+	added. Columns chosen_legs lacks (e.g. a car trip's routes/stops) are left empty.
 	"""
-	alternatives = [chosen_legs]
-	chosen_keys = set(_itinerary_keys(chosen_legs, key_columns).values()) if chosen_public_transport else set()
+	chosen_transit = chosen_legs is not None and not chosen_legs["mode"].isin(STREET_MODES).all()
+	alternatives = [] if chosen_legs is None else [chosen_legs]
+	chosen_keys = set(_itinerary_keys(chosen_legs, key_columns).values()) if chosen_transit else set()
 	coverage = 0
 
 	if not candidates.empty:
@@ -252,18 +254,87 @@ def build_choice_set(trip_id, candidates, key_columns, depart_dt, chosen_legs, c
 		keep = itineraries.sort_values(["score", "wait"]).drop_duplicates("key").index
 		alternatives += [candidates[candidates["iteration_id"] == iteration_id] for iteration_id in keep]
 
+	if not alternatives:
+		return pd.DataFrame(columns=CHOICE_SET_COLUMNS)
+	first_alt_id = 0 if chosen_legs is not None else 1
 	trip_choice_set = pd.concat(
-		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0)) for alt_id, legs in enumerate(alternatives)],
+		[legs.assign(trip_id=trip_id, alt_id=alt_id, is_chosen= int(alt_id == 0))
+			for alt_id, legs in enumerate(alternatives, start=first_alt_id)],
 		ignore_index=True,
 	).reindex(columns=CHOICE_SET_COLUMNS)
 	trip_choice_set["line_group"] = _groups(trip_choice_set, list(dict.fromkeys([*key_columns, "from", "to"])), _line_group_route)
 	trip_choice_set["route_group"] = _groups(trip_choice_set, ALTERNATIVE_KEYS["routes"])
-	if chosen_public_transport:
+	if chosen_transit:
 		# 1 if the generated candidates included the chosen key or another alternative of its line_group, 0 otherwise
 		coverage = int(coverage or (trip_choice_set["line_group"].eq(0) & trip_choice_set["alt_id"].ne(0)).any())
 		trip_choice_set.insert(trip_choice_set.columns.get_loc("is_chosen") + 1, "coverage", coverage)
 
 	return trip_choice_set
+
+
+def trip_candidates(trip_id, origin, destination, depart_dt, access_mode, egress_mode, config, chosen_legs=None):
+	"""
+	The trip's OTP itineraries plus those of the exclude_stops rounds, then the exclude_routes
+	steps' rounds, then one round per fixed_costs entry, then the random_costs rounds (search_rounds,
+	each random kind seeded per trip by its "seed" and trip_id), then one round per only_modes
+	entry (only those transit modes), then each exclude_targeted chain's rounds ("all", "first" or "last"
+	legs' routes peeled). Settings from config["choice_set"], OTP's from config["request"].
+	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
+	itineraries walking at least as far are dropped.
+	"""
+	request, settings = config["request"], config["choice_set"]
+	otp_settings = dict(
+		search_window=settings["search_window"],
+		max_itinerary_candidates=request["max_itinerary_candidates"],
+		otp_url=request["otp_url"],
+		request_timeout=request["request_timeout"],
+		#TODO: decide on debug_profile. Currently default ("LIST_ALL")
+	)
+	trip_query = dict(origin=origin, destination=destination, depart_dt=depart_dt,
+		access_mode=access_mode, egress_mode=egress_mode)
+
+	direct = otp.client.request_direct_leg(origin, destination, "WALK", depart_dt, otp_url=request["otp_url"],
+	                                       request_timeout=request["request_timeout"])
+	direct_km = None if direct.empty else direct.groupby("iteration_id")["distance_km"].sum().min()
+	def query(**arguments):
+		candidates = otp.client.load_all_candidates(**trip_query, **otp_settings, **arguments)
+		if direct_km is None or candidates.empty:
+			return candidates
+		walk_km = candidates["distance_km"].where(candidates["mode"] == "WALK", 0).groupby(candidates["iteration_id"]).transform("sum")
+		return candidates[walk_km + 0.01 < direct_km].reset_index(drop=True)
+
+	exclude_stops, exclude_routes = settings["exclude_stops"], settings["exclude_routes"]
+	random_costs = settings["random_costs"]
+	# Seeded per trip, so draws don't depend on thread order
+	stop_rng = random.Random(f"{exclude_stops['seed']}:{trip_id}")
+	route_rng = random.Random(f"{exclude_routes['seed']}:{trip_id}")
+	cost_rng = random.Random(f"{random_costs['seed']}:{trip_id}")
+	rounds = []
+	for step in exclude_stops["steps"]:
+		rounds += [("stops", step["stops_per_round"], stop_rng)] * step["rounds"]
+	for step in exclude_routes["steps"]:
+		rounds += [("routes", step["routes_per_round"], route_rng)] * step["rounds"]
+	rounds += [("fixed_costs", costs, None) for costs in settings["fixed_costs"]]
+	rounds += [("costs", random_costs, cost_rng)] * random_costs["rounds"]
+	rounds += [("modes", modes, None) for modes in settings["only_modes"]]
+	# Last, so their itineraries stay out of the random exclusion pools
+	for chain, chain_rounds in settings["exclude_targeted"].items():
+		rounds += [("targeted", chain, None)] * chain_rounds
+	return search_rounds(query, query(), chosen_legs, rounds), direct_km
+
+
+def trip_choice_set(trip_id, origin, destination, depart_dt, access_mode, egress_mode, config, chosen_legs=None):
+	"""
+	The trip's choice set: build_choice_set over trip_candidates' itineraries, direct_walk_km after
+	trip_id. Alternatives are ranked by their gap to the chosen itinerary's start, else to depart_dt.
+	"""
+	candidates, direct_km = trip_candidates(trip_id, origin, destination, depart_dt, access_mode, egress_mode,
+		config, chosen_legs)
+	start = depart_dt if chosen_legs is None else chosen_legs["start_trip"].iloc[0]
+	choice_set = build_choice_set(trip_id, candidates, ALTERNATIVE_KEYS[config["choice_set"]["alternative_key"]],
+		start, chosen_legs)
+	choice_set.insert(1, "direct_walk_km", direct_km)
+	return choice_set
 
 
 PRINT_COLUMNS = ["mode", "distance_km", "waitingtime", "duration_min", "route_short_name", "from", "to", "otp_leg_depart_time"]
