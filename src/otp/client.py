@@ -11,6 +11,9 @@ from .parser import json_to_df, deduplicate_itineraries
 # Transit modes queried when the caller gives no modes_json
 DEFAULT_TRANSIT_MODES = ("SUBWAY", "BUS", "TRAM", "RAIL", "S_TRAIN")
 
+# Non-transit OTP leg modes (OTP's Mode enum)
+STREET_MODES = {"WALK", "BICYCLE", "CAR", "CARPOOL"}
+
 # Per-thread trace ID (e.g. "TurId=123"), sent as X-Correlation-ID so OTP's log lines name their trip.
 # Requires server.traceParameters in router-config.json.
 trace = threading.local()

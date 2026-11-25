@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import run_choice_set
 from src import otp
 from src.config_loader import get_config
-from src.constant import STREET_MODES
+from src.otp.client import STREET_MODES
 from src.choice_set.generate_alternatives import build_choice_set, ALTERNATIVE_KEYS, _line_group_route
 
 if len(sys.argv) != 2:

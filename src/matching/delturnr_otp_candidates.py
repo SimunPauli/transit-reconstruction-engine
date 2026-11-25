@@ -1,6 +1,7 @@
 import pandas as pd
 from collections import Counter
-from src.constant import WALK_BIKE_TIME_RATIO, ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED, STREET_MODES
+from src.otp.client import STREET_MODES
+from src.constant import WALK_BIKE_TIME_RATIO, ROUTE_MATCH_EXACT, ROUTE_MATCH_IGNORED
 from .route_matching_utils import route_names_match, route_match_flags
 
 def add_tu_delturnr_to_otp_candidates(

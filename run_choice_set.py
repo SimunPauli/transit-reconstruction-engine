@@ -12,7 +12,7 @@ from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
 from src.tu.tu_utils import tu_trip_query, tu_trip_legs
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, search_rounds,
 	choice_set_summary, print_choice_set, walk_to_bicycle)
-from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES, STREET_MODES
+from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES
 from src import otp
 
 def main():

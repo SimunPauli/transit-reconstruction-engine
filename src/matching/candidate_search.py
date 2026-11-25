@@ -5,8 +5,8 @@ from .delturnr_otp_candidates import add_tu_delturnr_to_otp_candidates, summariz
 from src import otp
 from .route_matching_utils import resolve_route_short_names
 from src.tu.tu_utils import tu_endpoints, get_access_egress
+from src.otp.client import STREET_MODES
 from src.constant import (
-	STREET_MODES,
 	REASON_NO_OTP_CANDIDATES,
 	REASON_MISSING_ROUTE_SHORT_NAME_COLUMN,
 	REASON_MISSING_MODE_COLUMN,

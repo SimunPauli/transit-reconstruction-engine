@@ -32,7 +32,8 @@ from PIL import Image
 
 import choice_set_coverage as coverage  # first: sets the working directory and sys.path for src
 from src.config_loader import load_config
-from src.constant import (STREET_MODES, ROUTE_MATCH_EXACT, ROUTE_MATCH_SIBLING, ROUTE_MATCH_LETTER,
+from src.otp.client import STREET_MODES
+from src.constant import (ROUTE_MATCH_EXACT, ROUTE_MATCH_SIBLING, ROUTE_MATCH_LETTER,
 	ROUTE_MATCH_DIGIT, ROUTE_MATCH_IGNORED)
 
 MAX_ALTERNATIVES = 6

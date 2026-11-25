@@ -25,7 +25,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 os.chdir(PROJECT_DIR)  # src.constant reads config.json from the working directory
 from src.config_loader import load_config
-from src.constant import STREET_MODES
+from src.otp.client import STREET_MODES
 from src.otp.parser import decode_polyline
 
 WORSE_DURATION_RATIO = 1.25  # chosen counts as slower than the best alternative from this ratio

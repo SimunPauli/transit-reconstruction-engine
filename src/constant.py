@@ -52,10 +52,6 @@ DIRECT_ACCESS_MODE_MAP = {
 	35: "CAR"
 }
 
-#Non-transit OTP leg modes (OTP's Mode enum), e.g. an unmatched transfer walk is fine but an
-#unmatched SUBWAY/BUS/RAIL/S_TRAIN/TRAM leg is not.
-STREET_MODES = {"WALK", "BICYCLE", "CAR", "CARPOOL"}
-
 INVALID_ROUTE_CHARS = ("?", "&", "/", ".", ",")
 LOCAL_TIMEZONE = "Europe/Copenhagen"
 
