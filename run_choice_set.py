@@ -9,10 +9,10 @@ from src.tu import load_TU_data
 from src.config_loader import get_config, start_run
 from src.run_utils import Tee, elapsed, wait_for_output_dir
 from src.tu.read_chosen_trips import find_chosen_trips_file, read_chosen_trips
-from src.tu.tu_utils import tu_trip_query, tu_trip_legs
+from src.tu.tu_utils import tu_trip_query
 from src.choice_set.generate_alternatives import (ALTERNATIVE_KEYS, build_choice_set, search_rounds,
-	choice_set_summary, print_choice_set, walk_to_bicycle)
-from src.constant import WALK_BIKE_TIME_RATIO, TRANSIT_STAGE_MODES
+	choice_set_summary, print_choice_set)
+from src.constant import TRANSIT_STAGE_MODES
 from src import otp
 
 def main():
@@ -44,12 +44,11 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 	steps' rounds, then one round per fixed_costs entry, then the random_costs rounds (search_rounds,
 	each random kind seeded per trip by its "seed" and TurId), then one round per only_modes
 	entry (only those transit modes), then each exclude_targeted chain's rounds ("all", "first" or "last"
-	legs' routes peeled), bike access/egress relabelled BICYCLE.
-	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs (no BICYCLE relabel).
+	legs' routes peeled).
+	access_egress_mode, if given, replaces the access/egress mode derived from the TU legs.
 	Returns (candidates, direct_km): direct_km is the direct walk's distance (None if OTP found none);
 	itineraries walking at least as far are dropped.
 	"""
-	tu_legs = tu_trip_legs(tu_tur_row, tu_deltur)
 	trip_query = tu_trip_query(tu_tur_row, tu_deltur)
 	if access_egress_mode:
 		trip_query.update(access_mode=access_egress_mode, egress_mode=access_egress_mode)
@@ -86,10 +85,7 @@ def trip_candidates(tu_tur_row, tu_deltur, settings, chosen_legs,
 		rounds += [("targeted", chain, None)] * chain_rounds
 	candidates_init = query()
 	candidates = search_rounds(query, candidates_init, chosen_legs, rounds)
-	if access_egress_mode:
-		return candidates, direct_km
-	return walk_to_bicycle(candidates, tu_legs["otp_mode"].iloc[0] == "BICYCLE", #walk_to_bicycle does nothing if tu access/egress is not bike
-		tu_legs["otp_mode"].iloc[-1] == "BICYCLE", WALK_BIKE_TIME_RATIO), direct_km
+	return candidates, direct_km
 
 def generate_choice_sets(config, tee, tu_tur, tu_deltur, chosen,
                          chosen_public_transport, choice_set_file, access_egress_mode=None, groups=None,
