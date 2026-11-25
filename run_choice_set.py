@@ -1,3 +1,8 @@
+"""
+Choice sets for TU trips: the TU side of src/choice_set. Public transport trips (chosen = the itinerary of a
+finished reconstruction run) and car and bike trips (chosen = their TU legs) are turned into trip queries for
+choice_set.batch.generate_choice_sets; writes one choice-set file per group and a summary to the run dir.
+"""
 import sys
 import time
 from contextlib import redirect_stdout
@@ -63,6 +68,12 @@ def tu_choice_sets(config, tu_tur, tu_deltur, chosen, choice_set_file, access_eg
 	return summary
 
 
+def only_walk_and(tu_deltur, turid, stage_modes):
+	"""TurIds in turid whose legs are all walk or in stage_modes."""
+	legs = tu_deltur[tu_deltur["TurId"].isin(turid)]
+	only = legs["StageMode"].isin([1, *stage_modes]).groupby(legs["TurId"]).all()
+	return only[only].index
+
 def public_trans_choice_set(config, tu_session, tu_tur, tu_deltur, chosen_trips_path):
 	"""
 	---- Public transport choice-set for public transport trips ----
@@ -72,10 +83,8 @@ def public_trans_choice_set(config, tu_session, tu_tur, tu_deltur, chosen_trips_
 	per	choice_set.alternative_key (what makes two itineraries the same alternative).
 	"""
 	chosen_trips = read_chosen_trips(chosen_trips_path, config["reconstruct"]["paths"]["trip_matching_summaries_file"])
-	legs = tu_deltur[tu_deltur["TurId"].isin(chosen_trips["TurId"])]
-	only_transit_walk = legs["StageMode"].isin([1, *TRANSIT_STAGE_MODES]).groupby(legs["TurId"]).all()
-	turid_walk_transit = only_transit_walk[only_transit_walk].index #TODO: include trips with other street modes then WALK??
-	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid_walk_transit)
+	turid = only_walk_and(tu_deltur, chosen_trips["TurId"], TRANSIT_STAGE_MODES)  #TODO: include trips with other street modes then WALK??
+	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid)
 
 	def chosen(tu_tur_row):
 		# TODO: gap from the reconstructed start (trip_choice_set's chosen start) or the TU respondent's answered depart (tu_tur_row["depart_dt"], as for car)?
@@ -108,10 +117,7 @@ def street_choice_set(config, tu_session, tu_tur, tu_deltur, stage_modes, choice
 	OTP itineraries for the same origin, destination and departure with WALK access/egress on any
 	route, collapsed per choice_set.alternative_key (what makes two itineraries the same alternative).
 	"""
-	turid = tu_tur.loc[tu_tur["PrimMode"].isin(stage_modes), "TurId"]
-	legs = tu_deltur[tu_deltur["TurId"].isin(turid)]
-	only_mode_walk = legs["StageMode"].isin([1, *stage_modes]).groupby(legs["TurId"]).all()
-	turid = only_mode_walk[only_mode_walk].index
+	turid = only_walk_and(tu_deltur, tu_tur.loc[tu_tur["PrimMode"].isin(stage_modes), "TurId"], stage_modes)
 	tu_session, tu_tur, tu_deltur = load_TU_data.select_trips(tu_session, tu_tur, tu_deltur, turid)
 
 	return tu_choice_sets(config, tu_tur, tu_deltur, lambda tu_tur_row: tu_chosen(tu_tur_row, tu_deltur),
