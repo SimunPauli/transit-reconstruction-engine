@@ -22,7 +22,8 @@ The repository is public so that researchers who use the reproduced trip data ca
 inspect how it was produced. Running the tool itself requires access to the
 confidential TU data.
 
-This project will be extended with choice-set generation for route choice modelling.
+`run_choice_set.py` generates choice sets for route choice modelling with
+[pt-network-simulation](https://github.com/SimunPauli/pt-network-simulation), which is also the OTP client.
 
 ---
 
@@ -32,6 +33,8 @@ This project will be extended with choice-set generation for route choice modell
 - Java 21 and Maven, to build `read_write_TU_linux` (exports the TU Access database to csv)
 - A running instance of the modified OTP (link above), loaded with the relevant GTFS
   data, accessible at the `otp_url` defined in `config.json`
+- [pt-network-simulation](https://github.com/SimunPauli/pt-network-simulation) v0.1.0, installed from GitHub
+  by `requirements.txt`
 
 ---
 
@@ -49,6 +52,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 ```
+
+To change pt-network-simulation alongside this project, install the local copy instead:
+`pip install -e ../pt-network-simulation`.
 
 Then export the TU tables from the Access database to csv (see `read_write_TU_linux/README.md`):
 
@@ -89,8 +95,8 @@ Create it based on the template below:
   },
   "request": {
     "otp_url": "http://localhost:8080/otp/gtfs/v1",
-    "max_itinerary_candidates": 50,
-    "request_timeout": 30
+    "max_itinerary_candidates": 30,
+    "request_timeout": 60
   },
   "tu_prep": {
     "walk_car_absorb_max_km": 0.5,
@@ -146,38 +152,36 @@ Create it based on the template below:
 
   "choice_set": {
     "reconstruct_run_dir": null,
-    "search_window": "PT1H",
+    "search_window": "PT60M",
     "alternative_key": "routes_stops",
     "exclude_stops": {
       "steps": [
         {"rounds": 5, "stops_per_round": 1},
-        {"rounds": 5, "stops_per_round": 2}
+        {"rounds": 3, "stops_per_round": 2}
       ],
-      "seed": 0
+      "seed": 2026
     },
     "exclude_routes": {
       "steps": [
         {"rounds": 5, "routes_per_round": 1},
-        {"rounds": 5, "routes_per_round": 2}
+        {"rounds": 3, "routes_per_round": 2}
       ],
-      "seed": 0
+      "seed": 2026
     },
-    "fixed_costs": [
-      {"walk_reluctance": 4, "wait_reluctance": 2, "transit_reluctance": {"BUS": 1.5}, "transfer_cost": 600}
-    ],
+    "fixed_costs": [],
     "random_costs": {
-      "rounds": 10,
+      "rounds": 5,
       "walk_reluctance": [1, 8],
       "wait_reluctance": [0.25, 4],
       "transit_reluctance": [0.2, 5],
       "transfer_cost": [0, 1800],
-      "seed": 0
+      "seed": 2026
     },
     "only_modes": [["BUS"], ["SUBWAY", "S_TRAIN", "RAIL", "TRAM"]],
     "exclude_targeted": {
-      "all": 8,
-      "first": 10,
-      "last": 10
+      "all": 5,
+      "first": 5,
+      "last": 5
     },
     "paths": {
       "log_file": "choice_set.log",
@@ -221,14 +225,7 @@ Top-level sections are shared by both entry points; `reconstruct` is read only b
 | `reconstruct.squared_error_weights` | Weights applied to each component of the RMSE score; street distance per TU leg length bin (see "Selecting the best match — weighted RMSE") |
 | `reconstruct.paths.*` | Output file names, written into the run folder (see "Output" below) |
 | `choice_set.reconstruct_run_dir` | Reconstruction run folder whose matches are the chosen trips; `null` = the newest run for `tu_subset.year` that has a matches file |
-| `choice_set.search_window` | ISO 8601 duration — time window searched around the TU departure time for alternatives |
-| `choice_set.alternative_key` | What makes two itineraries the same alternative, compared over transit legs in order: `routes` (mode + route name), `routes_stops` (also boarding/alighting stop names), `trip` (also departure: every departure is its own alternative). Lines sharing track are separate alternatives, grouped in `line_group` (see `choice_set.paths.*`). Of each alternative_key group the itinerary departing closest to the chosen one is kept; the chosen trip's group is the chosen itinerary itself |
-| `choice_set.exclude_stops` | Extra alternatives from re-querying with stops excluded: `steps` run in order, each `rounds` queries excluding `stops_per_round` stop ids (no boarding/alighting, passing through allowed) drawn at random from the boarding/alighting stops of the chosen itinerary and all candidates so far, drawn anew each round but never a set of stops an earlier round excluded (across steps); a round with no such set left is skipped. Draws are seeded per trip by `seed` and `TurId`, so runs are reproducible. `steps: []` disables it |
-| `choice_set.exclude_routes` | As `exclude_stops`, with routes, run after the stop rounds: `steps` of `rounds` queries, each excluding `routes_per_round` route ids (their trips are not used at all) drawn from the routes of the chosen itinerary and all candidates so far. `steps: []` disables it |
-| `choice_set.fixed_costs` | Extra alternatives from re-querying with chosen generalized-cost parameters, run after the exclude rounds: one query (no exclusions) per entry, each setting any of `walk_reluctance`, `wait_reluctance`, `transit_reluctance` (one value for every transit mode, or `{mode: value}`; modes left out get 1) and `transfer_cost` (seconds). Left-out keys keep the plain query's values (`walk_reluctance` 2, the rest OTP's defaults). `[]` disables it |
-| `choice_set.random_costs` | Extra alternatives from re-querying with random generalized-cost parameters, run after the `fixed_costs` rounds: `rounds` queries (no exclusions), each with `walk_reluctance` drawn uniform over the integers in its `[min, max]` (integer bounds; few distinct values, so OTP's transfer cache is reused), `wait_reluctance` and one `transit_reluctance` per transit mode drawn log-uniform from their `[min, max]` (min > 0), and `transfer_cost` (seconds, on every boarding after the first) drawn uniform from its `[min, max]`. Draws are seeded per trip by `seed` and `TurId`. `rounds: 0` disables it |
-| `choice_set.only_modes` | Extra alternatives from re-querying with only some transit modes, run after the `random_costs` rounds: one query (no exclusions, plain costs) per entry, a list of OTP transit modes (`BUS`, `SUBWAY`, `S_TRAIN`, `RAIL`, `TRAM`) it may use, e.g. `[["BUS"], ["SUBWAY", "S_TRAIN", "RAIL", "TRAM"]]`: bus only, then everything but bus. `[]` disables it |
-| `choice_set.exclude_targeted` | Extra alternatives from peeling off the fastest routes, run last: per chain, that many queries, each adding route ids of the previous round's fastest itinerary (the first round's: of the plain query) to the routes the chain excludes, so slower routes that the faster ones dominate (e.g. a bus along a metro line) come out. `all` peels all its transit legs' routes; `first`/`last` only the first/last leg's, keeping the trunk line so other feeder/distributor buses to it come out. Deterministic; a chain stops early once a round finds nothing, and a round excluding the same routes as an earlier one reuses its itineraries without querying. `0` disables a chain |
+| `choice_set.search_window` … `choice_set.exclude_targeted` | Choice-set generation settings, passed to pt-network-simulation unchanged; see "Configuration" in its README |
 | `choice_set.paths.*` | Choice-set output file names, written into the choice-set run folder (see "Output" below) |
 
 ---
@@ -347,7 +344,7 @@ same routes that differ only by stops.
 
 `leg_geometry` (reconstruction and choice-set files) is the leg's shape as a
 [Google encoded polyline](https://developers.google.com/maps/documentation/utilities/polylinealgorithm),
-as OTP returns it. `decode_polyline` in `src/otp/parser.py` turns it into (latitude, longitude) tuples.
+as OTP returns it. `decode_polyline` in `pt_network_simulation.otp.parser` turns it into (latitude, longitude) tuples.
 
 ### Trip outcomes
 
