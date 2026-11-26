@@ -1,7 +1,7 @@
 """
-Choice sets for TU trips: the TU side of src/choice_set. Public transport trips (chosen = the itinerary of a
-finished reconstruction run) and car and bike trips (chosen = their TU legs) are turned into trip queries for
-choice_set.batch.generate_choice_sets; writes one choice-set file per group and a summary to the run dir.
+Choice sets for TU trips: the TU side of pt_network_simulation's choice sets. Public transport trips (chosen =
+the itinerary of a finished reconstruction run) and car and bike trips (chosen = their TU legs) are turned into
+trip queries for pt_network_simulation's generate_choice_sets; writes one choice-set file per group and a summary to the run dir.
 """
 import sys
 import time
